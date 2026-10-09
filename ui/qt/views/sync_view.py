@@ -417,14 +417,25 @@ class SyncView(QWidget):
             self._refresh_github_status()
 
     def _push_to_github(self) -> None:
-        self._append_log("GitHub Sync: Starte Upload in privaten Gist...")
-        success, msg = GitHubSyncService.push_to_gist()
-        self._append_log(f"GitHub Sync: {msg}")
-        self._refresh_github_status()
-        if success:
-            QMessageBox.information(self, "Cloud-Sicherung erfolgreich", msg)
-        else:
-            QMessageBox.critical(self, "Cloud-Sicherung fehlgeschlagen", msg)
+        self.btn_push_gist.setEnabled(False)
+        self.lbl_sync_status.setText("Sichere Daten in GitHub Gist...")
+        self.lbl_sync_status.setStyleSheet("color: #E3B341; border: none; font-size: 11px;")
+        self._append_log("GitHub Sync: Starte Upload in privaten Gist (komprimiere SQLite Metadaten)...")
+
+        def task():
+            success, msg = GitHubSyncService.push_to_gist()
+            def finish():
+                self.btn_push_gist.setEnabled(True)
+                self._append_log(f"GitHub Sync: {msg}")
+                self._refresh_github_status()
+                if success:
+                    QMessageBox.information(self, "Cloud-Sicherung erfolgreich", msg)
+                else:
+                    QMessageBox.critical(self, "Cloud-Sicherung fehlgeschlagen", msg)
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, finish)
+
+        threading.Thread(target=task, daemon=True).start()
 
     def _pull_from_github(self) -> None:
         reply = QMessageBox.question(
@@ -437,14 +448,26 @@ class SyncView(QWidget):
         if reply != QMessageBox.Yes:
             return
 
+        self.btn_pull_gist.setEnabled(False)
+        self.lbl_sync_status.setText("Lade Snapshot aus GitHub Cloud...")
+        self.lbl_sync_status.setStyleSheet("color: #E3B341; border: none; font-size: 11px;")
         self._append_log("GitHub Sync: Lade Snapshot aus Gist...")
-        success, msg = GitHubSyncService.pull_from_gist()
-        self._append_log(f"GitHub Sync: {msg}")
-        if success:
-            self.scan_finished.emit()
-            QMessageBox.information(self, "Synchronisation abgeschlossen", msg)
-        else:
-            QMessageBox.critical(self, "Download fehlgeschlagen", msg)
+
+        def task():
+            success, msg = GitHubSyncService.pull_from_gist()
+            def finish():
+                self.btn_pull_gist.setEnabled(True)
+                self._append_log(f"GitHub Sync: {msg}")
+                self._refresh_github_status()
+                if success:
+                    self.scan_finished.emit()
+                    QMessageBox.information(self, "Synchronisation abgeschlossen", msg)
+                else:
+                    QMessageBox.critical(self, "Download fehlgeschlagen", msg)
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, finish)
+
+        threading.Thread(target=task, daemon=True).start()
 
     def _check_github_updates(self) -> None:
         self._append_log(f"Updater: Prüfe Releases auf Florian306/Campus-Bibliothek...")

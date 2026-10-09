@@ -7,6 +7,7 @@ import gzip
 import json
 import os
 import sqlite3
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -56,11 +57,21 @@ class GitHubSyncService:
         # Books metadata
         cur.execute("""
             SELECT id, file_path, filename, title, author, isbn, doi, edition, edition_str,
-                   year, page_count, current_page, is_on_desk, desk_priority, desk_added_at,
-                   publisher, series, volume, tags, added_at, last_opened_at, read_status
+                   year, page_count, file_size, file_mtime, confidence, summary, date_added, last_opened
             FROM books
         """)
         books = [dict(r) for r in cur.fetchall()]
+
+        # Desk progress items
+        desk_items = []
+        try:
+            cur.execute("""
+                SELECT book_id, status, current_page, total_pages, progress_pct, borrowed_at, last_read_at
+                FROM desk_items
+            """)
+            desk_items = [dict(r) for r in cur.fetchall()]
+        except Exception:
+            pass
 
         # Book Notes
         notes = []
@@ -87,10 +98,11 @@ class GitHubSyncService:
         conn.close()
 
         payload = {
-            "version": "1.0",
+            "version": "1.1",
             "exported_at": datetime.now().isoformat(),
             "total_books": len(books),
             "books": books,
+            "desk_items": desk_items,
             "notes": notes,
             "categories": categories,
         }
@@ -141,7 +153,7 @@ class GitHubSyncService:
                 if new_gist_id and new_gist_id != gist_id:
                     cfg.github_gist_id = new_gist_id
                     save_app_config(cfg)
-                return True, f"Erfolgreich synchronisiert! {len(data['books'])} Bücher gesichert."
+                return True, f"Erfolgreich synchronisiert! {len(data['books'])} Bücher und {len(data['desk_items'])} Lesestände gesichert."
         except urllib.error.HTTPError as e:
             return False, f"GitHub Fehler {e.code}: {e.read().decode('utf-8', errors='ignore')[:100]}"
         except Exception as e:
@@ -185,6 +197,7 @@ class GitHubSyncService:
     @staticmethod
     def _restore_payload(payload: Dict[str, Any]) -> Tuple[bool, str]:
         books = payload.get("books", [])
+        desk_items = payload.get("desk_items", [])
         notes = payload.get("notes", [])
         categories = payload.get("categories", [])
         db_path = get_database_path()
@@ -200,25 +213,31 @@ class GitHubSyncService:
                 bid = b.get("id")
                 if not bid:
                     continue
-                cur.execute("SELECT id, current_page FROM books WHERE id = ?", (bid,))
-                existing = cur.fetchone()
-                if existing:
-                    # Update progress and desk state if remote is further
-                    cur.execute("""
-                        UPDATE books
-                        SET current_page = MAX(COALESCE(current_page, 1), ?),
-                            is_on_desk = COALESCE(?, is_on_desk),
-                            tags = COALESCE(?, tags),
-                            read_status = COALESCE(?, read_status)
-                        WHERE id = ?
-                    """, (b.get("current_page", 1), b.get("is_on_desk"), b.get("tags"), b.get("read_status"), bid))
-                else:
-                    # Insert missing book entry
-                    cols = ["id", "file_path", "filename", "title", "author", "isbn", "doi", "edition", "year", "page_count", "current_page", "is_on_desk", "tags"]
-                    vals = [b.get(c) for c in cols]
-                    placeholders = ", ".join(["?"] * len(cols))
-                    col_names = ", ".join(cols)
-                    cur.execute(f"INSERT OR IGNORE INTO books ({col_names}) VALUES ({placeholders})", vals)
+                cols = ["id", "file_path", "filename", "title", "author", "isbn", "doi", "edition", "edition_str", "year", "page_count", "file_size", "file_mtime", "confidence", "summary", "date_added", "last_opened"]
+                vals = [b.get(c) for c in cols]
+                placeholders = ", ".join(["?"] * len(cols))
+                col_names = ", ".join(cols)
+                cur.execute(f"INSERT OR IGNORE INTO books ({col_names}) VALUES ({placeholders})", vals)
+
+            # Merge desk items
+            for d in desk_items:
+                cur.execute("""
+                    INSERT INTO desk_items (book_id, status, current_page, total_pages, progress_pct, borrowed_at, last_read_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(book_id) DO UPDATE SET
+                        current_page = MAX(desk_items.current_page, excluded.current_page),
+                        progress_pct = MAX(desk_items.progress_pct, excluded.progress_pct),
+                        status = excluded.status,
+                        last_read_at = COALESCE(excluded.last_read_at, desk_items.last_read_at)
+                """, (
+                    d.get("book_id"),
+                    d.get("status", "Am Lesen"),
+                    d.get("current_page", 0),
+                    d.get("total_pages", 0),
+                    d.get("progress_pct", 0),
+                    d.get("borrowed_at", time.time()),
+                    d.get("last_read_at"),
+                ))
 
             # Merge notes
             for n in notes:
@@ -235,7 +254,7 @@ class GitHubSyncService:
                 """, (c.get("book_id"), c.get("category"), c.get("is_primary", 0)))
 
             conn.commit()
-            return True, f"Erfolgreich wiederhergestellt! {len(books)} Bücher synchronisiert."
+            return True, f"Erfolgreich synchronisiert! {len(books)} Bücher verarbeitet."
         except Exception as e:
             conn.rollback()
             return False, f"Datenbank-Fehler beim Einspielen: {str(e)}"
