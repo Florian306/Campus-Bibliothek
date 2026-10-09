@@ -32,10 +32,17 @@ jobs:
         run: |
           pyinstaller Buchsortierer.spec --noconfirm
 
-      - name: Create Release and Upload Artifact
+      - name: Compile Windows Installer (Inno Setup)
+        uses: Miniong/innosetup-action@v1.2.2
+        with:
+          filepath: installer.iss
+
+      - name: Create Release and Upload Artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Buchsortierer.exe
+          files: |
+            dist/Buchsortierer.exe
+            installer_output/Campus-Bibliothek-Setup.exe
           name: Campus-Bibliothek ${{ github.ref_name }}
           draft: false
           prerelease: false
