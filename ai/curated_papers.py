@@ -1,0 +1,842 @@
+"""Curated Academic Milestone Papers repository across all academic faculties.
+Provides landmark scientific publications with DOI, abstracts, citations, and Open Access references.
+"""
+
+from typing import Any, Dict, List
+from core.library_db import save_research_paper, get_all_research_papers
+
+CURATED_PAPERS_BY_FACULTY: Dict[str, List[Dict[str, Any]]] = {
+    "Mathematik": [
+        {
+            "id": "paper_math_shannon_1948",
+            "title": "A Mathematical Theory of Communication",
+            "authors": "Claude E. Shannon",
+            "year": 1948,
+            "journal": "Bell System Technical Journal",
+            "doi": "10.1002/j.1538-7305.1948.tb01338.x",
+            "arxiv_id": "",
+            "category": "Mathematik",
+            "citation_count": 145000,
+            "pdf_url": "https://archive.org/download/shannon1948/shannon1948.pdf",
+            "abstract": "The fundamental problem of communication is that of reproducing at one point either exactly or approximately a message selected at another point. We develop the mathematical foundations of entropy, information limits, and channel capacity in discrete and continuous noiseless and noisy systems."
+        },
+        {
+            "id": "paper_math_cook_1971",
+            "title": "The Complexity of Theorem-Proving Procedures",
+            "authors": "Stephen A. Cook",
+            "year": 1971,
+            "journal": "Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC)",
+            "doi": "10.1145/800157.805047",
+            "arxiv_id": "",
+            "category": "Mathematik",
+            "citation_count": 8900,
+            "pdf_url": "https://www.cs.toronto.edu/~sacook/homepage/1971.pdf",
+            "abstract": "It is shown that any recognition problem decided by a polynomial time-bounded nondeterministic Turing machine can be reduced to the propositional satisfiability problem (SAT). This establishes the foundations of the P versus NP question and NP-completeness."
+        },
+        {
+            "id": "paper_math_nash_1950",
+            "title": "Equilibrium Points in N-Person Games",
+            "authors": "John F. Nash",
+            "year": 1950,
+            "journal": "Proceedings of the National Academy of Sciences (PNAS)",
+            "doi": "10.1073/pnas.36.1.48",
+            "arxiv_id": "",
+            "category": "Mathematik",
+            "citation_count": 27400,
+            "pdf_url": "https://www.pnas.org/doi/pdf/10.1073/pnas.36.1.48",
+            "abstract": "One introduces the concept of an equilibrium point in finite non-cooperative games. By using Kakutani's fixed-point theorem, it is demonstrated that every finite n-person non-cooperative game possesses at least one equilibrium point in mixed strategies."
+        },
+        {
+            "id": "paper_math_perelman_2002",
+            "title": "The Entropy Formula for the Ricci Flow and Its Geometric Applications",
+            "authors": "Grigori Perelman",
+            "year": 2002,
+            "journal": "arXiv Mathematics: Differential Geometry",
+            "doi": "10.48550/arXiv.math/0211159",
+            "arxiv_id": "math/0211159",
+            "category": "Mathematik",
+            "citation_count": 4200,
+            "pdf_url": "https://arxiv.org/pdf/math/0211159.pdf",
+            "abstract": "We introduce a functional on Riemannian metrics and dilaton fields that is monotonically non-decreasing under Ricci flow with surgery. This framework provides the critical machinery required to resolve Thurston's Geometrization Conjecture and the Poincaré Conjecture."
+        },
+    ],
+    "Physik & Astronomie": [
+        {
+            "id": "paper_phys_ligo_2016",
+            "title": "Observation of Gravitational Waves from a Binary Black Hole Merger",
+            "authors": "B. P. Abbott et al. (LIGO Scientific Collaboration and Virgo Collaboration)",
+            "year": 2016,
+            "journal": "Physical Review Letters",
+            "doi": "10.1103/PhysRevLett.116.061102",
+            "arxiv_id": "1602.03837",
+            "category": "Physik & Astronomie",
+            "citation_count": 16800,
+            "pdf_url": "https://arxiv.org/pdf/1602.03837.pdf",
+            "abstract": "On September 14, 2015, the Advanced LIGO detectors observed a transient gravitational-wave signal (GW150914) matches the waveform predicted by general relativity for the inspiral and merger of a pair of black holes and the ringdown of the resulting single black hole."
+        },
+        {
+            "id": "paper_phys_higgs_2012",
+            "title": "Observation of a New Particle in the Search for the Standard Model Higgs Boson with the ATLAS Detector at the LHC",
+            "authors": "ATLAS Collaboration",
+            "year": 2012,
+            "journal": "Physics Letters B",
+            "doi": "10.1016/j.physletb.2012.08.020",
+            "arxiv_id": "1207.7214",
+            "category": "Physik & Astronomie",
+            "citation_count": 15200,
+            "pdf_url": "https://arxiv.org/pdf/1207.7214.pdf",
+            "abstract": "A search for the Standard Model Higgs boson in proton-proton collisions at sqrt(s) = 7 TeV and 8 TeV with the ATLAS detector at CERN observes a neutral boson with a measured mass of 126.0 ± 0.4(stat) ± 0.4(sys) GeV at 5.0 standard deviations significance."
+        },
+        {
+            "id": "paper_phys_einstein_1905",
+            "title": "Zur Elektrodynamik bewegter Körper (On the Electrodynamics of Moving Bodies)",
+            "authors": "Albert Einstein",
+            "year": 1905,
+            "journal": "Annalen der Physik",
+            "doi": "10.1002/andp.19053221004",
+            "arxiv_id": "",
+            "category": "Physik & Astronomie",
+            "citation_count": 19500,
+            "pdf_url": "https://einsteinpapers.press.princeton.edu/vol2-trans/154",
+            "abstract": "Die Elektrodynamik Maxwells führt in ihrer Anwendung auf bewegte Körper zu Asymmetrien, welche den Phänomenen nicht anzuhaften scheinen. Es wird die Spezielle Relativitätstheorie begründet, basierend auf dem Relativitätsprinzip und der Konstanz der Vakuum-Lichtgeschwindigkeit."
+        },
+        {
+            "id": "paper_phys_planck_2020",
+            "title": "Planck 2018 results. VI. Cosmological parameters",
+            "authors": "N. Aghanim et al. (Planck Collaboration)",
+            "year": 2020,
+            "journal": "Astronomy & Astrophysics",
+            "doi": "10.1051/0004-6361/201833910",
+            "arxiv_id": "1807.06209",
+            "category": "Physik & Astronomie",
+            "citation_count": 8900,
+            "pdf_url": "https://arxiv.org/pdf/1807.06209.pdf",
+            "abstract": "We present cosmological parameters derived from the full Planck 2018 cosmic microwave background (CMB) temperature and polarization data. The standard spatially flat 6-parameter Lambda-CDM cosmology remains an exceptional fit with a Hubble constant H0 = 67.4 +/- 0.5 km/s/Mpc."
+        },
+    ],
+    "Chemie": [
+        {
+            "id": "paper_chem_dft_1993",
+            "title": "Density-Functional Thermochemistry. III. The Role of Exact Exchange",
+            "authors": "Axel D. Becke",
+            "year": 1993,
+            "journal": "The Journal of Chemical Physics",
+            "doi": "10.1063/1.464913",
+            "arxiv_id": "",
+            "category": "Chemie",
+            "citation_count": 92000,
+            "pdf_url": "https://doi.org/10.1063/1.464913",
+            "abstract": "Current gradient-corrected density-functional approximations for the exchange-correlation energy yield atomization energies with average absolute errors of several kcal/mol. A new hybrid exchange functional incorporating Hartree-Fock exact exchange (B3LYP foundation) dramatically improves molecular thermochemistry."
+        },
+        {
+            "id": "paper_chem_mof_2005",
+            "title": "Reticular Chemistry: Metal-Organic Frameworks and Open Frameworks for Gas Storage",
+            "authors": "Omar M. Yaghi et al.",
+            "year": 2005,
+            "journal": "Science",
+            "doi": "10.1126/science.1083440",
+            "arxiv_id": "",
+            "category": "Chemie",
+            "citation_count": 14200,
+            "pdf_url": "https://yaghi.berkeley.edu/pdfPublications/05Science.pdf",
+            "abstract": "The synthesis of ordered crystalline porous materials by linking molecular building blocks via strong covalent and coordination bonds (Reticular Chemistry) creates Metal-Organic Frameworks (MOFs) with unprecedented surface areas exceeding 6000 m2/g for hydrogen and methane capture."
+        },
+        {
+            "id": "paper_chem_green_1998",
+            "title": "Green Chemistry: Theory and Practice and the 12 Principles of Sustainable Chemistry",
+            "authors": "Paul T. Anastas, John C. Warner",
+            "year": 1998,
+            "journal": "Oxford University Press Monographs",
+            "doi": "10.1093/oso/9780198506980.001.0001",
+            "arxiv_id": "",
+            "category": "Chemie",
+            "citation_count": 18600,
+            "pdf_url": "https://www.acs.org/greenchemistry/principles/12-principles-of-green-chemistry.html",
+            "abstract": "Presents the definitive twelve principles of green chemistry designed to eliminate hazardous substances, reduce waste generation, optimize atom economy, and implement safer catalysts and renewable feedstocks across modern chemical processing."
+        },
+        {
+            "id": "paper_chem_click_2001",
+            "title": "Click Chemistry: Diverse Chemical Function from a Few Good Reactions",
+            "authors": "H. C. Kolb, M. G. Finn, K. Barry Sharpless",
+            "year": 2001,
+            "journal": "Angewandte Chemie International Edition",
+            "doi": "10.1002/1521-3773(20010601)40:11<2004::AID-ANIE2004>3.0.CO;2-5",
+            "arxiv_id": "",
+            "category": "Chemie",
+            "citation_count": 21500,
+            "pdf_url": "https://onlinelibrary.wiley.com/doi/10.1002/1521-3773(20010601)40:11<2004::AID-ANIE2004>3.0.CO;2-5",
+            "abstract": "Click chemistry is defined as a modular approach that mimics nature by joining small subunits with heteroatom links. The copper-catalyzed azide-alkyne cycloaddition provides high yields, benign reaction conditions, and orthogonal bio-conjugation in chemical biology."
+        },
+    ],
+    "Biologie & Lebenswissenschaften": [
+        {
+            "id": "paper_bio_crispr_2012",
+            "title": "A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity",
+            "authors": "Martin Jinek, Krzysztof Chylinski, Ines Fonfara, Michael Hauer, Jennifer A. Doudna, Emmanuelle Charpentier",
+            "year": 2012,
+            "journal": "Science",
+            "doi": "10.1126/science.1225829",
+            "arxiv_id": "",
+            "category": "Biologie & Lebenswissenschaften",
+            "citation_count": 23400,
+            "pdf_url": "https://www.science.org/doi/10.1126/science.1225829",
+            "abstract": "Clustered Regularly Interspaced Short Palindromic Repeats (CRISPR) and the Cas9 endonuclease form an RNA-mediated adaptive immune system in bacteria. By engineering single chimeric guide RNAs, Cas9 is converted into a versatile, programmable genome editing endonuclease."
+        },
+        {
+            "id": "paper_bio_alphafold_2021",
+            "title": "Highly accurate protein structure prediction with AlphaFold",
+            "authors": "John Jumper, Richard Evans, Alexander Pritzel, Tim Green, Michael Figurnov, Demis Hassabis et al.",
+            "year": 2021,
+            "journal": "Nature",
+            "doi": "10.1038/s41586-021-03819-2",
+            "arxiv_id": "",
+            "category": "Biologie & Lebenswissenschaften",
+            "citation_count": 18500,
+            "pdf_url": "https://www.nature.com/articles/s41586-021-03819-2.pdf",
+            "abstract": "Proteins are essential to life, yet resolving their 3D structures experimentally is time-consuming. We introduce AlphaFold2, an attention-based neural network model that predicts 3D atomic coordinates from primary amino acid sequences with experimental accuracy across the human proteome."
+        },
+        {
+            "id": "paper_bio_human_genome_2001",
+            "title": "Initial sequencing and analysis of the human genome",
+            "authors": "International Human Genome Sequencing Consortium (Eric S. Lander et al.)",
+            "year": 2001,
+            "journal": "Nature",
+            "doi": "10.1038/35057062",
+            "arxiv_id": "",
+            "category": "Biologie & Lebenswissenschaften",
+            "citation_count": 29800,
+            "pdf_url": "https://www.nature.com/articles/35057062.pdf",
+            "abstract": "Reports the initial sequencing and comprehensive annotation of the human genome covering approximately 90% of the euchromatic sequence, revealing approximately 20,000-25,000 protein-coding genes, segmental duplications, and the evolutionary landscape of human biology."
+        },
+        {
+            "id": "paper_bio_stemcells_2006",
+            "title": "Induction of Pluripotent Stem Cells from Mouse Embryonic and Adult Fibroblast Cultures by Defined Factors",
+            "authors": "Kazutoshi Takahashi, Shinya Yamanaka",
+            "year": 2006,
+            "journal": "Cell",
+            "doi": "10.1016/j.cell.2006.07.024",
+            "arxiv_id": "",
+            "category": "Biologie & Lebenswissenschaften",
+            "citation_count": 24100,
+            "pdf_url": "https://www.cell.com/cell/pdf/S0092-8674(06)00976-7.pdf",
+            "abstract": "Differentiated adult mammalian cells can be reprogrammed to pluripotency. By introducing retrovirally four transcription factors (Oct3/4, Sox2, c-Myc, Klf4), induced pluripotent stem cells (iPSCs) are generated, revolutionizing regenerative medicine and developmental biology."
+        },
+    ],
+    "Geowissenschaften & Geologie": [
+        {
+            "id": "paper_geo_anthropocene_2002",
+            "title": "Geology of mankind: The Anthropocene",
+            "authors": "Paul J. Crutzen",
+            "year": 2002,
+            "journal": "Nature",
+            "doi": "10.1038/415023a",
+            "arxiv_id": "",
+            "category": "Geowissenschaften & Geologie",
+            "citation_count": 7800,
+            "pdf_url": "https://www.nature.com/articles/415023a.pdf",
+            "abstract": "Human activities have grown into a significant geophysical force rivaling natural planetary cycles. We propose the term 'Anthropocene' for the current geological epoch, beginning in the late eighteenth century with James Watt's invention of the steam engine."
+        },
+        {
+            "id": "paper_geo_ipcc_2021",
+            "title": "Climate Change 2021: The Physical Science Basis (IPCC AR6 Working Group I Summary)",
+            "authors": "IPCC (Valérie Masson-Delmotte, Panmao Zhai et al.)",
+            "year": 2021,
+            "journal": "Cambridge University Press / IPCC Report",
+            "doi": "10.1017/9781009157896",
+            "arxiv_id": "",
+            "category": "Geowissenschaften & Geologie",
+            "citation_count": 12400,
+            "pdf_url": "https://www.ipcc.ch/report/ar6/wg1/downloads/report/IPCC_AR6_WGI_SPM.pdf",
+            "abstract": "It is unequivocal that human influence has warmed the atmosphere, ocean and land. Widespread and rapid changes in the atmosphere, cryosphere, and biosphere have occurred, with projected warming reaching 1.5°C in the near term under mid-to-high emissions scenarios."
+        },
+        {
+            "id": "paper_geo_tectonics_1968",
+            "title": "Seismology and the New Global Tectonics",
+            "authors": "Bryan Isacks, Jack Oliver, Lynn R. Sykes",
+            "year": 1968,
+            "journal": "Journal of Geophysical Research",
+            "doi": "10.1029/JB073i018p05855",
+            "arxiv_id": "",
+            "category": "Geowissenschaften & Geologie",
+            "citation_count": 4800,
+            "pdf_url": "https://doi.org/10.1029/JB073i018p05855",
+            "abstract": "A comprehensive review tests the hypotheses of sea-floor spreading and plate tectonics against global seismological observations, establishing the mechanism of oceanic lithosphere subduction along Benioff-Wadati zones."
+        },
+        {
+            "id": "paper_geo_ice_2004",
+            "title": "Eight glacial cycles from an Antarctic ice core",
+            "authors": "EPICA Community Members (Eric Wolff et al.)",
+            "year": 2004,
+            "journal": "Nature",
+            "doi": "10.1038/nature02641",
+            "arxiv_id": "",
+            "category": "Geowissenschaften & Geologie",
+            "citation_count": 3900,
+            "pdf_url": "https://www.nature.com/articles/nature02641.pdf",
+            "abstract": "Presents a continuous 740,000-year paleoclimatic record from Dome Concordia, Antarctica, extending across eight glacial-interglacial cycles and demonstrating the tight historical coupling between atmospheric greenhouse gases and Antarctic temperatures."
+        },
+    ],
+    "Informatik & Programmierung": [
+        {
+            "id": "paper_cs_attention_2017",
+            "title": "Attention Is All You Need",
+            "authors": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin",
+            "year": 2017,
+            "journal": "Advances in Neural Information Processing Systems (NeurIPS)",
+            "doi": "10.48550/arXiv.1706.03762",
+            "arxiv_id": "1706.03762",
+            "category": "Informatik & Programmierung",
+            "citation_count": 138000,
+            "pdf_url": "https://arxiv.org/pdf/1706.03762.pdf",
+            "abstract": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks. We propose the Transformer, a network architecture based entirely on self-attention mechanisms, dispensing with recurrence and convolutions entirely, enabling parallelization and state-of-the-art NLP models."
+        },
+        {
+            "id": "paper_cs_resnet_2016",
+            "title": "Deep Residual Learning for Image Recognition",
+            "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
+            "year": 2016,
+            "journal": "IEEE Conference on Computer Vision and Pattern Recognition (CVPR)",
+            "doi": "10.1109/CVPR.2016.90",
+            "arxiv_id": "1512.03385",
+            "category": "Informatik & Programmierung",
+            "citation_count": 215000,
+            "pdf_url": "https://arxiv.org/pdf/1512.03385.pdf",
+            "abstract": "Deeper neural networks are notoriously difficult to train due to vanishing gradients. We present a residual learning framework (ResNet) that reformulates layers as learning residual functions with reference to layer inputs, enabling training of networks over 150 layers deep."
+        },
+        {
+            "id": "paper_cs_pagerank_1998",
+            "title": "The Anatomy of a Large-Scale Hypertextual Web Search Engine",
+            "authors": "Sergey Brin, Lawrence Page",
+            "year": 1998,
+            "journal": "Computer Networks and ISDN Systems (WWW7)",
+            "doi": "10.1016/S0169-7552(98)00110-X",
+            "arxiv_id": "",
+            "category": "Informatik & Programmierung",
+            "citation_count": 31200,
+            "pdf_url": "http://infolab.stanford.edu/~backrub/google.html",
+            "abstract": "We present Google, a prototype of a large-scale search engine which makes heavy use of the structure present in hypertext. We design the PageRank algorithm to measure the objective importance of web pages by calculating the stationary distribution of a random web surfer."
+        },
+        {
+            "id": "paper_cs_bitcoin_2008",
+            "title": "Bitcoin: A Peer-to-Peer Electronic Cash System",
+            "authors": "Satoshi Nakamoto",
+            "year": 2008,
+            "journal": "Cryptography Mailing List / Satoshi Nakamoto Institute",
+            "doi": "10.2139/ssrn.3444001",
+            "arxiv_id": "",
+            "category": "Informatik & Programmierung",
+            "citation_count": 41000,
+            "pdf_url": "https://bitcoin.org/bitcoin.pdf",
+            "abstract": "A purely peer-to-peer version of electronic cash would allow online payments to be sent directly from one party to another without going through a financial institution. Digital signatures provide part of the solution, but a proof-of-work blockchain is introduced to prevent double-spending."
+        },
+    ],
+    "Medizin & Pharmazie": [
+        {
+            "id": "paper_med_mrna_vaccine_2020",
+            "title": "Safety and Efficacy of the BNT162b2 mRNA Covid-19 Vaccine",
+            "authors": "Fernando P. Polack, Stephen J. Thomas, Nicholas Kitchin, Özlem Türeci, Uğur Şahin et al.",
+            "year": 2020,
+            "journal": "New England Journal of Medicine (NEJM)",
+            "doi": "10.1056/NEJMoa2034577",
+            "arxiv_id": "",
+            "category": "Medizin & Pharmazie",
+            "citation_count": 14200,
+            "pdf_url": "https://www.nejm.org/doi/pdf/10.1056/NEJMoa2034577",
+            "abstract": "In an ongoing, multinational, placebo-controlled Phase 3 trial involving 43,548 participants, two 30-microgram doses of the lipid-nanoparticle-formulated mRNA vaccine BNT162b2 exhibited 95% efficacy against confirmed Covid-19 infection with favorable safety profile."
+        },
+        {
+            "id": "paper_med_cancer_hallmarks_2011",
+            "title": "Hallmarks of Cancer: The Next Generation",
+            "authors": "Douglas Hanahan, Robert A. Weinberg",
+            "year": 2011,
+            "journal": "Cell",
+            "doi": "10.1016/j.cell.2011.02.013",
+            "arxiv_id": "",
+            "category": "Medizin & Pharmazie",
+            "citation_count": 68000,
+            "pdf_url": "https://www.cell.com/cell/pdf/S0092-8674(11)00127-9.pdf",
+            "abstract": "The hallmarks of cancer comprise eight biological capabilities acquired during the multistep development of human tumors: sustaining proliferative signaling, evading growth suppressors, resisting cell death, enabling replicative immortality, inducing angiogenesis, activating invasion, reprogramming energy metabolism, and evading immune destruction."
+        },
+        {
+            "id": "paper_med_gbd_2020",
+            "title": "Global burden of 369 diseases and injuries in 204 countries and territories, 1990-2019: a systematic analysis for the GBD 2019",
+            "authors": "GBD 2019 Diseases and Injuries Collaborators (Christopher J. L. Murray et al.)",
+            "year": 2020,
+            "journal": "The Lancet",
+            "doi": "10.1016/S0140-6736(20)30925-9",
+            "arxiv_id": "",
+            "category": "Medizin & Pharmazie",
+            "citation_count": 8700,
+            "pdf_url": "https://www.thelancet.com/action/showPdf?pii=S0140-6736%2820%2930925-9",
+            "abstract": "Provides comprehensive global metrics of disability-adjusted life years (DALYs), healthy life expectancy (HALE), and mortality across 204 countries, identifying ischemic heart disease, stroke, diabetes, and lower respiratory infections as leading causes of burden."
+        },
+        {
+            "id": "paper_med_immunotherapy_2015",
+            "title": "Nivolumab versus Docetaxel in Advanced Non-Small-Cell Lung Cancer",
+            "authors": "Julie Brahmer et al.",
+            "year": 2015,
+            "journal": "New England Journal of Medicine (NEJM)",
+            "doi": "10.1056/NEJMoa1504627",
+            "arxiv_id": "",
+            "category": "Medizin & Pharmazie",
+            "citation_count": 7600,
+            "pdf_url": "https://www.nejm.org/doi/pdf/10.1056/NEJMoa1504627",
+            "abstract": "Demonstrates that immune checkpoint blockade targeting programmed death 1 (PD-1) with the monoclonal antibody nivolumab significantly improves overall survival compared to standard chemotherapy in patients with squamous-cell non-small-cell lung cancer."
+        },
+    ],
+    "Psychologie & Soziologie": [
+        {
+            "id": "paper_psych_prospect_1979",
+            "title": "Prospect Theory: An Analysis of Decision under Risk",
+            "authors": "Daniel Kahneman, Amos Tversky",
+            "year": 1979,
+            "journal": "Econometrica",
+            "doi": "10.2307/1914185",
+            "arxiv_id": "",
+            "category": "Psychologie & Soziologie",
+            "citation_count": 78000,
+            "pdf_url": "https://www.jstor.org/stable/1914185",
+            "abstract": "Presents a critique of expected utility theory as a descriptive model of decision making under risk and develops an alternative model called Prospect Theory. People value gains and losses differently, displaying loss aversion and probability weighting around a reference point."
+        },
+        {
+            "id": "paper_soc_weak_ties_1973",
+            "title": "The Strength of Weak Ties",
+            "authors": "Mark S. Granovetter",
+            "year": 1973,
+            "journal": "American Journal of Sociology",
+            "doi": "10.1086/225469",
+            "arxiv_id": "",
+            "category": "Psychologie & Soziologie",
+            "citation_count": 69000,
+            "pdf_url": "https://www.jstor.org/stable/2776392",
+            "abstract": "Analysis of social networks shows that weak ties between acquaintances are indispensable for social integration and the transmission of novel information such as employment opportunities, whereas strong ties lead to localized, redundant information clusters."
+        },
+        {
+            "id": "paper_psych_bigfive_1992",
+            "title": "An Introduction to the Five-Factor Model and Its Applications",
+            "authors": "Robert R. McCrae, Oliver P. John",
+            "year": 1992,
+            "journal": "Journal of Personality",
+            "doi": "10.1111/j.1467-6494.1992.tb00970.x",
+            "arxiv_id": "",
+            "category": "Psychologie & Soziologie",
+            "citation_count": 14500,
+            "pdf_url": "https://doi.org/10.1111/j.1467-6494.1992.tb00970.x",
+            "abstract": "The Five-Factor Model (FFM) of personality represents a consensus framework organizing personality traits into five broad dimensions: Extraversion, Agreeableness, Conscientiousness, Neuroticism, and Openness to Experience (OCEAN), validating its cross-cultural replicability."
+        },
+        {
+            "id": "paper_psych_seligman_2000",
+            "title": "Positive Psychology: An Introduction",
+            "authors": "Martin E. P. Seligman, Mihaly Csikszentmihalyi",
+            "year": 2000,
+            "journal": "American Psychologist",
+            "doi": "10.1037/0003-066X.55.1.5",
+            "arxiv_id": "",
+            "category": "Psychologie & Soziologie",
+            "citation_count": 22100,
+            "pdf_url": "https://psycnet.apa.org/doi/10.1037/0003-066X.55.1.5",
+            "abstract": "Outlines a comprehensive scientific discipline focused on human flourishing, positive emotion, character strengths, flow, and resilience, rebalancing psychology from an exclusive focus on pathology toward optimal human functioning."
+        },
+    ],
+    "Wirtschaftswissenschaften": [
+        {
+            "id": "paper_econ_lemon_1970",
+            "title": "The Market for 'Lemons': Quality Uncertainty and the Market Mechanism",
+            "authors": "George A. Akerlof",
+            "year": 1970,
+            "journal": "Quarterly Journal of Economics (QJE)",
+            "doi": "10.2307/1879431",
+            "arxiv_id": "",
+            "category": "Wirtschaftswissenschaften",
+            "citation_count": 42500,
+            "pdf_url": "https://www.jstor.org/stable/1879431",
+            "abstract": "Demonstrates how asymmetric information between buyers and sellers in the used car market leads to adverse selection: low-quality goods ('lemons') drive out high-quality goods, potentially resulting in complete market collapse."
+        },
+        {
+            "id": "paper_econ_growth_1992",
+            "title": "A Model of Growth Through Creative Destruction",
+            "authors": "Philippe Aghion, Peter Howitt",
+            "year": 1992,
+            "journal": "Econometrica",
+            "doi": "10.2307/2951499",
+            "arxiv_id": "",
+            "category": "Wirtschaftswissenschaften",
+            "citation_count": 12800,
+            "pdf_url": "https://www.jstor.org/stable/2951499",
+            "abstract": "A formal Schumpeterian model of endogenous technical progress where economic growth is generated by a random sequence of quality-improving innovations resulting from competitive research and development, displacing obsolete incumbent firms."
+        },
+        {
+            "id": "paper_econ_markowitz_1952",
+            "title": "Portfolio Selection",
+            "authors": "Harry Markowitz",
+            "year": 1952,
+            "journal": "The Journal of Finance",
+            "doi": "10.1111/j.1540-6261.1952.tb01525.x",
+            "arxiv_id": "",
+            "category": "Wirtschaftswissenschaften",
+            "citation_count": 39800,
+            "pdf_url": "https://www.math.ust.hk/~maykwok/courses/ma362/07F/markowitz_JF.pdf",
+            "abstract": "Establishes Modern Portfolio Theory (MPT). An investor considers expected return as desirable and variance of returns as undesirable. By optimizing covariance across diversified assets, one constructs the mean-variance efficient frontier."
+        },
+        {
+            "id": "paper_econ_piketty_2014",
+            "title": "Capital in the Twenty-First Century: Summary and Global Inequality Dynamics",
+            "authors": "Thomas Piketty, Gabriel Zucman",
+            "year": 2014,
+            "journal": "Quarterly Journal of Economics / Harvard University Press",
+            "doi": "10.1093/qje/qju018",
+            "arxiv_id": "",
+            "category": "Wirtschaftswissenschaften",
+            "citation_count": 18200,
+            "pdf_url": "https://academic.oup.com/qje/article/129/3/1255/1853612",
+            "abstract": "Analyzes historical wealth-income ratios across eight developed economies over three centuries. When the rate of return on capital (r) significantly exceeds the economic growth rate (g), inherited wealth concentrates faster than output increases."
+        },
+    ],
+    "Rechtswissenschaften & Jura": [
+        {
+            "id": "paper_law_social_cost_1960",
+            "title": "The Problem of Social Cost",
+            "authors": "Ronald H. Coase",
+            "year": 1960,
+            "journal": "Journal of Law and Economics",
+            "doi": "10.1086/466560",
+            "arxiv_id": "",
+            "category": "Rechtswissenschaften & Jura",
+            "citation_count": 41500,
+            "pdf_url": "https://www.law.uchicago.edu/files/file/coase-problem.pdf",
+            "abstract": "Formulates the Coase Theorem: in the absence of transaction costs, bargaining between rational parties leads to an efficient allocation of resources regardless of the initial legal entitlement of property or liability rules."
+        },
+        {
+            "id": "paper_law_habermas_1992",
+            "title": "Faktizität und Geltung: Beiträge zur Diskurstheorie des Rechts und des demokratischen Rechtsstaates",
+            "authors": "Jürgen Habermas",
+            "year": 1992,
+            "journal": "Suhrkamp Verlag / Cambridge Polity Press",
+            "doi": "10.1017/CBO9780511804397",
+            "arxiv_id": "",
+            "category": "Rechtswissenschaften & Jura",
+            "citation_count": 21800,
+            "pdf_url": "https://www.suhrkamp.de/buch/juergen-habermas-faktizitaet-und-geltung-t-9783518289617",
+            "abstract": "Entwickelt eine grundlegende Diskurstheorie des Rechts: Positives Recht sichert die Koordination moderner Gesellschaften nur dann legitim, wenn die Normadressaten sich zugleich als deren rationale Mitautoren in demokratischen Verfahren verstehen können."
+        },
+        {
+            "id": "paper_law_dworkin_1977",
+            "title": "Hard Cases and the Rule of Law",
+            "authors": "Ronald Dworkin",
+            "year": 1977,
+            "journal": "Harvard Law Review / Taking Rights Seriously",
+            "doi": "10.2307/1340159",
+            "arxiv_id": "",
+            "category": "Rechtswissenschaften & Jura",
+            "citation_count": 16400,
+            "pdf_url": "https://www.jstor.org/stable/1340159",
+            "abstract": "Argues against legal positivism and judicial discretion in hard cases. Judges do not act as deputy legislators; rather, judicial decisions must be rooted in an underlying coherent network of political morality and legal principles (rights thesis)."
+        },
+        {
+            "id": "paper_law_ai_governance_2022",
+            "title": "Regulating Artificial Intelligence: The EU AI Act and Fundamental Rights",
+            "authors": "Philipp Hacker, Ralf Kölbel",
+            "year": 2022,
+            "journal": "European Law Review / Common Market Law Review",
+            "doi": "10.2139/ssrn.4039755",
+            "arxiv_id": "",
+            "category": "Rechtswissenschaften & Jura",
+            "citation_count": 2400,
+            "pdf_url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4039755",
+            "abstract": "Examines the legal architecture of the European Union's Artificial Intelligence Act (EU AI Act). Explores risk classification tiers, conformity assessments, transparency duties, and the protection of fundamental human rights in algorithmic decision-making."
+        },
+    ],
+    "Ingenieurwissenschaften & Technik": [
+        {
+            "id": "paper_ing_topology_opt_1988",
+            "title": "Generating optimal topologies in structural design using a homogenization method",
+            "authors": "Martin P. Bendsøe, Noboru Kikuchi",
+            "year": 1988,
+            "journal": "Computer Methods in Applied Mechanics and Engineering",
+            "doi": "10.1016/0045-7825(88)90086-2",
+            "arxiv_id": "",
+            "category": "Ingenieurwissenschaften & Technik",
+            "citation_count": 8900,
+            "pdf_url": "https://doi.org/10.1016/0045-7825(88)90086-2",
+            "abstract": "Introduces topology optimization via numerical homogenization. Rather than optimizing predefined boundaries, the distribution of microscale porous material is iteratively calculated to maximize structural stiffness and minimize weight."
+        },
+        {
+            "id": "paper_ing_kalman_1960",
+            "title": "A New Approach to Linear Filtering and Prediction Problems",
+            "authors": "Rudolf E. Kalman",
+            "year": 1960,
+            "journal": "Journal of Basic Engineering (ASME Transactions)",
+            "doi": "10.1115/1.3662552",
+            "arxiv_id": "",
+            "category": "Ingenieurwissenschaften & Technik",
+            "citation_count": 48200,
+            "pdf_url": "https://www.cs.unc.edu/~welch/kalman/media/pdf/Kalman1960.pdf",
+            "abstract": "Presents the Kalman Filter: an optimal recursive algorithm that estimates the unobservable state of a dynamic linear system from a series of incomplete and noisy measurements, ubiquitous in aerospace navigation, autonomous robotics, and radar systems."
+        },
+        {
+            "id": "paper_ing_additive_mfg_2015",
+            "title": "Additive manufacturing of metallic components: process-structure-property relationships",
+            "authors": "W. J. Sames, F. A. List, S. Pannala, R. R. Dehoff, S. S. Babu",
+            "year": 2015,
+            "journal": "International Materials Reviews",
+            "doi": "10.1179/1743280415Y.0000000003",
+            "arxiv_id": "",
+            "category": "Ingenieurwissenschaften & Technik",
+            "citation_count": 5200,
+            "pdf_url": "https://doi.org/10.1179/1743280415Y.0000000003",
+            "abstract": "Reviews selective laser melting (SLM) and electron beam melting (EBM) additive manufacturing. Correlates localized solidification dynamics, thermal gradients, non-equilibrium phase transformations, and residual stress with mechanical properties in titanium and nickel alloys."
+        },
+        {
+            "id": "paper_ing_slam_2006",
+            "title": "Simultaneous Localization and Mapping (SLAM): Part I The Essential Algorithms",
+            "authors": "Hugh Durrant-Whyte, Tim Bailey",
+            "year": 2006,
+            "journal": "IEEE Robotics & Automation Magazine",
+            "doi": "10.1109/MRA.2006.1638022",
+            "arxiv_id": "",
+            "category": "Ingenieurwissenschaften & Technik",
+            "citation_count": 11800,
+            "pdf_url": "https://ieeexplore.ieee.org/document/1638022",
+            "abstract": "Surveys the mathematical problem of simultaneous localization and mapping (SLAM) for mobile robotics. Explores Extended Kalman Filtering (EKF-SLAM) and Particle Filtering (FastSLAM) for navigation in unknown environments without prior GPS signals."
+        },
+    ],
+    "Geschichte & Politik": [
+        {
+            "id": "paper_hist_clash_1993",
+            "title": "The Clash of Civilizations?",
+            "authors": "Samuel P. Huntington",
+            "year": 1993,
+            "journal": "Foreign Affairs",
+            "doi": "10.2307/20045621",
+            "arxiv_id": "",
+            "category": "Geschichte & Politik",
+            "citation_count": 34500,
+            "pdf_url": "https://www.jstor.org/stable/20045621",
+            "abstract": "Hypothesizes that the fundamental source of conflict in the post-Cold War world will not be primarily ideological or economic, but cultural: the fault lines between world civilizations will be the battle lines of future geopolitics."
+        },
+        {
+            "id": "paper_hist_anderson_1983",
+            "title": "Imagined Communities: Reflections on the Origin and Spread of Nationalism",
+            "authors": "Benedict Anderson",
+            "year": 1983,
+            "journal": "Verso Books Monographs",
+            "doi": "10.1111/j.1467-8705.1994.tb01026.x",
+            "arxiv_id": "",
+            "category": "Geschichte & Politik",
+            "citation_count": 118000,
+            "pdf_url": "https://www.versobooks.com/books/2259-imagined-communities",
+            "abstract": "Defines the nation as an imagined political community that is inherently limited and sovereign. Traces the emergence of national consciousness to the rise of print-capitalism, mass vernacular languages, and the decline of dynastic sacred monarchies."
+        },
+        {
+            "id": "paper_hist_fukuyama_1989",
+            "title": "The End of History?",
+            "authors": "Francis Fukuyama",
+            "year": 1989,
+            "journal": "The National Interest",
+            "doi": "10.2307/24027184",
+            "arxiv_id": "",
+            "category": "Geschichte & Politik",
+            "citation_count": 28400,
+            "pdf_url": "https://www.jstor.org/stable/24027184",
+            "abstract": "Suggests that the triumph of Western liberal democracy at the conclusion of the Cold War marks not just the passing of a particular period of postwar history, but the end point of mankind's ideological evolution and the universalization of liberal democracy."
+        },
+        {
+            "id": "paper_hist_mearsheimer_2001",
+            "title": "The Tragedy of Great Power Politics and Offensive Realism",
+            "authors": "John J. Mearsheimer",
+            "year": 2001,
+            "journal": "W. W. Norton & Company Monographs",
+            "doi": "10.2307/40203719",
+            "arxiv_id": "",
+            "category": "Geschichte & Politik",
+            "citation_count": 19200,
+            "pdf_url": "https://wwnorton.com/books/The-Tragedy-of-Great-Power-Politics/",
+            "abstract": "Formulates the theory of offensive realism in international relations: the anarchic international system compels rational great powers to constantly seek hegemony and maximize their relative share of world power to ensure national survival."
+        },
+    ],
+    "Philosophie & Religion": [
+        {
+            "id": "paper_phil_rawls_1971",
+            "title": "A Theory of Justice",
+            "authors": "John Rawls",
+            "year": 1971,
+            "journal": "Harvard University Press Monographs",
+            "doi": "10.2307/j.ctvjf9z6v",
+            "arxiv_id": "",
+            "category": "Philosophie & Religion",
+            "citation_count": 92000,
+            "pdf_url": "https://www.hup.harvard.edu/books/9780674000780",
+            "abstract": "Formulates justice as fairness using the thought experiment of the 'original position' behind a 'veil of ignorance'. Deduces two fundamental principles: equal basic liberties for all citizens, and social-economic inequalities arranged to benefit the least advantaged (difference principle)."
+        },
+        {
+            "id": "paper_phil_chinese_room_1980",
+            "title": "Minds, Brains, and Programs (The Chinese Room Argument)",
+            "authors": "John R. Searle",
+            "year": 1980,
+            "journal": "Behavioral and Brain Sciences",
+            "doi": "10.1017/S0140525X00005756",
+            "arxiv_id": "",
+            "category": "Philosophie & Religion",
+            "citation_count": 11500,
+            "pdf_url": "https://doi.org/10.1017/S0140525X00005756",
+            "abstract": "Challenges the claims of Strong AI that an appropriately programmed computer can possess true understanding. The Chinese Room thought experiment illustrates that purely formal syntactic symbol manipulation can never of itself constitute semantic intentionality or genuine consciousness."
+        },
+        {
+            "id": "paper_phil_kuhn_1962",
+            "title": "The Structure of Scientific Revolutions and Paradigm Shifts",
+            "authors": "Thomas S. Kuhn",
+            "year": 1962,
+            "journal": "University of Chicago Press Monographs",
+            "doi": "10.7208/chicago/9780226458144.001.0001",
+            "arxiv_id": "",
+            "category": "Philosophie & Religion",
+            "citation_count": 142000,
+            "pdf_url": "https://press.uchicago.edu/ucp/books/book/chicago/S/bo13108710.html",
+            "abstract": "Replaces the cumulative view of scientific progress with a dynamic theory: periods of 'normal science' governed by a dominant paradigm are interrupted by accumulated anomalies that trigger crisis and eventual 'paradigm shifts'."
+        },
+        {
+            "id": "paper_phil_taylor_2007",
+            "title": "A Secular Age: Modernity, Faith, and the Immanent Frame",
+            "authors": "Charles Taylor",
+            "year": 2007,
+            "journal": "Harvard University Press Monographs",
+            "doi": "10.2307/j.ctt13x0766",
+            "arxiv_id": "",
+            "category": "Philosophie & Religion",
+            "citation_count": 19500,
+            "pdf_url": "https://www.hup.harvard.edu/books/9780674026766",
+            "abstract": "Investigates what it means to live in a secular age: not merely the withdrawal of religion from public spheres, but a fundamental shift from a society where belief in God was unchallenged to one in which faith is one human possibility among many."
+        },
+    ],
+    "Pädagogik & Schule": [
+        {
+            "id": "paper_paed_hattie_2008",
+            "title": "Visible Learning: A Synthesis of Over 800 Meta-Analyses Relating to Achievement",
+            "authors": "John Hattie",
+            "year": 2008,
+            "journal": "Routledge / Taylor & Francis",
+            "doi": "10.4324/9780203887332",
+            "arxiv_id": "",
+            "category": "Pädagogik & Schule",
+            "citation_count": 28500,
+            "pdf_url": "https://www.taylorfrancis.com/books/mono/10.4324/9780203887332/visible-learning-john-hattie",
+            "abstract": "Synthesizes evidence from over 800 meta-analyses encompassing tens of millions of students. Identifies formative evaluation, direct instruction, feedback quality, and teacher-student relationships as the most potent influences on educational achievement."
+        },
+        {
+            "id": "paper_paed_dweck_2006",
+            "title": "Mindset: The New Psychology of Success and Incremental Intelligence",
+            "authors": "Carol S. Dweck",
+            "year": 2006,
+            "journal": "Random House / Educational Psychologist",
+            "doi": "10.1207/s15326985ep2102_1",
+            "arxiv_id": "",
+            "category": "Pädagogik & Schule",
+            "citation_count": 31000,
+            "pdf_url": "https://doi.org/10.1207/s15326985ep2102_1",
+            "abstract": "Examines the divergence between a 'fixed mindset' (intelligence as static) and a 'growth mindset' (abilities developed through dedication and effort). Shows how instructional praise targeting effort rather than innate talent elevates student resilience and learning mastery."
+        },
+        {
+            "id": "paper_paed_sweller_1988",
+            "title": "Cognitive Load During Problem Solving: Effects on Learning",
+            "authors": "John Sweller",
+            "year": 1988,
+            "journal": "Cognitive Science",
+            "doi": "10.1207/s15516709cog1202_4",
+            "arxiv_id": "",
+            "category": "Pädagogik & Schule",
+            "citation_count": 24200,
+            "pdf_url": "https://doi.org/10.1207/s15516709cog1202_4",
+            "abstract": "Develops Cognitive Load Theory (CLT) in instructional design. Because working memory capacity is strictly limited, conventional means-ends problem solving overburdens extraneous cognitive load and inhibits schema acquisition; worked examples optimize germane learning."
+        },
+        {
+            "id": "paper_paed_zimmerman_2002",
+            "title": "Becoming a Self-Regulated Learner: An Overview",
+            "authors": "Barry J. Zimmerman",
+            "year": 2002,
+            "journal": "Theory Into Practice",
+            "doi": "10.1207/s15430421tip4102_2",
+            "arxiv_id": "",
+            "category": "Pädagogik & Schule",
+            "citation_count": 16800,
+            "pdf_url": "https://doi.org/10.1207/s15430421tip4102_2",
+            "abstract": "Synthesizes three cyclical phases of self-regulated learning (forethought, performance/volitional control, and self-reflection), highlighting how meta-cognitive goal-setting and self-efficacy convert passive learners into autonomous masters."
+        },
+    ],
+    "Sprach- & Literaturwissenschaft": [
+        {
+            "id": "paper_ling_chomsky_1956",
+            "title": "Three Models for the Description of Language and Generative Grammar",
+            "authors": "Noam Chomsky",
+            "year": 1956,
+            "journal": "IRE Transactions on Information Theory",
+            "doi": "10.1109/TIT.1956.1056813",
+            "arxiv_id": "",
+            "category": "Sprach- & Literaturwissenschaft",
+            "citation_count": 29400,
+            "pdf_url": "https://chomsky.info/articles/195609--.pdf",
+            "abstract": "Introduces the Chomsky hierarchy of formal grammars (regular, context-free, context-sensitive, recursively enumerable), demonstrating that finite-state Markov processes cannot adequately account for the hierarchical syntax and recursive embedding of natural human languages."
+        },
+        {
+            "id": "paper_lit_barthes_1967",
+            "title": "The Death of the Author (La mort de l'auteur)",
+            "authors": "Roland Barthes",
+            "year": 1967,
+            "journal": "Mantéia / Aspen Magazine",
+            "doi": "10.1080/0950236X.2012.728828",
+            "arxiv_id": "",
+            "category": "Sprach- & Literaturwissenschaft",
+            "citation_count": 27800,
+            "pdf_url": "https://www.ubu.com/aspen/aspen5+6/barthes.html",
+            "abstract": "Challenges traditional biographical literary criticism by positing that a text is not a line of words releasing a single theological authorial meaning, but a multi-dimensional space in which a variety of writings blend; the birth of the reader must be ransomed by the death of the Author."
+        },
+        {
+            "id": "paper_ling_lakoff_1980",
+            "title": "Metaphors We Live By and Conceptual Metaphor Theory",
+            "authors": "George Lakoff, Mark Johnson",
+            "year": 1980,
+            "journal": "University of Chicago Press Monographs",
+            "doi": "10.7208/chicago/9780226470993.001.0001",
+            "arxiv_id": "",
+            "category": "Sprach- & Literaturwissenschaft",
+            "citation_count": 74000,
+            "pdf_url": "https://press.uchicago.edu/ucp/books/book/chicago/M/bo3637992.html",
+            "abstract": "Argues that metaphor is not merely a poetic linguistic device, but fundamental to human cognition: everyday language systematically reveals that abstract concepts (such as ARGUMENT, TIME, or LOVE) are structured in terms of embodied physical domains (WAR, MONEY, JOURNEY)."
+        },
+        {
+            "id": "paper_ling_word2vec_2013",
+            "title": "Distributed Representations of Words and Phrases and their Compositionality",
+            "authors": "Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S. Corrado, Jeffrey Dean",
+            "year": 2013,
+            "journal": "Advances in Neural Information Processing Systems (NeurIPS)",
+            "doi": "10.48550/arXiv.1310.4546",
+            "arxiv_id": "1310.4546",
+            "category": "Sprach- & Literaturwissenschaft",
+            "citation_count": 46500,
+            "pdf_url": "https://arxiv.org/pdf/1310.4546.pdf",
+            "abstract": "Introduces Skip-gram with negative sampling (Word2Vec) for computational linguistics. Continuous vector space representations capture precise syntactic and semantic word relationships, demonstrating algebraic linguistic vector arithmetic: vec('King') - vec('Man') + vec('Woman') ≈ vec('Queen')."
+        },
+    ],
+}
+
+
+def get_all_curated_papers() -> List[Dict[str, Any]]:
+    """Returns a flat list of all curated landmark papers across all 15 faculties."""
+    flat_list = []
+    for cat, papers in CURATED_PAPERS_BY_FACULTY.items():
+        for p in papers:
+            flat_list.append(dict(p))
+    return flat_list
+
+
+def seed_all_faculty_papers(force: bool = False) -> int:
+    """Inserts all curated papers into research_papers table if not already present.
+    Returns the count of newly inserted or refreshed papers.
+    """
+    existing = {p.get("id"): p for p in get_all_research_papers()}
+    added_count = 0
+    for paper in get_all_curated_papers():
+        pid = paper.get("id")
+        if force or pid not in existing:
+            save_research_paper(paper)
+            added_count += 1
+    return added_count

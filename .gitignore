@@ -1,0 +1,54 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Databases and Local SQLite
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+library.db
+books.db
+campus_library.db
+book_cache.db
+cache.db
+
+# User Configuration & Sensitive Keys
+buchsortierer_config.json
+buchsortierer_config.json.tmp
+rules_memory.json
+.env
+*.env
+
+# Build outputs and Packaging
+dist/
+build/
+*.spec.bak
+*.exe
+build_log.txt
+error.log
+
+# Temporary test files & Scratch
+scratch/
+!scratch/generate_icon.py
+
+# Generated user worksheets & downloaded papers
+Arbeitsblätter/
+papers/
+
+# OS and IDE specific
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
