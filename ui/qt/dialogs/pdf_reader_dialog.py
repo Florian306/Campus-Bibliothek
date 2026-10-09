@@ -125,11 +125,14 @@ class PdfReaderDialog(QDialog):
         self._preloaded_toc = toc_items
 
         self.setWindowTitle(f"Campus-Reader • {self.book_title}")
-        self.resize(1240, 840)
+        self.resize(1300, 880)
         self.setMinimumSize(960, 640)
+        self.setWindowFlags(
+            Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
+        )
         self.setStyleSheet("""
             QDialog {
-                background-color: #0A0E18;
+                background-color: #0B0F19;
                 color: #F0F6FC;
             }
         """)
@@ -276,8 +279,17 @@ class PdfReaderDialog(QDialog):
         lbl_center_title = QLabel(self.book_title)
         lbl_center_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
         lbl_center_title.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
-        lbl_center_title.setMaximumWidth(320)
+        lbl_center_title.setMaximumWidth(450)
         top_layout.addWidget(lbl_center_title)
+
+        # Fullscreen Toggle Button
+        self.btn_fullscreen = QPushButton("  ⛶ Vollbild")
+        self.btn_fullscreen.setToolTip("Vollbildmodus ein/ausschalten (F11)")
+        self.btn_fullscreen.setCursor(Qt.PointingHandCursor)
+        self.btn_fullscreen.setFixedHeight(30)
+        self.btn_fullscreen.setStyleSheet(self._button_style())
+        self.btn_fullscreen.clicked.connect(self._toggle_fullscreen)
+        top_layout.addWidget(self.btn_fullscreen)
 
         # Open externally in Edge button
         btn_edge = QPushButton("  In Edge")
@@ -374,25 +386,46 @@ class PdfReaderDialog(QDialog):
         self.tree_toc = QTreeWidget()
         self.tree_toc.setItemDelegate(NoFocusItemDelegate(self.tree_toc))
         self.tree_toc.setHeaderHidden(True)
+        self.tree_toc.setAnimated(True)
+        self.tree_toc.setIndentation(16)
         self.tree_toc.setStyleSheet("""
             QTreeWidget {
-                background-color: #0D111A;
+                background-color: transparent;
                 color: #C9D1D9;
                 border: none;
                 outline: none;
+                font-size: 12px;
             }
             QTreeWidget::item {
-                padding: 6px 4px;
-                border-radius: 4px;
+                padding: 6px 8px;
+                border-radius: 6px;
+                margin-bottom: 2px;
             }
             QTreeWidget::item:hover {
-                background-color: #16243E;
+                background-color: #162035;
                 color: #FFFFFF;
             }
             QTreeWidget::item:selected {
-                background-color: #1F365A;
+                background-color: #1F365D;
                 color: #58A6FF;
-                font-weight: bold;
+                font-weight: 600;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: transparent;
+                width: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #232F48;
+                min-height: 20px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #388BFD;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """)
         self.tree_toc.itemClicked.connect(self._on_toc_item_clicked)
@@ -772,9 +805,20 @@ class PdfReaderDialog(QDialog):
         delete_book_note(note_id)
         self._refresh_notes_list()
 
+    def _toggle_fullscreen(self) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+            self.btn_fullscreen.setText("  ⛶ Vollbild")
+        else:
+            self.showFullScreen()
+            self.btn_fullscreen.setText("  ⛶ Fenster")
+
     def _setup_shortcuts(self) -> None:
         shortcut_esc = QShortcut(QKeySequence(Qt.Key_Escape), self)
         shortcut_esc.activated.connect(self.accept)
+
+        shortcut_f11 = QShortcut(QKeySequence(Qt.Key_F11), self)
+        shortcut_f11.activated.connect(self._toggle_fullscreen)
 
         shortcut_left = QShortcut(QKeySequence(Qt.Key_Left), self)
         shortcut_left.activated.connect(self._prev_page)
