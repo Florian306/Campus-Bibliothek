@@ -115,13 +115,14 @@ class PdfReaderDialog(QDialog):
 
     progress_updated = Signal(str, int)  # book_id, current_page
 
-    def __init__(self, book: Dict[str, Any], initial_page: int = 1, parent=None):
+    def __init__(self, book: Dict[str, Any], initial_page: int = 1, toc_items: Optional[List] = None, parent=None):
         super().__init__(parent)
         self.book = book
         self.book_id = str(book.get("id", ""))
         self.file_path = book.get("file_path", "")
         self.book_title = book.get("title", "Dokument")
         self.initial_page = max(1, int(initial_page))
+        self._preloaded_toc = toc_items
 
         self.setWindowTitle(f"Campus-Reader • {self.book_title}")
         self.resize(1240, 840)
@@ -570,7 +571,23 @@ class PdfReaderDialog(QDialog):
         self._populate_toc()
 
     def _populate_toc(self) -> None:
-        toc_items = extract_pdf_toc(self.file_path)
+        if self._preloaded_toc is not None:
+            self._apply_toc_items(self._preloaded_toc)
+            return
+
+        # Load TOC in background to keep PDF reader immediately responsive
+        def bg_load():
+            try:
+                items = extract_pdf_toc(self.file_path)
+            except Exception:
+                items = []
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._apply_toc_items(items))
+
+        import threading
+        threading.Thread(target=bg_load, daemon=True).start()
+
+    def _apply_toc_items(self, toc_items: List) -> None:
         self.tree_toc.clear()
         if not toc_items:
             empty_item = QTreeWidgetItem(["(Kein Inhaltsverzeichnis verfügbar)"])

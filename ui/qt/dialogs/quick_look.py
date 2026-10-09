@@ -78,6 +78,7 @@ class QuickLookDialog(QDialog):
         """)
 
         self._toc_thread = None
+        self._cached_toc = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -340,6 +341,7 @@ class QuickLookDialog(QDialog):
 
     def _on_toc_loaded(self, toc_items: list) -> None:
         """Called when background TOC extraction finishes. Updates the tree smoothly."""
+        self._cached_toc = toc_items
         if hasattr(self, "lbl_toc_status") and self.lbl_toc_status:
             self.lbl_toc_status.deleteLater()
             self.lbl_toc_status = None
@@ -451,7 +453,7 @@ class QuickLookDialog(QDialog):
             if path and os.path.exists(path):
                 cfg = load_config()
                 if cfg.get("use_internal_reader", True):
-                    dlg = PdfReaderDialog(self.book, initial_page=p_int, parent=self)
+                    dlg = PdfReaderDialog(self.book, initial_page=p_int, toc_items=self._cached_toc, parent=self)
                     dlg.exec()
                 else:
                     open_pdf_in_edge(path, page=p_int)
@@ -488,7 +490,7 @@ class QuickLookDialog(QDialog):
             page = self.book.get("current_page", 1)
             cfg = load_config()
             if cfg.get("use_internal_reader", True):
-                dlg = PdfReaderDialog(self.book, initial_page=page, parent=self)
+                dlg = PdfReaderDialog(self.book, initial_page=page, toc_items=self._cached_toc, parent=self)
                 dlg.exec()
             else:
                 open_pdf_in_edge(path, page=page)
