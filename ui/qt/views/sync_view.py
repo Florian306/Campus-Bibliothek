@@ -455,13 +455,21 @@ class SyncView(QWidget):
             box.setWindowTitle("Update verfügbar!")
             box.setIcon(QMessageBox.Information)
             box.setText(f"Eine neuere Version von Campus-Bibliothek ist verfügbar: <b>v{latest}</b> (Aktuell: v{CURRENT_VERSION})")
-            box.setInformativeText(f"Möchtest du die Release-Seite öffnen und das Update herunterladen?\n\nÄnderungen:\n{notes[:300]}")
-            btn_open = box.addButton("Herunterladen (GitHub)", QMessageBox.AcceptRole)
-            box.addButton("Später", QMessageBox.RejectRole)
+            box.setInformativeText(f"Möchtest du das Update jetzt direkt automatisch herunterladen und installieren?\n\nÄnderungen:\n{notes[:300]}")
+            
+            btn_auto = box.addButton("Jetzt automatisch aktualisieren", QMessageBox.AcceptRole)
+            btn_github = box.addButton("Release-Seite öffnen", QMessageBox.ActionRole)
+            btn_cancel = box.addButton("Später", QMessageBox.RejectRole)
+            
             box.exec()
-            if box.clickedButton() == btn_open:
+            clicked = box.clickedButton()
+            if clicked == btn_auto:
+                from ui.qt.dialogs.auto_updater_dialog import UpdateProgressDialog
+                dlg = UpdateProgressDialog(self, url, latest)
+                dlg.exec()
+            elif clicked == btn_github:
                 import webbrowser
-                webbrowser.open(url)
+                webbrowser.open(f"https://github.com/Florian306/Campus-Bibliothek/releases/tag/v{latest}")
         elif latest:
             self._append_log(f"Updater: Du verwendest bereits die neueste Version (v{CURRENT_VERSION}).")
             QMessageBox.information(self, "Aktuell", f"Du verwendest bereits die neueste Version (v{CURRENT_VERSION}).")

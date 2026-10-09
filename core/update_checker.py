@@ -8,7 +8,7 @@ import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.2"
 
 
 def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -33,13 +33,22 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[st
 
             # Compare semantic versions
             if _is_version_greater(tag_name, CURRENT_VERSION):
-                # Look for Buchsortierer.exe or installer asset
+                # Look for installer Setup.exe first, fallback to Buchsortierer.exe
                 download_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases/latest")
-                for asset in data.get("assets", []):
+                assets = data.get("assets", [])
+                # First pass: find setup installer
+                for asset in assets:
                     name = asset.get("name", "").lower()
-                    if name.endswith(".exe") or name.endswith(".zip"):
+                    if "setup" in name and name.endswith(".exe"):
                         download_url = asset.get("browser_download_url", download_url)
                         break
+                else:
+                    # Second pass: any executable
+                    for asset in assets:
+                        name = asset.get("name", "").lower()
+                        if name.endswith(".exe") or name.endswith(".zip"):
+                            download_url = asset.get("browser_download_url", download_url)
+                            break
                 notes = data.get("body", "Keine Versionshinweise vorhanden.")
                 return True, tag_name, download_url, notes
             return False, tag_name, None, None
