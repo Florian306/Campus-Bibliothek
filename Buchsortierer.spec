@@ -7,9 +7,9 @@ hiddenimports = []
 
 # Collect PySide6 modules, keeping WebEngine/Quick/Qml and filtering only truly unused bloated modules
 tmp_ret = collect_all('PySide6')
-filtered_datas = [d for d in tmp_ret[0] if not any(x in d[0].lower() for x in ['translations', '3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning'])]
-filtered_binaries = [b for b in tmp_ret[1] if not any(x in b[0].lower() for x in ['3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'location', 'nfc', 'serialport', 'spatialaudio', 'scxml'])]
-filtered_hidden = [h for h in tmp_ret[2] if not any(x in h for x in ['Qt3D', 'QtDesigner', 'QtMultimedia', 'QtBluetooth', 'QtSensors', 'QtPositioning', 'QtLocation', 'QtNfc', 'QtSerialPort'])]
+filtered_datas = [d for d in tmp_ret[0] if not any(x in d[0].lower() for x in ['translations', '3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'charts', 'graphs', 'datavisualization'])]
+filtered_binaries = [b for b in tmp_ret[1] if not any(x in b[0].lower() for x in ['3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'location', 'nfc', 'serialport', 'spatialaudio', 'scxml', 'charts', 'graphs', 'datavisualization', 'httpserver', 'serialbus'])]
+filtered_hidden = [h for h in tmp_ret[2] if not any(x in h for x in ['Qt3D', 'QtDesigner', 'QtMultimedia', 'QtBluetooth', 'QtSensors', 'QtPositioning', 'QtLocation', 'QtNfc', 'QtSerialPort', 'QtCharts', 'QtDataVisualization', 'QtGraphs', 'QtHttpServer', 'QtSerialBus', 'QtAxContainer'])]
 datas += filtered_datas
 binaries += filtered_binaries
 hiddenimports += filtered_hidden
@@ -28,7 +28,9 @@ except Exception:
 
 try:
     tmp_ret = collect_all('google.genai')
-    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+    datas += [d for d in tmp_ret[0] if 'tests' not in d[0].replace('\\', '/').split('/')]
+    binaries += tmp_ret[1]
+    hiddenimports += [h for h in tmp_ret[2] if 'tests' not in h]
 except Exception:
     pass
 
@@ -40,7 +42,9 @@ except Exception:
 
 try:
     tmp_ret = collect_all('matplotlib')
-    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+    datas += [d for d in tmp_ret[0] if 'tests' not in d[0].replace('\\', '/').split('/')]
+    binaries += tmp_ret[1]
+    hiddenimports += [h for h in tmp_ret[2] if not any(x in h for x in ['tests', 'testing', 'sphinxext', 'backend_gtk', 'backend_wx', 'backend_tk', 'backend_cairo', 'backend_qt5'])]
 except Exception:
     pass
 
@@ -129,6 +133,7 @@ hiddenimports += [
 ]
 
 excludes = [
+    # Unused PySide6 components
     'PySide6.QtWebEngineQuick',
     'PySide6.QtQuick3D',
     'PySide6.Qt3DCore',
@@ -152,7 +157,50 @@ excludes = [
     'PySide6.QtSpatialAudio',
     'PySide6.QtScxml',
     'PySide6.QtStateMachine',
+    'PySide6.QtCharts',
+    'PySide6.QtDataVisualization',
+    'PySide6.QtGraphs',
+    'PySide6.QtGraphsWidgets',
+    'PySide6.QtHttpServer',
+    'PySide6.QtSerialBus',
+    'PySide6.QtAxContainer',
+    'PySide6.scripts',
+    
+    # Heavy scientific packages not required
     'scipy',
+    'pandas',
+    
+    # Test suites & development modules (removes hundreds of useless files)
+    'google.genai.tests',
+    'matplotlib.tests',
+    'matplotlib.testing',
+    'matplotlib.sphinxext',
+    'unittest.test',
+    'test',
+    'tests',
+    'pytest',
+    'tkinter.test',
+    'PIL.tests',
+    
+    # Unused matplotlib backends (Campus-Bibliothek uses Agg for offscreen rendering)
+    'matplotlib.backends.backend_gtk3',
+    'matplotlib.backends.backend_gtk3agg',
+    'matplotlib.backends.backend_gtk3cairo',
+    'matplotlib.backends.backend_gtk4',
+    'matplotlib.backends.backend_gtk4agg',
+    'matplotlib.backends.backend_gtk4cairo',
+    'matplotlib.backends.backend_macosx',
+    'matplotlib.backends.backend_nbagg',
+    'matplotlib.backends.backend_pgf',
+    'matplotlib.backends.backend_qt5',
+    'matplotlib.backends.backend_qt5agg',
+    'matplotlib.backends.backend_qt5cairo',
+    'matplotlib.backends.backend_tkagg',
+    'matplotlib.backends.backend_tkcairo',
+    'matplotlib.backends.backend_webagg',
+    'matplotlib.backends.backend_wx',
+    'matplotlib.backends.backend_wxagg',
+    'matplotlib.backends.backend_wxcairo',
 ]
 
 datas += [('app_icon.ico', '.'), ('app_icon.png', '.')]
@@ -191,12 +239,33 @@ exe = EXE(
     icon='app_icon.ico',
 )
 
+# Filter collected binaries and data files to eliminate test suites, cache artifacts, and unneeded docs
+clean_datas = []
+for dest, src, typ in a.datas:
+    dest_lower = dest.lower().replace('\\', '/')
+    # Drop tests, docs, sphinx and sample assets
+    if any(x in dest_lower for x in [
+        '/tests/', '/test/', 'google/genai/tests', 'matplotlib/tests',
+        'pip/', 'setuptools/', '.dist-info/licenses',
+    ]):
+        continue
+    clean_datas.append((dest, src, typ))
+
+clean_binaries = []
+for dest, src, typ in a.binaries:
+    dest_lower = dest.lower().replace('\\', '/')
+    # Drop unused dynamic libraries (e.g. database drivers for Firebird/Mimer/Oracle not used by SQLite)
+    if any(x in dest_lower for x in ['qsqlibase.dll', 'qsqlmimer.dll', 'qsqloci.dll']):
+        continue
+    clean_binaries.append((dest, src, typ))
+
 coll = COLLECT(
     exe,
-    a.binaries,
-    a.datas,
+    clean_binaries,
+    clean_datas,
     strip=False,
     upx=False,
     upx_exclude=[],
     name='Buchsortierer',
 )
+
