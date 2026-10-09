@@ -37,14 +37,16 @@ jobs:
           choco install innosetup --no-progress -y
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
-      - name: Create Portable Zip Package
+      - name: Create Portable Zip Package and Delta Patch
         run: |
           Compress-Archive -Path "dist\Buchsortierer\*" -DestinationPath "dist\Campus-Bibliothek-Portable.zip" -Force
+          Compress-Archive -Path "dist\Buchsortierer\Buchsortierer.exe", "dist\Buchsortierer\_internal\base_library.zip" -DestinationPath "dist\Campus-Bibliothek-Patch.zip" -Force
 
       - name: Create Release and Upload Artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/Campus-Bibliothek-Patch.zip
             dist/Campus-Bibliothek-Portable.zip
             installer_output/Campus-Bibliothek-Setup.exe
           name: Campus-Bibliothek ${{ github.ref_name }}

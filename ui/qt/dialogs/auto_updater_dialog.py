@@ -45,7 +45,8 @@ class UpdateDownloadThread(QThread):
             )
 
             temp_dir = tempfile.gettempdir()
-            filename = f"Campus-Bibliothek-Setup-v{self.version_tag}.exe"
+            ext = ".zip" if self.download_url.lower().endswith(".zip") else ".exe"
+            filename = f"Campus-Bibliothek-Update-v{self.version_tag}{ext}"
             target_path = os.path.join(temp_dir, filename)
 
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -187,19 +188,36 @@ class UpdateProgressDialog(QDialog):
         self.bar.setValue(100)
         self.status_lbl.setText("Download abgeschlossen! Starte Installation...")
         self.details_lbl.setText("Das Programm wird nun neu gestartet.")
-        self.btn_cancel.setEnabled(False)
-
-        # Launch the installer in very silent mode with auto-restart and terminate current app
+        # Launch either the Delta Patch replacement or the full silent installer
         try:
-            # /VERYSILENT: Komplett unsichtbare Hintergrundinstallation (kein Setup-Fenster)
-            # /SP-: Keine Bestätigung für Sprache / Start
-            # /CLOSEAPPLICATIONS: Schließt alte Instanzen sauber
-            # /FORCECLOSEAPPLICATIONS: Verhindert Sperrung von Dateien
-            cmd = [target_path, "/VERYSILENT", "/SP-", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"]
-            subprocess.Popen(cmd)
-            sys.exit(0)
+            if target_path.lower().endswith(".zip"):
+                # Fast Delta Patch: Extract zip into application directory and restart
+                app_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+                exe_path = os.path.join(app_dir, "Buchsortierer.exe")
+                
+                # We spawn a detached PowerShell script that waits 1.5s for this process to exit,
+                # extracts the patch files over the app directory, and relaunches the app.
+                ps_script = (
+                    f"Start-Sleep -Milliseconds 1500; "
+                    f"Expand-Archive -Path '{target_path}' -DestinationPath '{app_dir}' -Force; "
+                    f"Start-Process -FilePath '{exe_path}'; "
+                    f"Remove-Item -Path '{target_path}' -Force -ErrorAction SilentlyContinue"
+                )
+                subprocess.Popen(
+                    ["powershell", "-WindowStyle", "Hidden", "-Command", ps_script],
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                )
+                sys.exit(0)
+            else:
+                # /VERYSILENT: Komplett unsichtbare Hintergrundinstallation (kein Setup-Fenster)
+                # /SP-: Keine Bestätigung für Sprache / Start
+                # /CLOSEAPPLICATIONS: Schließt alte Instanzen sauber
+                # /FORCECLOSEAPPLICATIONS: Verhindert Sperrung von Dateien
+                cmd = [target_path, "/VERYSILENT", "/SP-", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"]
+                subprocess.Popen(cmd)
+                sys.exit(0)
         except Exception as e:
-            QMessageBox.critical(self, "Fehler beim Starten des Installers", f"Konnte {target_path} nicht ausführen:\n{e}")
+            QMessageBox.critical(self, "Fehler beim Ausführen des Updates", f"Konnte {target_path} nicht installieren:\n{e}")
             self.reject()
 
     def _on_error(self, err_msg: str):
