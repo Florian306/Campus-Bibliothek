@@ -33,9 +33,9 @@ jobs:
           pyinstaller Buchsortierer.spec --noconfirm
 
       - name: Compile Windows Installer (Inno Setup)
-        uses: Miniong/innosetup-action@v1.2.2
-        with:
-          filepath: installer.iss
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
       - name: Create Release and Upload Artifacts
         uses: softprops/action-gh-release@v2
