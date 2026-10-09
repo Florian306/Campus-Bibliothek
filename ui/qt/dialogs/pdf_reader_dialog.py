@@ -154,8 +154,9 @@ class PdfReaderDialog(QDialog):
             return
 
         self._build_ui()
-        self._load_document()
         self._setup_shortcuts()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._load_document)
 
     def _build_ui(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -621,11 +622,13 @@ class PdfReaderDialog(QDialog):
         threading.Thread(target=bg_load, daemon=True).start()
 
     def _apply_toc_items(self, toc_items: List) -> None:
+        self.tree_toc.setUpdatesEnabled(False)
         self.tree_toc.clear()
         if not toc_items:
             empty_item = QTreeWidgetItem(["(Kein Inhaltsverzeichnis verfügbar)"])
             empty_item.setDisabled(True)
             self.tree_toc.addTopLevelItem(empty_item)
+            self.tree_toc.setUpdatesEnabled(True)
             return
 
         stack = {}
@@ -646,6 +649,7 @@ class PdfReaderDialog(QDialog):
 
         for i in range(self.tree_toc.topLevelItemCount()):
             self.tree_toc.topLevelItem(i).setExpanded(True)
+        self.tree_toc.setUpdatesEnabled(True)
 
     def _on_toc_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         page = item.data(0, Qt.UserRole)

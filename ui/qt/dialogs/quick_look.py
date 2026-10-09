@@ -490,6 +490,10 @@ class QuickLookDialog(QDialog):
             page = self.book.get("current_page", 1)
             cfg = load_config()
             if cfg.get("use_internal_reader", True):
+                # If background TOC loader in Quick-Look is currently finishing, wait briefly to pass preloaded TOC
+                if self._cached_toc is None and getattr(self, "_toc_thread", None) and self._toc_thread.isRunning():
+                    self._toc_thread.wait(600)
+
                 dlg = PdfReaderDialog(self.book, initial_page=page, toc_items=self._cached_toc, parent=self)
                 dlg.exec()
             else:

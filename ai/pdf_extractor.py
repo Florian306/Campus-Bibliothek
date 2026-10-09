@@ -520,14 +520,22 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int]]:
     return adjusted_entries
 
 
+_TOC_CACHE: dict = {}
+
+
 def extract_pdf_toc(file_path: str) -> List[Tuple[int, str, int]]:
     """Extracts chapter titles, nesting levels, and destination page numbers from PDF.
     1. First attempts reading electronic bookmarks (doc.get_toc()).
     2. If no electronic bookmarks exist, automatically parses the printed Table of Contents.
+    Results are cached in memory for zero-lag subsequent lookups.
     Returns list of (level, chapter_title, page_number_1_indexed).
     """
     if not os.path.exists(file_path):
         return []
+
+    norm_path = os.path.abspath(file_path)
+    if norm_path in _TOC_CACHE:
+        return _TOC_CACHE[norm_path]
 
     results: List[Tuple[int, str, int]] = []
     try:
@@ -553,6 +561,7 @@ def extract_pdf_toc(file_path: str) -> List[Tuple[int, str, int]]:
     except Exception:
         pass
 
+    _TOC_CACHE[norm_path] = results
     return results
 
 
