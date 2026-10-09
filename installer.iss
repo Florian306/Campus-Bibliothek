@@ -2,7 +2,7 @@
 ; Produces a modern, professional Windows installer (Setup.exe) with Start Menu and Desktop shortcuts.
 
 #define MyAppName "Campus-Bibliothek AI"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "Florian"
 #define MyAppURL "https://github.com/Florian306/Campus-Bibliothek"
 #define MyAppExeName "Buchsortierer.exe"
@@ -38,7 +38,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\Buchsortierer.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\Buchsortierer\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app_icon.png"; DestDir: "{app}"; Flags: ignoreversion
 

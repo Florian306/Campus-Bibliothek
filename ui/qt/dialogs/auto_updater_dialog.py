@@ -189,10 +189,14 @@ class UpdateProgressDialog(QDialog):
         self.details_lbl.setText("Das Programm wird nun neu gestartet.")
         self.btn_cancel.setEnabled(False)
 
-        # Launch the installer and quit the app
+        # Launch the installer in silent mode with auto-restart and terminate current app
         try:
-            # We launch the installer. If it's Inno Setup, /SILENT or normal works cleanly.
-            subprocess.Popen([target_path])
+            # /SILENT: Kein Wizard, nur Fortschrittsbalken
+            # /SP-: Keine Bestätigung für Sprache / Start
+            # /CLOSEAPPLICATIONS: Schließt alte Instanzen sauber
+            # /FORCECLOSEAPPLICATIONS: Verhindert Sperrung von Dateien
+            cmd = [target_path, "/SILENT", "/SP-", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"]
+            subprocess.Popen(cmd)
             sys.exit(0)
         except Exception as e:
             QMessageBox.critical(self, "Fehler beim Starten des Installers", f"Konnte {target_path} nicht ausführen:\n{e}")
