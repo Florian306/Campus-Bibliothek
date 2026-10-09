@@ -189,13 +189,13 @@ class UpdateProgressDialog(QDialog):
         self.details_lbl.setText("Das Programm wird nun neu gestartet.")
         self.btn_cancel.setEnabled(False)
 
-        # Launch the installer in silent mode with auto-restart and terminate current app
+        # Launch the installer in very silent mode with auto-restart and terminate current app
         try:
-            # /SILENT: Kein Wizard, nur Fortschrittsbalken
+            # /VERYSILENT: Komplett unsichtbare Hintergrundinstallation (kein Setup-Fenster)
             # /SP-: Keine Bestätigung für Sprache / Start
             # /CLOSEAPPLICATIONS: Schließt alte Instanzen sauber
             # /FORCECLOSEAPPLICATIONS: Verhindert Sperrung von Dateien
-            cmd = [target_path, "/SILENT", "/SP-", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"]
+            cmd = [target_path, "/VERYSILENT", "/SP-", "/CLOSEAPPLICATIONS", "/FORCECLOSEAPPLICATIONS"]
             subprocess.Popen(cmd)
             sys.exit(0)
         except Exception as e:
