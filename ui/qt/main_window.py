@@ -269,7 +269,8 @@ class CampusMainWindow(QMainWindow):
 
         # Trigger data refresh on tab activate
         if idx == 1:
-            self.view_catalog.load_data()
+            if not self.view_catalog.master_books:
+                self.view_catalog.load_data()
         elif idx == 2:
             self.view_desk.load_data()
         elif idx == 3:
@@ -297,9 +298,12 @@ class CampusMainWindow(QMainWindow):
         self.view_exam.load_data()
 
     def _on_space_pressed(self) -> None:
+        # Space shortcut is only for the Catalog view (tab 1)
+        if self.stack.currentIndex() != 1:
+            return
         focus = QApplication.focusWidget()
-        from PySide6.QtWidgets import QLineEdit, QPlainTextEdit
-        if isinstance(focus, (QLineEdit, QPlainTextEdit)):
+        from PySide6.QtWidgets import QLineEdit, QPlainTextEdit, QPushButton
+        if isinstance(focus, (QLineEdit, QPlainTextEdit, QPushButton)):
             return
         bid = self.view_catalog._get_active_book_id()
         if bid:

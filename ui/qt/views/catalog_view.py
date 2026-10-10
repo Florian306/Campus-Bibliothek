@@ -63,9 +63,15 @@ class CatalogView(QWidget):
         # Shelf cards cache
         self.cards_dict: Dict[str, BookCard] = {}
         self._shelf_render_idx = 0
+        self._current_cols = 0
         self._shelf_batch_timer = QTimer(self)
         self._shelf_batch_timer.setInterval(15)
         self._shelf_batch_timer.timeout.connect(self._render_next_shelf_batch)
+
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(120)
+        self._resize_timer.timeout.connect(self._handle_debounced_resize)
 
         self._build_ui()
 
@@ -275,7 +281,14 @@ class CatalogView(QWidget):
         self.master_books = get_all_books()
         cat_counts = get_category_counts()
         self.chips_bar.populate(cat_counts)
-        self.cards_dict.clear()
+
+        # Prune cached cards that no longer exist in master_books
+        current_ids = {str(b["id"]) for b in self.master_books}
+        stale_ids = [bid for bid in self.cards_dict if bid not in current_ids]
+        for bid in stale_ids:
+            card = self.cards_dict.pop(bid)
+            card.hide()
+            card.deleteLater()
 
         total_cnt = len(self.master_books)
         self.lbl_badge_total.setText(f"{total_cnt} Bücher")
@@ -344,6 +357,7 @@ class CatalogView(QWidget):
             return
 
         cols = max(2, min(7, self.shelf_scroll.width() // (BookCard.CARD_WIDTH + 18)))
+        self._current_cols = cols
         start = self._shelf_render_idx
         end = min(start + batch_size, len(self.filtered_books))
 
@@ -641,6 +655,13 @@ class CatalogView(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if self.stacked_views.currentIndex() == 0 and self.filtered_books:
-            # Re-flow cards dynamically on window resize
-            QTimer.singleShot(50, self._render_shelf_grid)
+            # Debounce re-flow on resize
+            self._resize_timer.start()
+
+    def _handle_debounced_resize(self) -> None:
+        if self.stacked_views.currentIndex() != 0 or not self.filtered_books:
+            return
+        new_cols = max(2, min(7, self.shelf_scroll.width() // (BookCard.CARD_WIDTH + 18)))
+        if new_cols != self._current_cols:
+            self._render_shelf_grid()
 
