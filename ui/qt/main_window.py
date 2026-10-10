@@ -26,12 +26,13 @@ from ui.qt.views.catalog_view import CatalogView
 from ui.qt.views.desk_view import DeskView
 from ui.qt.views.radar_view import RadarView
 from ui.qt.views.sync_view import SyncView
+from ui.qt.views.inbox_view import InboxView
 from ui.qt.views.research_view import ResearchView
 from ui.qt.views.textbook_search_view import TextbookSearchView
 from ui.qt.views.academic_web_view import AcademicWebView
 from ui.qt.views.exam_studio_view import ExamStudioView
 from ui.qt.dialogs.quick_look import QuickLookDialog
-from core.library_db import get_category_counts, get_all_research_papers
+from core.library_db import get_category_counts, get_all_research_papers, get_inbox_count
 
 
 class CampusMainWindow(QMainWindow):
@@ -59,6 +60,8 @@ class CampusMainWindow(QMainWindow):
         self.view_catalog.data_changed.connect(self._on_data_modified)
         self.view_desk.data_changed.connect(self._on_data_modified)
         self.view_sync.scan_finished.connect(self._on_data_modified)
+        self.view_inbox.book_filed.connect(self._on_data_modified)
+        self.view_inbox.queue_updated.connect(self._update_inbox_badge)
         self.view_catalog.quick_look_requested.connect(self._open_quick_look_for_id)
 
     def _build_ui(self) -> None:
@@ -140,13 +143,14 @@ class CampusMainWindow(QMainWindow):
         nav_items = [
             ("jarvis", "jarvis", "JARVIS Briefing", 0),
             ("catalog", "library", "Bibliothek & Katalog", 1),
-            ("desk", "desk", "Mein Schreibtisch", 2),
-            ("exam", "exam", "Klausur-Studio", 3),
-            ("research", "research", "Paper & Forschung", 4),
-            ("textbooks", "book", "Fachbuch-Suche", 5),
-            ("web", "globe", "Fach-Websuche", 6),
-            ("radar", "radar", "Auflagen-Radar", 7),
-            ("sync", "sync", "Scan & Sync", 8),
+            ("inbox", "inbox", "Posteingang", 2),
+            ("desk", "desk", "Mein Schreibtisch", 3),
+            ("exam", "exam", "Klausur-Studio", 4),
+            ("research", "research", "Paper & Forschung", 5),
+            ("textbooks", "book", "Fachbuch-Suche", 6),
+            ("web", "globe", "Fach-Websuche", 7),
+            ("radar", "radar", "Auflagen-Radar", 8),
+            ("sync", "sync", "Scan & Sync", 9),
         ]
 
         for key, icon_name, text, idx in nav_items:
@@ -204,6 +208,7 @@ class CampusMainWindow(QMainWindow):
 
         self.view_jarvis = JarvisView(self)
         self.view_catalog = CatalogView(self)
+        self.view_inbox = InboxView(self)
         self.view_desk = DeskView(self)
         self.view_exam = ExamStudioView(self)
         self.view_research = ResearchView(self)
@@ -214,6 +219,7 @@ class CampusMainWindow(QMainWindow):
 
         self.stack.addWidget(self.view_jarvis)
         self.stack.addWidget(self.view_catalog)
+        self.stack.addWidget(self.view_inbox)
         self.stack.addWidget(self.view_desk)
         self.stack.addWidget(self.view_exam)
         self.stack.addWidget(self.view_research)
@@ -272,14 +278,16 @@ class CampusMainWindow(QMainWindow):
             if not self.view_catalog.master_books:
                 self.view_catalog.load_data()
         elif idx == 2:
-            self.view_desk.load_data()
+            self.view_inbox.sync_filesystem_with_db()
         elif idx == 3:
-            self.view_exam.load_data()
+            self.view_desk.load_data()
         elif idx == 4:
-            self.view_research.load_data()
+            self.view_exam.load_data()
         elif idx == 5:
+            self.view_research.load_data()
+        elif idx == 6:
             self.view_textbooks.load_data()
-        elif idx == 7:
+        elif idx == 8:
             self.view_radar.load_data()
 
     def update_sidebar_stats(self) -> None:
@@ -291,6 +299,16 @@ class CampusMainWindow(QMainWindow):
             self.lbl_stats.setText(f"{total_b} Bücher · {total_p} Paper")
         else:
             self.lbl_stats.setText(f"{total_b} Fachbücher indiziert")
+
+        self._update_inbox_badge(get_inbox_count())
+
+    def _update_inbox_badge(self, count: int) -> None:
+        btn_inbox = self._nav_buttons.get("inbox")
+        if btn_inbox:
+            if count > 0:
+                btn_inbox.setText(f"  Posteingang ({count})")
+            else:
+                btn_inbox.setText("  Posteingang")
 
     def _on_data_modified(self) -> None:
         self.update_sidebar_stats()

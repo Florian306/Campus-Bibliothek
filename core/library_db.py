@@ -355,6 +355,26 @@ def init_library_schema() -> None:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_bid ON book_bookmarks(book_id);")
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inbox_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                file_path TEXT UNIQUE NOT NULL,
+                file_size INTEGER DEFAULT 0,
+                page_count INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'pending',
+                suggested_title TEXT DEFAULT '',
+                suggested_author TEXT DEFAULT '',
+                suggested_category TEXT DEFAULT 'Sonstiges',
+                confidence INTEGER DEFAULT 0,
+                duplicate_warning TEXT DEFAULT '',
+                created_at REAL NOT NULL
+            );
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox_queue(status);")
+
         conn.commit()
     finally:
         conn.close()
@@ -2587,4 +2607,177 @@ def is_page_bookmarked(book_id: str, page_number: int) -> bool:
         return cur.fetchone() is not None
     except Exception:
         return False
+
+
+# =========================================================================
+# INBOX & STAGING QUEUE CONTROLLER
+# =========================================================================
+
+def add_to_inbox_queue(
+    file_path: str,
+    suggested_title: str = "",
+    suggested_author: str = "",
+    suggested_category: str = "Sonstiges",
+    confidence: int = 0,
+    duplicate_warning: str = "",
+    page_count: int = 0,
+    status: str = "pending"
+) -> Optional[int]:
+    """Adds a newly discovered or dropped PDF into the persistent Inbox queue."""
+    conn = get_db_connection()
+    norm_path = os.path.abspath(file_path)
+    fn = os.path.basename(file_path)
+    file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
+    with _db_write_lock:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO inbox_queue (
+                    filename, file_path, file_size, page_count, status,
+                    suggested_title, suggested_author, suggested_category,
+                    confidence, duplicate_warning, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(file_path) DO UPDATE SET
+                    file_size = excluded.file_size,
+                    page_count = excluded.page_count,
+                    status = CASE WHEN inbox_queue.status = 'hold' THEN 'hold' ELSE excluded.status END,
+                    suggested_title = CASE WHEN excluded.suggested_title != '' THEN excluded.suggested_title ELSE inbox_queue.suggested_title END,
+                    suggested_author = CASE WHEN excluded.suggested_author != '' THEN excluded.suggested_author ELSE inbox_queue.suggested_author END,
+                    suggested_category = CASE WHEN excluded.suggested_category != 'Sonstiges' THEN excluded.suggested_category ELSE inbox_queue.suggested_category END,
+                    confidence = CASE WHEN excluded.confidence > 0 THEN excluded.confidence ELSE inbox_queue.confidence END,
+                    duplicate_warning = excluded.duplicate_warning;
+                """,
+                (
+                    fn, norm_path, file_size, page_count, status,
+                    suggested_title or fn.replace(".pdf", ""), suggested_author or "Unbekannt",
+                    suggested_category, confidence, duplicate_warning, time.time()
+                )
+            )
+            conn.commit()
+            return cur.lastrowid
+        except Exception:
+            return None
+
+
+def get_inbox_queue(status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieves all items currently waiting in the Inbox queue."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        if status_filter:
+            cur.execute(
+                "SELECT * FROM inbox_queue WHERE status = ? ORDER BY id DESC;",
+                (status_filter,)
+            )
+        else:
+            cur.execute("SELECT * FROM inbox_queue ORDER BY id DESC;")
+        return [dict(row) for row in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def get_inbox_count() -> int:
+    """Returns number of active items in the Inbox queue."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM inbox_queue;")
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
+def update_inbox_item(
+    item_id: int,
+    suggested_title: Optional[str] = None,
+    suggested_author: Optional[str] = None,
+    suggested_category: Optional[str] = None,
+    status: Optional[str] = None
+) -> bool:
+    """Updates metadata or state of an item in the Inbox queue."""
+    conn = get_db_connection()
+    with _db_write_lock:
+        try:
+            updates = []
+            params = []
+            if suggested_title is not None:
+                updates.append("suggested_title = ?")
+                params.append(suggested_title)
+            if suggested_author is not None:
+                updates.append("suggested_author = ?")
+                params.append(suggested_author)
+            if suggested_category is not None:
+                updates.append("suggested_category = ?")
+                params.append(suggested_category)
+            if status is not None:
+                updates.append("status = ?")
+                params.append(status)
+
+            if not updates:
+                return True
+
+            params.append(item_id)
+            query = f"UPDATE inbox_queue SET {', '.join(updates)} WHERE id = ?;"
+            conn.execute(query, tuple(params))
+            conn.commit()
+            return True
+        except Exception:
+            return False
+
+
+def delete_inbox_item(item_id: int, delete_file: bool = False) -> bool:
+    """Removes an item from the Inbox queue and optionally deletes the physical file."""
+    conn = get_db_connection()
+    with _db_write_lock:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT file_path FROM inbox_queue WHERE id = ?;", (item_id,))
+            row = cur.fetchone()
+            file_path = row[0] if row else ""
+
+            conn.execute("DELETE FROM inbox_queue WHERE id = ?;", (item_id,))
+            conn.commit()
+
+            if delete_file and file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+            return True
+        except Exception:
+            return False
+
+
+def check_inbox_duplicate(title: str, filename: str) -> str:
+    """Checks if a book with a similar title or filename already exists in the library.
+    Returns empty string if unique, or a descriptive warning message if duplicate.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        t_clean = title.strip().lower()
+        fn_clean = filename.strip().lower()
+
+        # Check exact filename
+        cur.execute("SELECT id, title, edition FROM books WHERE LOWER(filename) = ? LIMIT 1;", (fn_clean,))
+        row = cur.fetchone()
+        if row:
+            return f"Bereits im Katalog ({row['title']})"
+
+        # Check title match
+        if len(t_clean) > 4:
+            cur.execute("SELECT id, title, edition FROM books WHERE LOWER(title) = ? LIMIT 1;", (t_clean,))
+            row = cur.fetchone()
+            if row:
+                ed = row['edition']
+                ed_str = f", {ed}. Auflage" if ed and ed > 1 else ""
+                return f"Existiert bereits ({row['title']}{ed_str})"
+
+        return ""
+    except Exception:
+        return ""
+
 

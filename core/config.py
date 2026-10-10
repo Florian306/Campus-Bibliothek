@@ -183,3 +183,19 @@ def get_books_storage_dir() -> str:
         return fallback
 
     return get_app_dir()
+
+
+def get_inbox_directory() -> str:
+    """Returns the dedicated Inbox staging directory (e.g. G:\\Meine Ablage\\Bücher\\_Inbox).
+    Creates the directory automatically if it does not yet exist.
+    """
+    storage_dir = get_books_storage_dir()
+    inbox_dir = os.path.join(storage_dir, "_Inbox")
+    try:
+        os.makedirs(inbox_dir, exist_ok=True)
+    except Exception:
+        # If write permission failed in storage_dir, fallback to user data dir
+        fallback = os.path.join(get_user_data_dir(), "Inbox")
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+    return inbox_dir

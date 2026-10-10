@@ -2,7 +2,7 @@
 ; Produces a modern, professional Windows installer (Setup.exe) with Start Menu and Desktop shortcuts.
 
 #define MyAppName "Campus-Bibliothek AI"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "Florian"
 #define MyAppURL "https://github.com/Florian306/Campus-Bibliothek"
 #define MyAppExeName "Buchsortierer.exe"
