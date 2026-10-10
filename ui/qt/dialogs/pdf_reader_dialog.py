@@ -1,6 +1,6 @@
 import os
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QEvent
 from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut, QPainter, QPen, QBrush
 try:
