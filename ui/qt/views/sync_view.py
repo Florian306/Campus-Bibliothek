@@ -33,6 +33,7 @@ class ScanSignals(QObject):
     progress = Signal(int, str)
     finished = Signal(dict)
     log_message = Signal(str)
+    sync_completed = Signal(bool, str, str)  # is_push, success, message
 
 
 class SyncView(QWidget):
@@ -48,6 +49,7 @@ class SyncView(QWidget):
         self.signals.progress.connect(self._on_progress)
         self.signals.finished.connect(self._on_finished)
         self.signals.log_message.connect(self._append_log)
+        self.signals.sync_completed.connect(self._on_sync_completed)
 
         cfg = load_config()
         self.source_dir = cfg.get("last_directory") or r"G:\Meine Ablage\Bücher"
@@ -418,22 +420,17 @@ class SyncView(QWidget):
 
     def _push_to_github(self) -> None:
         self.btn_push_gist.setEnabled(False)
+        self.btn_pull_gist.setEnabled(False)
         self.lbl_sync_status.setText("Sichere Daten in GitHub Gist...")
         self.lbl_sync_status.setStyleSheet("color: #E3B341; border: none; font-size: 11px;")
         self._append_log("GitHub Sync: Starte Upload in privaten Gist (komprimiere SQLite Metadaten)...")
 
         def task():
-            success, msg = GitHubSyncService.push_to_gist()
-            def finish():
-                self.btn_push_gist.setEnabled(True)
-                self._append_log(f"GitHub Sync: {msg}")
-                self._refresh_github_status()
-                if success:
-                    QMessageBox.information(self, "Cloud-Sicherung erfolgreich", msg)
-                else:
-                    QMessageBox.critical(self, "Cloud-Sicherung fehlgeschlagen", msg)
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, finish)
+            try:
+                success, msg = GitHubSyncService.push_to_gist()
+            except Exception as e:
+                success, msg = False, f"Unerwarteter Fehler: {str(e)}"
+            self.signals.sync_completed.emit(True, success, msg)
 
         threading.Thread(target=task, daemon=True).start()
 
@@ -449,25 +446,36 @@ class SyncView(QWidget):
             return
 
         self.btn_pull_gist.setEnabled(False)
+        self.btn_push_gist.setEnabled(False)
         self.lbl_sync_status.setText("Lade Snapshot aus GitHub Cloud...")
         self.lbl_sync_status.setStyleSheet("color: #E3B341; border: none; font-size: 11px;")
         self._append_log("GitHub Sync: Lade Snapshot aus Gist...")
 
         def task():
-            success, msg = GitHubSyncService.pull_from_gist()
-            def finish():
-                self.btn_pull_gist.setEnabled(True)
-                self._append_log(f"GitHub Sync: {msg}")
-                self._refresh_github_status()
-                if success:
-                    self.scan_finished.emit()
-                    QMessageBox.information(self, "Synchronisation abgeschlossen", msg)
-                else:
-                    QMessageBox.critical(self, "Download fehlgeschlagen", msg)
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, finish)
+            try:
+                success, msg = GitHubSyncService.pull_from_gist()
+            except Exception as e:
+                success, msg = False, f"Unerwarteter Fehler: {str(e)}"
+            self.signals.sync_completed.emit(False, success, msg)
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _on_sync_completed(self, is_push: bool, success: bool, msg: str) -> None:
+        self.btn_push_gist.setEnabled(True)
+        self.btn_pull_gist.setEnabled(True)
+        self._append_log(f"GitHub Sync: {msg}")
+        self._refresh_github_status()
+        if is_push:
+            if success:
+                QMessageBox.information(self, "Cloud-Sicherung erfolgreich", msg)
+            else:
+                QMessageBox.critical(self, "Cloud-Sicherung fehlgeschlagen", msg)
+        else:
+            if success:
+                self.scan_finished.emit()
+                QMessageBox.information(self, "Synchronisation abgeschlossen", msg)
+            else:
+                QMessageBox.critical(self, "Download fehlgeschlagen", msg)
 
     def _check_github_updates(self) -> None:
         self._append_log(f"Updater: Prüfe Releases auf Florian306/Campus-Bibliothek...")
