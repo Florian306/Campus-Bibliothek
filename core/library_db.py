@@ -339,7 +339,21 @@ def init_library_schema() -> None:
             """
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_extracts_parent ON book_extracts(parent_book_id);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_extracts_desk ON book_extracts(on_desk);")
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS book_bookmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id TEXT NOT NULL,
+                page_number INTEGER NOT NULL,
+                title TEXT DEFAULT '',
+                tag TEXT DEFAULT 'Wichtig',
+                created_at REAL NOT NULL,
+                UNIQUE(book_id, page_number),
+                FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+            );
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_bid ON book_bookmarks(book_id);")
 
         conn.commit()
     finally:
@@ -2509,4 +2523,68 @@ def set_search_cache(cache_key: str, results: List[Dict[str, Any]]) -> None:
                 )
         except Exception:
             pass
+
+
+def get_book_bookmarks(book_id: str) -> List[Dict[str, Any]]:
+    """Retrieves all bookmarks for a specific book ordered by page number."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, book_id, page_number, title, tag, created_at
+            FROM book_bookmarks
+            WHERE book_id = ?
+            ORDER BY page_number ASC;
+            """,
+            (str(book_id),)
+        )
+        return [dict(row) for row in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def toggle_book_bookmark(book_id: str, page_number: int, title: str = "", tag: str = "Wichtig") -> bool:
+    """Toggles a bookmark on or off for the given book and page. Returns True if now bookmarked, False if removed."""
+    conn = get_db_connection()
+    with _db_write_lock:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id FROM book_bookmarks WHERE book_id = ? AND page_number = ?;",
+                (str(book_id), int(page_number))
+            )
+            existing = cur.fetchone()
+            with conn:
+                if existing:
+                    conn.execute(
+                        "DELETE FROM book_bookmarks WHERE book_id = ? AND page_number = ?;",
+                        (str(book_id), int(page_number))
+                    )
+                    return False
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO book_bookmarks (book_id, page_number, title, tag, created_at)
+                        VALUES (?, ?, ?, ?, ?);
+                        """,
+                        (str(book_id), int(page_number), title, tag, time.time())
+                    )
+                    return True
+        except Exception:
+            return False
+
+
+def is_page_bookmarked(book_id: str, page_number: int) -> bool:
+    """Checks whether a specific page is bookmarked."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM book_bookmarks WHERE book_id = ? AND page_number = ? LIMIT 1;",
+            (str(book_id), int(page_number))
+        )
+        return cur.fetchone() is not None
+    except Exception:
+        return False
 

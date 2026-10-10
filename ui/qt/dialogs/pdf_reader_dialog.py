@@ -9,11 +9,12 @@ from typing import Any, Dict, List, Optional
 from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut
 try:
-    from PySide6.QtPdf import QPdfDocument
+    from PySide6.QtPdf import QPdfDocument, QPdfSearchModel
     from PySide6.QtPdfWidgets import QPdfView
     HAS_QT_PDF = True
 except (ImportError, ModuleNotFoundError):
     QPdfDocument = None
+    QPdfSearchModel = None
     QPdfView = None
     HAS_QT_PDF = False
 from PySide6.QtWidgets import (
@@ -34,6 +35,10 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QApplication,
     QMessageBox,
+    QTabWidget,
+    QListWidget,
+    QListWidgetItem,
+    QGraphicsColorizeEffect,
 )
 
 from core.library_db import (
@@ -42,6 +47,9 @@ from core.library_db import (
     add_book_note,
     delete_book_note,
     open_pdf_in_edge,
+    get_book_bookmarks,
+    toggle_book_bookmark,
+    is_page_bookmarked,
 )
 from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ai.tutor_engine import _resolve_model
@@ -110,6 +118,40 @@ class AiExplainerWorker(QThread):
             self.error_occurred.emit(str(e))
 
 
+class PageThumbnailWorker(QThread):
+    thumbnail_ready = Signal(int, bytes, int, int)  # page_idx, raw_samples, width, height
+
+    def __init__(self, file_path: str, max_pages: int = 150, parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+        self.max_pages = max_pages
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
+
+    def run(self):
+        if not self.file_path or not os.path.exists(self.file_path):
+            return
+        try:
+            import fitz
+            doc = fitz.open(self.file_path)
+            total = min(len(doc), self.max_pages)
+            for p_idx in range(total):
+                if self._is_cancelled:
+                    break
+                try:
+                    page = doc[p_idx]
+                    pix = page.get_pixmap(dpi=36)
+                    samples = bytes(pix.samples)
+                    self.thumbnail_ready.emit(p_idx, samples, pix.width, pix.height)
+                except Exception:
+                    continue
+            doc.close()
+        except Exception:
+            pass
+
+
 class TocLoaderWorker(QThread):
     finished_toc = Signal(list)
 
@@ -154,9 +196,23 @@ class PdfReaderDialog(QDialog):
 
         self.doc = QPdfDocument(self) if HAS_QT_PDF else None
         self.view = QPdfView(self) if HAS_QT_PDF else None
+        self.search_model = QPdfSearchModel(self) if HAS_QT_PDF and QPdfSearchModel else None
+        if self.view and self.search_model and self.doc:
+            self.search_model.setDocument(self.doc)
+            self.view.setSearchModel(self.search_model)
+
         self._explainer_thread: Optional[AiExplainerWorker] = None
         self._toc_thread: Optional[TocLoaderWorker] = None
+        self._thumb_thread: Optional[PageThumbnailWorker] = None
         self._is_jumping = False
+
+        # Visual Theme / Filter Mode: "normal", "sepia", "dark"
+        self._color_mode = "normal"
+        self._color_effect: Optional[QGraphicsColorizeEffect] = None
+
+        # Search index navigation state
+        self._current_search_match_idx = -1
+        self._total_search_matches = 0
 
         if not HAS_QT_PDF:
             # Fallback when QtPdf is not present in binary
@@ -290,13 +346,50 @@ class PdfReaderDialog(QDialog):
         self.btn_fit_width.clicked.connect(self._fit_width)
         top_layout.addWidget(self.btn_fit_width)
 
+        # Page Mode Toggle: MultiPage vs SinglePage
+        self.btn_page_mode = QPushButton("  📜 Fortlaufend")
+        self.btn_page_mode.setToolTip("Zwischen fortlaufendem Scrollen und Einzelseite wechseln")
+        self.btn_page_mode.setCursor(Qt.PointingHandCursor)
+        self.btn_page_mode.setFixedHeight(30)
+        self.btn_page_mode.setStyleSheet(self._button_style())
+        self.btn_page_mode.clicked.connect(self._toggle_page_mode)
+        top_layout.addWidget(self.btn_page_mode)
+
+        # Color Theme / Filter Mode Toggle
+        self.btn_reading_theme = QPushButton("  ☀️ Normal")
+        self.btn_reading_theme.setToolTip("Farbmodus wechseln (Normal / Sepia / Dunkel)")
+        self.btn_reading_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_reading_theme.setFixedHeight(30)
+        self.btn_reading_theme.setStyleSheet(self._button_style())
+        self.btn_reading_theme.clicked.connect(self._cycle_reading_theme)
+        top_layout.addWidget(self.btn_reading_theme)
+
+        # Bookmark Toggle Button
+        self.btn_bookmark = QPushButton("  ☆ Lesezeichen")
+        self.btn_bookmark.setToolTip("Lesezeichen auf aktueller Seite setzen / entfernen (Strg+D)")
+        self.btn_bookmark.setCursor(Qt.PointingHandCursor)
+        self.btn_bookmark.setFixedHeight(30)
+        self.btn_bookmark.setStyleSheet(self._button_style())
+        self.btn_bookmark.clicked.connect(self._toggle_bookmark)
+        top_layout.addWidget(self.btn_bookmark)
+
+        # Search Toggle Button
+        self.btn_search = QPushButton("  🔍 Suchen")
+        self.btn_search.setToolTip("Volltextsuche einblenden (Strg+F)")
+        self.btn_search.setCheckable(True)
+        self.btn_search.setChecked(False)
+        self.btn_search.setCursor(Qt.PointingHandCursor)
+        self.btn_search.setStyleSheet(self._button_style())
+        self.btn_search.clicked.connect(self._toggle_search_bar)
+        top_layout.addWidget(self.btn_search)
+
         top_layout.addStretch()
 
         # Book Title in Header
         lbl_center_title = QLabel(self.book_title)
         lbl_center_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
         lbl_center_title.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
-        lbl_center_title.setMaximumWidth(450)
+        lbl_center_title.setMaximumWidth(320)
         top_layout.addWidget(lbl_center_title)
 
         # Fullscreen Toggle Button
@@ -342,6 +435,76 @@ class PdfReaderDialog(QDialog):
         top_layout.addWidget(btn_close)
 
         root_layout.addWidget(top_bar)
+
+        # -------------------------------------------------------------
+        # 1.5 Collapsible In-App Search Bar
+        # -------------------------------------------------------------
+        self.search_bar_frame = QFrame()
+        self.search_bar_frame.setFixedHeight(44)
+        self.search_bar_frame.setVisible(False)
+        self.search_bar_frame.setStyleSheet("""
+            QFrame {
+                background-color: #121826;
+                border-bottom: 1px solid #232F48;
+            }
+        """)
+        search_lay = QHBoxLayout(self.search_bar_frame)
+        search_lay.setContentsMargins(20, 6, 20, 6)
+        search_lay.setSpacing(8)
+
+        lbl_s_icon = QLabel("🔍")
+        lbl_s_icon.setStyleSheet("color: #58A6FF; font-size: 13px; background: transparent; border: none;")
+        search_lay.addWidget(lbl_s_icon)
+
+        self.input_search = QLineEdit()
+        self.input_search.setPlaceholderText("Text im Dokument suchen...")
+        self.input_search.setFixedWidth(280)
+        self.input_search.setFixedHeight(28)
+        self.input_search.setStyleSheet("""
+            QLineEdit {
+                background-color: #1A2234;
+                color: #FFFFFF;
+                border: 1px solid #2D3D5D;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #58A6FF;
+            }
+        """)
+        self.input_search.textChanged.connect(self._on_search_query_changed)
+        self.input_search.returnPressed.connect(self._search_next)
+        search_lay.addWidget(self.input_search)
+
+        self.btn_search_prev = QPushButton("◀ Vorheriger")
+        self.btn_search_prev.setFixedHeight(28)
+        self.btn_search_prev.setCursor(Qt.PointingHandCursor)
+        self.btn_search_prev.setStyleSheet(self._button_style())
+        self.btn_search_prev.clicked.connect(self._search_prev)
+        search_lay.addWidget(self.btn_search_prev)
+
+        self.btn_search_next = QPushButton("Nächster ▶")
+        self.btn_search_next.setFixedHeight(28)
+        self.btn_search_next.setCursor(Qt.PointingHandCursor)
+        self.btn_search_next.setStyleSheet(self._button_style())
+        self.btn_search_next.clicked.connect(self._search_next)
+        search_lay.addWidget(self.btn_search_next)
+
+        self.lbl_search_count = QLabel("")
+        self.lbl_search_count.setStyleSheet("color: #8B949E; font-size: 11px; font-weight: bold; background: transparent; border: none; padding-left: 8px;")
+        search_lay.addWidget(self.lbl_search_count)
+
+        search_lay.addStretch()
+
+        btn_close_search = QPushButton("✕")
+        btn_close_search.setFixedSize(24, 24)
+        btn_close_search.setCursor(Qt.PointingHandCursor)
+        btn_close_search.setStyleSheet("color: #8B949E; background: transparent; border: none; font-size: 14px; font-weight: bold;")
+        btn_close_search.clicked.connect(lambda: self._toggle_search_bar(False))
+        search_lay.addWidget(btn_close_search)
+
+        root_layout.addWidget(self.search_bar_frame)
 
         # -------------------------------------------------------------
         # 2. Central Splitter Area: [TOC] | [QPdfView] | [Notes & AI]
@@ -392,19 +555,50 @@ class PdfReaderDialog(QDialog):
             }
         """)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(10, 12, 10, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(6, 8, 6, 8)
+        layout.setSpacing(6)
 
-        lbl_hdr = QLabel("INHALTSVERZEICHNIS")
-        lbl_hdr.setFont(QFont("Segoe UI", 8, QFont.Bold))
-        lbl_hdr.setStyleSheet("color: #58A6FF; letter-spacing: 0.5px; border: none; background: transparent;")
-        layout.addWidget(lbl_hdr)
+        # Tab widget for TOC, Bookmarks, and Thumbnails
+        self.sidebar_tabs = QTabWidget()
+        self.sidebar_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: none;
+                background: transparent;
+            }
+            QTabBar::tab {
+                background: #141C2E;
+                color: #8B949E;
+                border: 1px solid #1E283D;
+                border-bottom: none;
+                padding: 6px 10px;
+                font-size: 11px;
+                font-weight: 600;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background: #1F2D4A;
+                color: #58A6FF;
+                border-color: #388BFD;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #182236;
+                color: #C9D1D9;
+            }
+        """)
+
+        # ---------------- Tab 1: Inhaltsverzeichnis (TOC) ----------------
+        tab_toc = QWidget()
+        lay_toc = QVBoxLayout(tab_toc)
+        lay_toc.setContentsMargins(4, 6, 4, 4)
+        lay_toc.setSpacing(6)
 
         self.tree_toc = QTreeWidget()
         self.tree_toc.setItemDelegate(NoFocusItemDelegate(self.tree_toc))
         self.tree_toc.setHeaderHidden(True)
         self.tree_toc.setAnimated(True)
-        self.tree_toc.setIndentation(16)
+        self.tree_toc.setIndentation(14)
         self.tree_toc.setStyleSheet("""
             QTreeWidget {
                 background-color: transparent;
@@ -414,8 +608,8 @@ class PdfReaderDialog(QDialog):
                 font-size: 12px;
             }
             QTreeWidget::item {
-                padding: 6px 8px;
-                border-radius: 6px;
+                padding: 5px 6px;
+                border-radius: 5px;
                 margin-bottom: 2px;
             }
             QTreeWidget::item:hover {
@@ -446,8 +640,88 @@ class PdfReaderDialog(QDialog):
             }
         """)
         self.tree_toc.itemClicked.connect(self._on_toc_item_clicked)
-        layout.addWidget(self.tree_toc, stretch=1)
+        lay_toc.addWidget(self.tree_toc)
+        self.sidebar_tabs.addTab(tab_toc, "📑 Inhalt")
 
+        # ---------------- Tab 2: Lesezeichen (Bookmarks) ----------------
+        tab_bm = QWidget()
+        lay_bm = QVBoxLayout(tab_bm)
+        lay_bm.setContentsMargins(4, 6, 4, 4)
+        lay_bm.setSpacing(6)
+
+        self.list_bookmarks = QListWidget()
+        self.list_bookmarks.setStyleSheet("""
+            QListWidget {
+                background-color: transparent;
+                color: #C9D1D9;
+                border: none;
+                outline: none;
+                font-size: 12px;
+            }
+            QListWidget::item {
+                padding: 8px 10px;
+                border-radius: 6px;
+                margin-bottom: 4px;
+                background-color: #141C2E;
+                border: 1px solid #1E283D;
+            }
+            QListWidget::item:hover {
+                background-color: #1F2D4A;
+                border-color: #388BFD;
+                color: #FFFFFF;
+            }
+            QListWidget::item:selected {
+                background-color: #233658;
+                border-color: #58A6FF;
+                color: #58A6FF;
+            }
+        """)
+        self.list_bookmarks.itemClicked.connect(self._on_bookmark_item_clicked)
+        lay_bm.addWidget(self.list_bookmarks)
+        self.sidebar_tabs.addTab(tab_bm, "⭐ Lesezeichen")
+
+        # ---------------- Tab 3: Seiten-Vorschau (Thumbnails) ----------------
+        tab_thumbs = QWidget()
+        lay_thumbs = QVBoxLayout(tab_thumbs)
+        lay_thumbs.setContentsMargins(4, 6, 4, 4)
+        lay_thumbs.setSpacing(6)
+
+        self.list_thumbnails = QListWidget()
+        self.list_thumbnails.setViewMode(QListWidget.IconMode)
+        self.list_thumbnails.setIconSize(QSize(90, 120))
+        self.list_thumbnails.setGridSize(QSize(110, 150))
+        self.list_thumbnails.setMovement(QListWidget.Static)
+        self.list_thumbnails.setResizeMode(QListWidget.Adjust)
+        self.list_thumbnails.setStyleSheet("""
+            QListWidget {
+                background-color: transparent;
+                color: #8B949E;
+                border: none;
+                outline: none;
+                font-size: 11px;
+            }
+            QListWidget::item {
+                padding: 4px;
+                border-radius: 6px;
+                border: 1px solid transparent;
+            }
+            QListWidget::item:hover {
+                background-color: #162035;
+                border-color: #388BFD;
+                color: #FFFFFF;
+            }
+            QListWidget::item:selected {
+                background-color: #1F365D;
+                border-color: #58A6FF;
+                color: #58A6FF;
+                font-weight: bold;
+            }
+        """)
+        self.list_thumbnails.itemClicked.connect(self._on_thumbnail_item_clicked)
+        lay_thumbs.addWidget(self.list_thumbnails)
+        self.sidebar_tabs.addTab(tab_thumbs, "🖼️ Vorschau")
+
+        layout.addWidget(self.sidebar_tabs, stretch=1)
         return panel
 
     def _build_notes_panel(self) -> QWidget:
@@ -620,6 +894,215 @@ class PdfReaderDialog(QDialog):
         # Load TOC tree
         self._populate_toc()
 
+        # Load Bookmarks list
+        self._refresh_bookmarks_list()
+        self._update_bookmark_button_state(self.initial_page)
+
+        # Start background thumbnail generator
+        self._start_thumbnail_generation()
+
+    def _start_thumbnail_generation(self) -> None:
+        if not self.file_path or not os.path.exists(self.file_path):
+            return
+        if self._thumb_thread and self._thumb_thread.isRunning():
+            self._thumb_thread.cancel()
+            self._thumb_thread.wait(200)
+
+        self.list_thumbnails.clear()
+        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=150, parent=self)
+        self._thumb_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self._thumb_thread.start()
+
+    def _on_thumbnail_ready(self, page_idx: int, raw_samples: bytes, width: int, height: int) -> None:
+        from PySide6.QtGui import QImage, QPixmap, QIcon
+        try:
+            qimg = QImage(raw_samples, width, height, width * 3, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(qimg)
+            item = QListWidgetItem(QIcon(pixmap), f"S. {page_idx + 1}")
+            item.setData(Qt.UserRole, page_idx + 1)
+            item.setTextAlignment(Qt.AlignCenter)
+            self.list_thumbnails.addItem(item)
+        except Exception:
+            pass
+
+    def _on_thumbnail_item_clicked(self, item: QListWidgetItem) -> None:
+        p_num = item.data(Qt.UserRole)
+        if p_num:
+            self._jump_to_page(int(p_num))
+
+    def _refresh_bookmarks_list(self) -> None:
+        self.list_bookmarks.clear()
+        if not self.book_id:
+            return
+        bms = get_book_bookmarks(self.book_id)
+        if not bms:
+            empty_item = QListWidgetItem("Noch keine Lesezeichen gesetzt.\n(Klicke oben auf '☆ Lesezeichen' oder drücke Strg+D)")
+            empty_item.setFlags(Qt.NoItemFlags)
+            self.list_bookmarks.addItem(empty_item)
+            return
+
+        for bm in bms:
+            p = bm.get("page_number", 1)
+            title = bm.get("title") or f"Lesezeichen auf Seite {p}"
+            tag = bm.get("tag", "Wichtig")
+            item = QListWidgetItem(f"⭐ Seite {p} • {title} [{tag}]")
+            item.setData(Qt.UserRole, p)
+            self.list_bookmarks.addItem(item)
+
+    def _on_bookmark_item_clicked(self, item: QListWidgetItem) -> None:
+        p_num = item.data(Qt.UserRole)
+        if p_num:
+            self._jump_to_page(int(p_num))
+
+    def _toggle_bookmark(self) -> None:
+        curr_p = self.view.pageNavigator().currentPage() + 1
+        now_bookmarked = toggle_book_bookmark(self.book_id, curr_p, title=f"S. {curr_p} im Buch", tag="Wichtig")
+        self._update_bookmark_button_state(curr_p)
+        self._refresh_bookmarks_list()
+
+    def _update_bookmark_button_state(self, page_num: int) -> None:
+        is_bm = is_page_bookmarked(self.book_id, page_num)
+        if is_bm:
+            self.btn_bookmark.setText("  ★ Gespeichert")
+            self.btn_bookmark.setStyleSheet("""
+                QPushButton {
+                    background-color: #382A10;
+                    color: #F2CC60;
+                    border: 1px solid #D29922;
+                    border-radius: 5px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #4A3716;
+                    border-color: #E3B341;
+                }
+            """)
+        else:
+            self.btn_bookmark.setText("  ☆ Lesezeichen")
+            self.btn_bookmark.setStyleSheet(self._button_style())
+
+    def _cycle_reading_theme(self) -> None:
+        modes = ["normal", "sepia", "dark"]
+        curr_idx = modes.index(self._color_mode) if self._color_mode in modes else 0
+        next_mode = modes[(curr_idx + 1) % len(modes)]
+        self._set_reading_theme(next_mode)
+
+    def _set_reading_theme(self, mode: str) -> None:
+        self._color_mode = mode
+        vp = self.view.viewport() if self.view else None
+        if not vp:
+            return
+
+        if mode == "normal":
+            vp.setGraphicsEffect(None)
+            self.btn_reading_theme.setText("  ☀️ Normal")
+            self.btn_reading_theme.setStyleSheet(self._button_style())
+        elif mode == "sepia":
+            effect = QGraphicsColorizeEffect(self)
+            effect.setColor(QColor("#E8D8B8"))
+            effect.setStrength(0.48)
+            vp.setGraphicsEffect(effect)
+            self.btn_reading_theme.setText("  📜 Sepia")
+            self.btn_reading_theme.setStyleSheet("""
+                QPushButton {
+                    background-color: #2F2618;
+                    color: #F8E3B6;
+                    border: 1px solid #D4A359;
+                    border-radius: 5px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+            """)
+        elif mode == "dark":
+            effect = QGraphicsColorizeEffect(self)
+            effect.setColor(QColor("#2B3342"))
+            effect.setStrength(0.78)
+            vp.setGraphicsEffect(effect)
+            self.btn_reading_theme.setText("  🌙 Dunkel")
+            self.btn_reading_theme.setStyleSheet("""
+                QPushButton {
+                    background-color: #1A1F2C;
+                    color: #8B949E;
+                    border: 1px solid #388BFD;
+                    border-radius: 5px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+            """)
+
+    def _toggle_page_mode(self) -> None:
+        if not self.view:
+            return
+        if self.view.pageMode() == QPdfView.PageMode.MultiPage:
+            self.view.setPageMode(QPdfView.PageMode.SinglePage)
+            self.btn_page_mode.setText("  📄 Einzelseite")
+        else:
+            self.view.setPageMode(QPdfView.PageMode.MultiPage)
+            self.btn_page_mode.setText("  📜 Fortlaufend")
+
+    def _toggle_search_bar(self, checked: Optional[bool] = None) -> None:
+        if checked is None:
+            is_visible = not self.search_bar_frame.isVisible()
+        else:
+            is_visible = checked
+        self.search_bar_frame.setVisible(is_visible)
+        self.btn_search.setChecked(is_visible)
+        if is_visible:
+            self.input_search.setFocus()
+            self.input_search.selectAll()
+        else:
+            if self.search_model:
+                self.search_model.setSearchString("")
+            self.lbl_search_count.setText("")
+            self._current_search_match_idx = -1
+            self._total_search_matches = 0
+
+    def _on_search_query_changed(self, text: str) -> None:
+        query = text.strip()
+        if not self.search_model:
+            return
+        self.search_model.setSearchString(query)
+        total = self.search_model.count()
+        self._total_search_matches = total
+        if not query:
+            self.lbl_search_count.setText("")
+            self._current_search_match_idx = -1
+            return
+
+        if total == 0:
+            self.lbl_search_count.setText("Keine Treffer")
+            self._current_search_match_idx = -1
+        else:
+            self._current_search_match_idx = 0
+            self.lbl_search_count.setText(f"1 von {total} Treffern")
+            self._jump_to_search_result(0)
+
+    def _search_next(self) -> None:
+        if not self.search_model or self._total_search_matches <= 0:
+            return
+        self._current_search_match_idx = (self._current_search_match_idx + 1) % self._total_search_matches
+        self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {self._total_search_matches} Treffern")
+        self._jump_to_search_result(self._current_search_match_idx)
+
+    def _search_prev(self) -> None:
+        if not self.search_model or self._total_search_matches <= 0:
+            return
+        self._current_search_match_idx = (self._current_search_match_idx - 1) % self._total_search_matches
+        self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {self._total_search_matches} Treffern")
+        self._jump_to_search_result(self._current_search_match_idx)
+
+    def _jump_to_search_result(self, match_idx: int) -> None:
+        if not self.search_model or match_idx < 0 or match_idx >= self.search_model.count():
+            return
+        link = self.search_model.resultAtIndex(match_idx)
+        if link and link.isValid():
+            p = link.page()
+            self._jump_to_page(p + 1)
+
     def _populate_toc(self) -> None:
         if self._preloaded_toc is not None:
             self._apply_toc_items(self._preloaded_toc)
@@ -683,6 +1166,8 @@ class PdfReaderDialog(QDialog):
         self.view.pageNavigator().jump(idx, self.view.pageNavigator().currentLocation(), self.view.pageNavigator().currentZoom())
         self._is_jumping = False
         self._record_progress(idx + 1)
+        self._update_bookmark_button_state(idx + 1)
+        self._sync_active_thumbnail(idx)
 
     def _on_pdf_page_changed(self, page_index: int) -> None:
         current_p = page_index + 1
@@ -691,6 +1176,14 @@ class PdfReaderDialog(QDialog):
             self.spin_page.setValue(current_p)
             self.spin_page.blockSignals(False)
             self._record_progress(current_p)
+            self._update_bookmark_button_state(current_p)
+            self._sync_active_thumbnail(page_index)
+
+    def _sync_active_thumbnail(self, page_index: int) -> None:
+        if hasattr(self, "list_thumbnails") and self.list_thumbnails.count() > page_index:
+            self.list_thumbnails.blockSignals(True)
+            self.list_thumbnails.setCurrentRow(page_index)
+            self.list_thumbnails.blockSignals(False)
 
     def _on_spin_page_changed(self, val: int) -> None:
         if not self._is_jumping:
@@ -845,3 +1338,17 @@ class PdfReaderDialog(QDialog):
 
         shortcut_right = QShortcut(QKeySequence(Qt.Key_Right), self)
         shortcut_right.activated.connect(self._next_page)
+
+        # Strg + F for Search Bar
+        shortcut_find = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut_find.activated.connect(self._toggle_search_bar)
+
+        # Strg + D for Bookmark Toggle
+        shortcut_bookmark = QShortcut(QKeySequence("Ctrl+D"), self)
+        shortcut_bookmark.activated.connect(self._toggle_bookmark)
+
+    def closeEvent(self, event) -> None:
+        if self._thumb_thread and self._thumb_thread.isRunning():
+            self._thumb_thread.cancel()
+            self._thumb_thread.wait(200)
+        super().closeEvent(event)
