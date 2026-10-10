@@ -54,7 +54,7 @@ from ui.qt.icons import create_vector_icon, create_vector_pixmap
 
 
 class PdfSelectionOverlay(QWidget):
-    """Transparent interactive overlay atop QPdfView viewport for native mouse drag selection."""
+    """Transparent interactive overlay atop QPdfView viewport for authentic line-by-line text selection."""
 
     text_selected = Signal(str)
 
@@ -69,14 +69,14 @@ class PdfSelectionOverlay(QWidget):
         self._start_pos: Optional[QPoint] = None
         self._current_pos: Optional[QPoint] = None
         self._is_selecting = False
-        self._selection_rects: List[QRect] = []
+        self._highlight_rects: List[QRect] = []
         self._selected_text = ""
 
     def clear_selection(self) -> None:
         self._start_pos = None
         self._current_pos = None
         self._is_selecting = False
-        self._selection_rects.clear()
+        self._highlight_rects.clear()
         self._selected_text = ""
         self.update()
 
@@ -84,16 +84,15 @@ class PdfSelectionOverlay(QWidget):
         return self._selected_text
 
     def paintEvent(self, event) -> None:
-        if not self._selection_rects:
+        if not self._highlight_rects:
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, False)
-        # Semi-transparent blue highlight overlay
-        fill_color = QColor(56, 139, 253, 75)
-        border_color = QColor(88, 166, 255, 180)
-        painter.setBrush(QBrush(fill_color))
-        painter.setPen(QPen(border_color, 1))
-        for r in self._selection_rects:
+        # Authentic PDF reader blue selection highlight (identical to Adobe Acrobat / Chrome)
+        sel_color = QColor(33, 115, 243, 85)
+        painter.setBrush(QBrush(sel_color))
+        painter.setPen(Qt.NoPen)
+        for r in self._highlight_rects:
             painter.drawRect(r)
 
     def mousePressEvent(self, event) -> None:
@@ -101,7 +100,7 @@ class PdfSelectionOverlay(QWidget):
             self._start_pos = event.pos()
             self._current_pos = event.pos()
             self._is_selecting = True
-            self._selection_rects.clear()
+            self._highlight_rects.clear()
             self._selected_text = ""
             self.update()
             event.accept()
@@ -111,9 +110,15 @@ class PdfSelectionOverlay(QWidget):
     def mouseMoveEvent(self, event) -> None:
         if self._is_selecting and self._start_pos:
             self._current_pos = event.pos()
-            rect = QRect(self._start_pos, self._current_pos).normalized()
-            if rect.width() > 3 and rect.height() > 3:
-                self._selection_rects = [rect]
+            drag_rect = QRect(self._start_pos, self._current_pos).normalized()
+            if drag_rect.width() > 3 or drag_rect.height() > 3:
+                parent_dialog = self.window()
+                if hasattr(parent_dialog, "_calculate_line_highlights"):
+                    line_rects, txt = parent_dialog._calculate_line_highlights(drag_rect)
+                    self._highlight_rects = line_rects
+                    self._selected_text = txt
+                else:
+                    self._highlight_rects = [drag_rect]
             self.update()
             event.accept()
         else:
@@ -124,13 +129,19 @@ class PdfSelectionOverlay(QWidget):
             self._is_selecting = False
             self._current_pos = event.pos()
             if self._start_pos:
-                rect = QRect(self._start_pos, self._current_pos).normalized()
-                if rect.width() > 6 and rect.height() > 6:
-                    self._selection_rects = [rect]
-                    # Trigger text extraction callback on parent reader dialog
+                drag_rect = QRect(self._start_pos, self._current_pos).normalized()
+                if drag_rect.width() > 5 or drag_rect.height() > 5:
                     parent_dialog = self.window()
-                    if hasattr(parent_dialog, "_resolve_text_for_rect"):
-                        txt = parent_dialog._resolve_text_for_rect(rect)
+                    if hasattr(parent_dialog, "_calculate_line_highlights"):
+                        line_rects, txt = parent_dialog._calculate_line_highlights(drag_rect)
+                        self._highlight_rects = line_rects
+                        self._selected_text = txt
+                        if txt:
+                            self.text_selected.emit(txt)
+                            if hasattr(parent_dialog, "_on_text_selection_finished"):
+                                parent_dialog._on_text_selection_finished(txt)
+                    elif hasattr(parent_dialog, "_resolve_text_for_rect"):
+                        txt = parent_dialog._resolve_text_for_rect(drag_rect)
                         self._selected_text = txt
                         if txt:
                             self.text_selected.emit(txt)
@@ -1589,16 +1600,17 @@ class PdfReaderDialog(QDialog):
                 self._selection_overlay.setGeometry(self.view.viewport().rect())
         return super().eventFilter(watched, event)
 
-    def _resolve_text_for_rect(self, view_rect: QRect) -> str:
-        """Translates view pixel selection to PDF points and extracts text from active page."""
+    def _calculate_line_highlights(self, view_rect: QRect) -> Tuple[List[QRect], str]:
+        """Calculates authentic line-by-line highlight bounding rects for words within selection."""
         if not self.file_path or not os.path.exists(self.file_path):
-            return ""
+            return [], ""
         curr_p = self.view.pageNavigator().currentPage() + 1
         vp = self.view.viewport()
         if not vp:
-            return ""
+            return [], ""
 
-        extracted = ""
+        line_view_rects: List[QRect] = []
+        selected_text = ""
         try:
             import fitz
             doc = fitz.open(self.file_path)
@@ -1610,6 +1622,8 @@ class PdfReaderDialog(QDialog):
 
                 scale_x = p_rect.width / vp_w
                 scale_y = p_rect.height / vp_h
+                inv_scale_x = vp_w / p_rect.width
+                inv_scale_y = vp_h / p_rect.height
 
                 norm_rect = fitz.Rect(
                     view_rect.left() * scale_x,
@@ -1617,38 +1631,64 @@ class PdfReaderDialog(QDialog):
                     view_rect.right() * scale_x,
                     view_rect.bottom() * scale_y,
                 )
-                extracted = page.get_textbox(norm_rect).strip()
 
-                # Fallback: if area extraction missed small line, try words within bounds
-                if not extracted:
-                    words = page.get_text("words")
-                    matched_words = [
-                        w[4] for w in words
-                        if norm_rect.intersects(fitz.Rect(w[0], w[1], w[2], w[3]))
-                    ]
-                    extracted = " ".join(matched_words).strip()
+                # Extract words: (x0, y0, x1, y1, word, block_no, line_no, word_no)
+                words = page.get_text("words")
+                hit_words = [
+                    w for w in words
+                    if norm_rect.intersects(fitz.Rect(w[0], w[1], w[2], w[3]))
+                ]
+
+                if hit_words:
+                    # Group words by (block_no, line_no) or similar y-coordinates to form lines
+                    lines_map: Dict[Tuple[int, int], List[Any]] = {}
+                    for w in hit_words:
+                        key = (w[5], w[6])  # block_no, line_no
+                        if key not in lines_map:
+                            lines_map[key] = []
+                        lines_map[key].append(w)
+
+                    # Build compact line bounding rects mapped back to view coordinates
+                    for key, l_words in lines_map.items():
+                        min_x = min(w[0] for w in l_words)
+                        max_x = max(w[2] for w in l_words)
+                        min_y = min(w[1] for w in l_words)
+                        max_y = max(w[3] for w in l_words)
+
+                        vx = int(min_x * inv_scale_x)
+                        vy = int(min_y * inv_scale_y)
+                        vw = max(2, int((max_x - min_x) * inv_scale_x))
+                        vh = max(2, int((max_y - min_y) * inv_scale_y))
+
+                        line_view_rects.append(QRect(vx, vy, vw, vh))
+
+                    selected_text = " ".join(w[4] for w in hit_words).strip()
+                else:
+                    # Fallback textbox extraction
+                    selected_text = page.get_textbox(norm_rect).strip()
 
             doc.close()
         except Exception:
             pass
 
-        # Fallback to QPdfDocument selection
-        if not extracted and self.doc:
-            try:
-                sel = self.doc.getSelection(curr_p - 1, view_rect.topLeft(), view_rect.bottomRight())
-                if sel and sel.text():
-                    extracted = sel.text().strip()
-            except Exception:
-                pass
+        # Fallback to single normalized rectangle if word extraction didn't yield lines
+        if not line_view_rects and selected_text:
+            line_view_rects = [view_rect]
 
-        if extracted:
-            # Auto-paste extracted text into AI tutor prompt area if ready
-            if hasattr(self, "txt_ai_response"):
-                self.txt_ai_response.setPlainText(f"📌 Markierter Text:\n\n\"{extracted}\"")
-                self.notes_panel.setVisible(True)
-                self.btn_toggle_notes.setChecked(True)
+        return line_view_rects, selected_text
 
-        return extracted
+    def _on_text_selection_finished(self, text: str) -> None:
+        """Called when mouse release completes text selection."""
+        if not text:
+            return
+        # Display selected snippet in AI assistant area without taking focus away
+        if hasattr(self, "txt_ai_response"):
+            self.txt_ai_response.setPlainText(f"📌 Markierter Text:\n\n\"{text}\"")
+
+    def _resolve_text_for_rect(self, view_rect: QRect) -> str:
+        """Translates view pixel selection to PDF points and extracts text from active page."""
+        rects, txt = self._calculate_line_highlights(view_rect)
+        return txt
 
     def _show_selection_context_menu(self, global_pos: QPoint, text: str) -> None:
         if not text:
