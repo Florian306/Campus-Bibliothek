@@ -6,7 +6,7 @@ real-time reading progress tracking in SQLite, note-taking panel, and AI explana
 import os
 import subprocess
 from typing import Any, Dict, List, Optional
-from PySide6.QtCore import Qt, QThread, Signal, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF
 from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut
 try:
     from PySide6.QtPdf import QPdfDocument, QPdfSearchModel
@@ -523,6 +523,7 @@ class PdfReaderDialog(QDialog):
 
         # Center: QPdfView
         self.view.setDocument(self.doc)
+        self.view.setFocusPolicy(Qt.StrongFocus)
         self.view.setPageMode(QPdfView.PageMode.MultiPage)
         self.view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         self.view.setStyleSheet("""
@@ -595,6 +596,7 @@ class PdfReaderDialog(QDialog):
         lay_toc.setSpacing(6)
 
         self.tree_toc = QTreeWidget()
+        self.tree_toc.setFocusPolicy(Qt.NoFocus)
         self.tree_toc.setItemDelegate(NoFocusItemDelegate(self.tree_toc))
         self.tree_toc.setHeaderHidden(True)
         self.tree_toc.setAnimated(True)
@@ -650,6 +652,7 @@ class PdfReaderDialog(QDialog):
         lay_bm.setSpacing(6)
 
         self.list_bookmarks = QListWidget()
+        self.list_bookmarks.setFocusPolicy(Qt.NoFocus)
         self.list_bookmarks.setStyleSheet("""
             QListWidget {
                 background-color: transparent;
@@ -687,6 +690,7 @@ class PdfReaderDialog(QDialog):
         lay_thumbs.setSpacing(6)
 
         self.list_thumbnails = QListWidget()
+        self.list_thumbnails.setFocusPolicy(Qt.NoFocus)
         self.list_thumbnails.setViewMode(QListWidget.IconMode)
         self.list_thumbnails.setIconSize(QSize(90, 120))
         self.list_thumbnails.setGridSize(QSize(110, 150))
@@ -889,7 +893,8 @@ class PdfReaderDialog(QDialog):
 
         # Jump to initial page
         target_idx = max(0, min(self.initial_page - 1, p_count - 1))
-        self.view.pageNavigator().jump(target_idx, self.view.pageNavigator().currentLocation(), self.view.pageNavigator().currentZoom())
+        self.view.pageNavigator().jump(target_idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
+        self.view.setFocus()
 
         # Load TOC tree
         self._populate_toc()
@@ -929,6 +934,7 @@ class PdfReaderDialog(QDialog):
         p_num = item.data(Qt.UserRole)
         if p_num:
             self._jump_to_page(int(p_num))
+            self.view.setFocus()
 
     def _refresh_bookmarks_list(self) -> None:
         self.list_bookmarks.clear()
@@ -953,6 +959,7 @@ class PdfReaderDialog(QDialog):
         p_num = item.data(Qt.UserRole)
         if p_num:
             self._jump_to_page(int(p_num))
+            self.view.setFocus()
 
     def _toggle_bookmark(self) -> None:
         curr_p = self.view.pageNavigator().currentPage() + 1
@@ -1163,11 +1170,12 @@ class PdfReaderDialog(QDialog):
         idx = max(0, min(page_num - 1, p_count - 1))
         self._is_jumping = True
         self.spin_page.setValue(idx + 1)
-        self.view.pageNavigator().jump(idx, self.view.pageNavigator().currentLocation(), self.view.pageNavigator().currentZoom())
+        self.view.pageNavigator().jump(idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
         self._is_jumping = False
         self._record_progress(idx + 1)
         self._update_bookmark_button_state(idx + 1)
         self._sync_active_thumbnail(idx)
+        self.view.setFocus()
 
     def _on_pdf_page_changed(self, page_index: int) -> None:
         current_p = page_index + 1
