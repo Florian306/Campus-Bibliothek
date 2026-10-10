@@ -32,6 +32,15 @@ class AppConfig:
     github_auto_sync: bool = False
     app_version: str = "1.0.0"
     search_engines: list = field(default_factory=lambda: ["bing", "duckduckgo", "openalex", "wikipedia", "crossref"])
+    # Mail & Calendar settings (JARVIS)
+    mail_enabled: bool = False
+    mail_host: str = ""
+    mail_port: int = 993
+    mail_user: str = ""
+    mail_password: str = ""
+    mail_only_unseen: bool = True
+    mail_folder: str = "INBOX"
+    cal_url: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts dataclass to dictionary."""
