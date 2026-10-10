@@ -317,9 +317,14 @@ class CampusMainWindow(QMainWindow):
                 self.view_catalog._refresh_single_book(book_id)
 
     def closeEvent(self, event) -> None:
-        """Instant zero-latency termination."""
+        """Saves cloud state if auto_sync enabled, then performs clean exit."""
         try:
             self.hide()
+            from core.config import load_app_config
+            from core.github_sync import GitHubSyncService
+            cfg = load_app_config()
+            if cfg.github_auto_sync and cfg.github_token.strip():
+                GitHubSyncService.push_to_gist()
         except Exception:
             pass
         os._exit(0)

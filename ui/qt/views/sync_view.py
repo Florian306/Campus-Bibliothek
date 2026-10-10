@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QLineEdit,
     QInputDialog,
+    QCheckBox,
 )
 
 from ui.qt.icons import create_vector_icon
@@ -279,6 +280,34 @@ class SyncView(QWidget):
         gh_btns_row.addStretch()
 
         gh_layout.addLayout(gh_btns_row)
+
+        # Auto-sync option row
+        auto_sync_row = QHBoxLayout()
+        self.chk_auto_sync = QCheckBox("Automatischer Cloud-Sync (beim Beenden der App & nach Delta-Scans)")
+        self.chk_auto_sync.setStyleSheet("""
+            QCheckBox {
+                color: #C9D1D9;
+                font-size: 12px;
+                font-weight: 500;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid #30363D;
+                background-color: #0D1117;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #238636;
+                border-color: #2EA043;
+            }
+        """)
+        self.chk_auto_sync.toggled.connect(self._on_auto_sync_toggled)
+        auto_sync_row.addWidget(self.chk_auto_sync)
+        auto_sync_row.addStretch()
+        gh_layout.addLayout(auto_sync_row)
+
         main_layout.addWidget(card_github)
         self._refresh_github_status()
 
@@ -373,23 +402,43 @@ class SyncView(QWidget):
         self.scan_finished.emit()
         QMessageBox.information(self, "Scan abgeschlossen", summary)
 
+        # Trigger auto-sync after scan if enabled and new/updated books were found
+        cfg = load_app_config()
+        if cfg.github_auto_sync and cfg.github_token.strip() and stats.get("new_or_updated", 0) > 0:
+            self._append_log("GitHub Sync: Starte automatischen Cloud-Sync nach Delta-Scan...")
+            self._push_to_github()
+
     def _append_log(self, text: str) -> None:
         ts = time.strftime("%H:%M:%S")
         self.txt_log.appendPlainText(f"[{ts}] {text}")
 
     def _refresh_github_status(self) -> None:
         cfg = load_app_config()
-        if cfg.github_token.strip():
+        has_token = bool(cfg.github_token.strip())
+        if has_token:
             gist_info = f" (Gist: {cfg.github_gist_id[:8]}...)" if cfg.github_gist_id else ""
             self.lbl_sync_status.setText(f"Verbunden{gist_info}")
             self.lbl_sync_status.setStyleSheet("color: #3FB950; border: none; font-size: 11px;")
             self.btn_push_gist.setEnabled(True)
             self.btn_pull_gist.setEnabled(True)
+            self.chk_auto_sync.setEnabled(True)
         else:
             self.lbl_sync_status.setText("Kein Token konfiguriert")
             self.lbl_sync_status.setStyleSheet("color: #8B949E; border: none; font-size: 11px;")
             self.btn_push_gist.setEnabled(False)
             self.btn_pull_gist.setEnabled(False)
+            self.chk_auto_sync.setEnabled(False)
+
+        self.chk_auto_sync.blockSignals(True)
+        self.chk_auto_sync.setChecked(bool(cfg.github_auto_sync))
+        self.chk_auto_sync.blockSignals(False)
+
+    def _on_auto_sync_toggled(self, checked: bool) -> None:
+        cfg = load_app_config()
+        cfg.github_auto_sync = checked
+        save_app_config(cfg)
+        status_text = "aktiviert" if checked else "deaktiviert"
+        self._append_log(f"GitHub Sync: Automatischer Cloud-Sync {status_text}.")
 
     def _configure_github_token(self) -> None:
         cfg = load_app_config()
