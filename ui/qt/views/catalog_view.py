@@ -32,6 +32,7 @@ from ui.qt.icons import create_vector_icon, create_vector_pixmap
 from ui.qt.theme import NoFocusItemDelegate
 from core.library_db import (
     get_all_books,
+    get_book_by_id,
     get_category_counts,
     toggle_desk_item,
     update_reading_progress,
@@ -461,6 +462,42 @@ class CatalogView(QWidget):
                 return str(self.filtered_books[r]["id"])
             return None
 
+    def _refresh_single_book(self, book_id: str) -> None:
+        """Updates reading progress and state for a single book without rebuilding the shelf."""
+        updated = get_book_by_id(book_id)
+        if not updated:
+            return
+
+        # Update in master_books
+        for i, b in enumerate(self.master_books):
+            if str(b.get("id")) == str(book_id):
+                self.master_books[i] = updated
+                break
+
+        # Update in filtered_books
+        for i, b in enumerate(self.filtered_books):
+            if str(b.get("id")) == str(book_id):
+                self.filtered_books[i] = updated
+                # Also update table row if in table mode
+                if self.stacked_views.currentIndex() == 1:
+                    is_desk = bool(updated.get("is_on_desk"))
+                    desk_str = "● Pult" if is_desk else "—"
+                    item_desk = QTableWidgetItem(desk_str)
+                    item_desk.setTextAlignment(Qt.AlignCenter)
+                    if is_desk:
+                        item_desk.setForeground(QColor("#58A6FF"))
+                        item_desk.setFont(QFont("Segoe UI", 9, QFont.Bold))
+                    else:
+                        item_desk.setForeground(QColor("#6E7681"))
+                    self.table_books.setItem(i, 0, item_desk)
+                break
+
+        # Update card widget if rendered in shelf grid
+        bid_str = str(book_id)
+        if bid_str in self.cards_dict:
+            card = self.cards_dict[bid_str]
+            card.update_book_data(updated)
+
     def _launch_book(self, book_id: str) -> None:
         book = next((b for b in self.master_books if str(b["id"]) == str(book_id)), None)
         if not book or not book.get("file_path"):
@@ -470,7 +507,7 @@ class CatalogView(QWidget):
         if cfg.get("use_internal_reader", True):
             dlg = PdfReaderDialog(book, initial_page=saved_page, parent=self)
             dlg.exec()
-            self.load_data()
+            self._refresh_single_book(book_id)
         else:
             open_pdf_in_edge(book["file_path"], page=saved_page)
 

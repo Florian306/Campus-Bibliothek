@@ -605,6 +605,27 @@ def get_all_books(
     return [dict(r) for r in rows]
 
 
+def get_book_by_id(book_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches a single book by ID with all joined desk, category, and extract fields."""
+    conn = get_db_connection()
+    sql = """
+        SELECT 
+            b.*,
+            (SELECT GROUP_CONCAT(category, ' | ') FROM book_categories WHERE book_id = b.id) AS categories_str,
+            (SELECT category FROM book_categories WHERE book_id = b.id AND is_primary = 1) AS primary_category,
+            (SELECT GROUP_CONCAT(tag, ', ') FROM book_tags WHERE book_id = b.id) AS tags_str,
+            (SELECT 1 FROM desk_items WHERE book_id = b.id) AS is_on_desk,
+            (SELECT current_page FROM desk_items WHERE book_id = b.id) AS current_page,
+            (SELECT progress_pct FROM desk_items WHERE book_id = b.id) AS reading_progress,
+            (SELECT latest_edition FROM edition_alerts WHERE book_id = b.id AND is_dismissed = 0) AS new_edition_available,
+            (SELECT COUNT(*) FROM book_extracts WHERE parent_book_id = b.id) AS extract_count
+        FROM books b
+        WHERE b.id = ?;
+    """
+    row = conn.execute(sql, (str(book_id),)).fetchone()
+    return dict(row) if row else None
+
+
 def get_desk_books() -> List[Dict[str, Any]]:
     """Retrieves all books currently placed on the virtual desk."""
     conn = get_db_connection()

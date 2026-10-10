@@ -79,6 +79,7 @@ class QuickLookDialog(QDialog):
 
         self._toc_thread = None
         self._cached_toc = None
+        self.was_data_modified = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -509,6 +510,7 @@ class QuickLookDialog(QDialog):
         bid = str(self.book.get("id", ""))
         if bid:
             toggle_desk_item(bid)
+            self.was_data_modified = True
             self.accept()
 
     def _delete_book_prompt(self) -> None:
@@ -543,6 +545,7 @@ class QuickLookDialog(QDialog):
             delete_file_disk = chk_delete_file.isChecked()
             success, err = delete_book(bid, delete_file=delete_file_disk)
             if success:
+                self.was_data_modified = True
                 self.accept()
             else:
                 QMessageBox.critical(self, "Fehler beim Löschen", err or "Unbekannter Fehler.")

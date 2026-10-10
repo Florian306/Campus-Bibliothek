@@ -311,7 +311,10 @@ class CampusMainWindow(QMainWindow):
         if book:
             dlg = QuickLookDialog(book, self)
             dlg.exec()
-            self._on_data_modified()
+            if getattr(dlg, "was_data_modified", False):
+                self._on_data_modified()
+            else:
+                self.view_catalog._refresh_single_book(book_id)
 
     def closeEvent(self, event) -> None:
         """Instant zero-latency termination."""

@@ -124,24 +124,24 @@ class BookCard(QFrame):
 
             indicators_layout.addWidget(ext_badge)
 
-        if is_desk:
-            desk_badge = QWidget()
-            desk_badge_layout = QHBoxLayout(desk_badge)
-            desk_badge_layout.setContentsMargins(0, 0, 0, 0)
-            desk_badge_layout.setSpacing(3)
+        self.desk_badge = QWidget()
+        desk_badge_layout = QHBoxLayout(self.desk_badge)
+        desk_badge_layout.setContentsMargins(0, 0, 0, 0)
+        desk_badge_layout.setSpacing(3)
 
-            lbl_bm = QLabel()
-            lbl_bm.setPixmap(create_vector_pixmap("bookmark", "#58A6FF", 12))
-            lbl_bm.setStyleSheet("border: none; background: transparent;")
-            desk_badge_layout.addWidget(lbl_bm)
+        lbl_bm = QLabel()
+        lbl_bm.setPixmap(create_vector_pixmap("bookmark", "#58A6FF", 12))
+        lbl_bm.setStyleSheet("border: none; background: transparent;")
+        desk_badge_layout.addWidget(lbl_bm)
 
-            if pct > 0:
-                lbl_pct = QLabel(f"{pct}%")
-                lbl_pct.setFont(QFont("Segoe UI", 8, QFont.Bold))
-                lbl_pct.setStyleSheet("color: #58A6FF; border: none; background: transparent;")
-                desk_badge_layout.addWidget(lbl_pct)
+        self.lbl_pct = QLabel(f"{pct}%" if pct > 0 else "")
+        self.lbl_pct.setFont(QFont("Segoe UI", 8, QFont.Bold))
+        self.lbl_pct.setStyleSheet("color: #58A6FF; border: none; background: transparent;")
+        self.lbl_pct.setVisible(pct > 0)
+        desk_badge_layout.addWidget(self.lbl_pct)
 
-            indicators_layout.addWidget(desk_badge)
+        indicators_layout.addWidget(self.desk_badge)
+        self.desk_badge.setVisible(is_desk)
 
         top_bar.addLayout(indicators_layout)
         layout.addLayout(top_bar)
@@ -230,6 +230,25 @@ class BookCard(QFrame):
                 self.lbl_cover.setPixmap(pixmap)
             except Exception:
                 pass
+
+    def update_book_data(self, updated_book: Dict[str, Any]) -> None:
+        """Dynamically updates reading progress and desk status on this existing card without rebuilding."""
+        self.book = updated_book
+        is_desk = bool(updated_book.get("is_on_desk"))
+        pct = int(updated_book.get("reading_progress") or 0)
+
+        if hasattr(self, "desk_badge"):
+            self.desk_badge.setVisible(is_desk)
+        if hasattr(self, "lbl_pct"):
+            if pct > 0 and is_desk:
+                self.lbl_pct.setText(f"{pct}%")
+                self.lbl_pct.setVisible(True)
+            else:
+                self.lbl_pct.setVisible(False)
+
+        if hasattr(self, "prog_bar"):
+            self.prog_bar.setValue(pct)
+            self.prog_bar.setVisible(is_desk and pct > 0)
 
     def set_selected(self, selected: bool) -> None:
         self.is_selected = selected

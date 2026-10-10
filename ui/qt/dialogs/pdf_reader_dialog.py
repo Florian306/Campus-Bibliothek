@@ -110,6 +110,21 @@ class AiExplainerWorker(QThread):
             self.error_occurred.emit(str(e))
 
 
+class TocLoaderWorker(QThread):
+    finished_toc = Signal(list)
+
+    def __init__(self, file_path: str, parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+
+    def run(self):
+        try:
+            items = extract_pdf_toc(self.file_path) if self.file_path and os.path.exists(self.file_path) else []
+        except Exception:
+            items = []
+        self.finished_toc.emit(items)
+
+
 class PdfReaderDialog(QDialog):
     """Integrated In-App PDF Reader with TOC Navigation, Auto-Saved Progress, Notes & AI Assistant."""
 
@@ -140,6 +155,7 @@ class PdfReaderDialog(QDialog):
         self.doc = QPdfDocument(self) if HAS_QT_PDF else None
         self.view = QPdfView(self) if HAS_QT_PDF else None
         self._explainer_thread: Optional[AiExplainerWorker] = None
+        self._toc_thread: Optional[TocLoaderWorker] = None
         self._is_jumping = False
 
         if not HAS_QT_PDF:
@@ -616,17 +632,10 @@ class PdfReaderDialog(QDialog):
                 self._apply_toc_items(_TOC_CACHE[norm_path])
                 return
 
-        # Load TOC in background to keep PDF reader immediately responsive
-        def bg_load():
-            try:
-                items = extract_pdf_toc(self.file_path)
-            except Exception:
-                items = []
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: self._apply_toc_items(items))
-
-        import threading
-        threading.Thread(target=bg_load, daemon=True).start()
+        # Load TOC via QThread worker with Qt Signal delivery
+        self._toc_thread = TocLoaderWorker(self.file_path, parent=self)
+        self._toc_thread.finished_toc.connect(self._apply_toc_items)
+        self._toc_thread.start()
 
     def _apply_toc_items(self, toc_items: List) -> None:
         self.tree_toc.setUpdatesEnabled(False)
