@@ -137,46 +137,43 @@ class InboxAnalysisWorker(QThread):
 
 
 class DropZoneFrame(QFrame):
-    """Interactive drag and drop target container for PDF files."""
+    """Interactive drag and drop target container for PDF files with sleek modern aesthetics."""
     files_dropped = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
+        self._apply_normal_style()
+
+    def _apply_normal_style(self):
         self.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #121826, stop:1 #162035);
-                border: 2px dashed #2E4268;
-                border-radius: 10px;
-                padding: 16px;
+            QFrame#inboxDropZone {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0.8, stop:0 #111726, stop:1 #151F33);
+                border: 2px dashed #283856;
+                border-radius: 12px;
             }
-            QFrame:hover {
-                border-color: #58A6FF;
-                background-color: #17243B;
+            QFrame#inboxDropZone:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0.8, stop:0 #141C30, stop:1 #1A2742);
+                border: 2px dashed #58A6FF;
+            }
+        """)
+
+    def _apply_hover_style(self):
+        self.setStyleSheet("""
+            QFrame#inboxDropZone {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0.8, stop:0 #192642, stop:1 #1E3259);
+                border: 2px dashed #79C0FF;
+                border-radius: 12px;
             }
         """)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self.setStyleSheet("""
-                QFrame {
-                    background-color: #1D2D4A;
-                    border: 2px dashed #58A6FF;
-                    border-radius: 10px;
-                    padding: 16px;
-                }
-            """)
+            self._apply_hover_style()
 
     def dragLeaveEvent(self, event) -> None:
-        self.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #121826, stop:1 #162035);
-                border: 2px dashed #2E4268;
-                border-radius: 10px;
-                padding: 16px;
-            }
-        """)
+        self._apply_normal_style()
 
     def dropEvent(self, event: QDropEvent) -> None:
         urls = event.mimeData().urls()
@@ -185,9 +182,49 @@ class DropZoneFrame(QFrame):
             path = u.toLocalFile()
             if path and os.path.exists(path) and path.lower().endswith(".pdf"):
                 files.append(path)
-        self.dragLeaveEvent(event)
+        self._apply_normal_style()
         if files:
             self.files_dropped.emit(files)
+
+
+class InboxCoverWorker(QThread):
+    """Generates small cover pixmaps asynchronously to keep the UI silky smooth."""
+    cover_ready = Signal(int, QPixmap)  # item_id, pixmap
+
+    def __init__(self, items: List[Dict], parent=None):
+        super().__init__(parent)
+        self.items = items
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
+
+    def run(self):
+        import fitz
+        for it in self.items:
+            if self._is_cancelled:
+                break
+            item_id = it.get("id")
+            fp = it.get("file_path", "")
+            if not fp or not os.path.exists(fp):
+                continue
+            try:
+                doc = fitz.open(fp)
+                if len(doc) > 0:
+                    page = doc[0]
+                    # Render 48x68 thumbnail
+                    rect = page.rect
+                    scale = 68.0 / max(rect.height, 1)
+                    mat = fitz.Matrix(scale, scale)
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
+                    qpix = QPixmap.fromImage(img)
+                    doc.close()
+                    self.cover_ready.emit(item_id, qpix)
+                else:
+                    doc.close()
+            except Exception:
+                pass
 
 
 class InboxView(QWidget):
@@ -200,6 +237,8 @@ class InboxView(QWidget):
         self.inbox_dir = get_inbox_directory()
         self.storage_dir = get_books_storage_dir()
         self._analysis_thread: Optional[InboxAnalysisWorker] = None
+        self._cover_thread: Optional[InboxCoverWorker] = None
+        self._cover_cache: Dict[int, QPixmap] = {}
         self._items: List[Dict] = []
 
         self._build_ui()
@@ -207,41 +246,72 @@ class InboxView(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 20)
-        root.setSpacing(14)
+        root.setContentsMargins(28, 22, 28, 22)
+        root.setSpacing(16)
 
-        # Header Title Row
+        # -------------------------------------------------------------
+        # 1. Header Banner Row
+        # -------------------------------------------------------------
         top_row = QHBoxLayout()
+        top_row.setSpacing(14)
+
+        icon_badge = QLabel()
+        icon_badge.setPixmap(create_vector_pixmap("inbox", "#58A6FF", 24))
+        icon_badge.setFixedSize(44, 44)
+        icon_badge.setAlignment(Qt.AlignCenter)
+        icon_badge.setStyleSheet("""
+            background: #141E33;
+            border: 1px solid #283856;
+            border-radius: 10px;
+        """)
+        top_row.addWidget(icon_badge)
+
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
 
-        self.lbl_title = QLabel("📥 Buch-Posteingang & Staging-Hub")
+        title_row = QHBoxLayout()
+        title_row.setSpacing(10)
+        self.lbl_title = QLabel("Buch-Posteingang & Staging-Hub")
         self.lbl_title.setFont(QFont("Segoe UI", 16, QFont.Bold))
         self.lbl_title.setStyleSheet("color: #F0F6FC;")
-        title_box.addWidget(self.lbl_title)
+        title_row.addWidget(self.lbl_title)
 
-        lbl_sub = QLabel(f"Warteschlange für Neuanschaffungen • Persistenter Staging-Ordner: {self.inbox_dir}")
+        self.lbl_badge_status = QLabel("Warteschlange")
+        self.lbl_badge_status.setFont(QFont("Segoe UI", 8, QFont.Bold))
+        self.lbl_badge_status.setStyleSheet("""
+            background-color: #12213D;
+            color: #58A6FF;
+            border: 1px solid #284475;
+            border-radius: 9px;
+            padding: 2px 8px;
+        """)
+        title_row.addWidget(self.lbl_badge_status)
+        title_row.addStretch()
+        title_box.addLayout(title_row)
+
+        lbl_sub = QLabel(f"Neuanschaffungen prüfen, klassifizieren und per 1-Klick in die Bibliothek einsortieren")
         lbl_sub.setFont(QFont("Segoe UI", 9))
         lbl_sub.setStyleSheet("color: #8B949E;")
         title_box.addWidget(lbl_sub)
         top_row.addLayout(title_box)
         top_row.addStretch()
 
-        btn_open_folder = QPushButton("  _Inbox im Explorer öffnen")
-        btn_open_folder.setIcon(create_vector_icon("export", "#58A6FF", 14))
+        btn_open_folder = QPushButton("  _Inbox im Explorer")
+        btn_open_folder.setIcon(create_vector_icon("export", "#58A6FF", 13))
         btn_open_folder.setCursor(Qt.PointingHandCursor)
+        btn_open_folder.setFixedHeight(34)
         btn_open_folder.setStyleSheet("""
             QPushButton {
-                background-color: #141C2E;
+                background-color: #121927;
                 color: #C9D1D9;
-                border: 1px solid #232F48;
+                border: 1px solid #233148;
                 border-radius: 6px;
-                padding: 6px 12px;
+                padding: 0 14px;
                 font-size: 11px;
                 font-weight: 600;
             }
             QPushButton:hover {
-                background-color: #1A253D;
+                background-color: #1B263B;
                 border-color: #58A6FF;
                 color: #FFFFFF;
             }
@@ -250,20 +320,21 @@ class InboxView(QWidget):
         top_row.addWidget(btn_open_folder)
 
         btn_refresh = QPushButton("  Neu scannen")
-        btn_refresh.setIcon(create_vector_icon("sync", "#58A6FF", 14))
+        btn_refresh.setIcon(create_vector_icon("sync", "#58A6FF", 13))
         btn_refresh.setCursor(Qt.PointingHandCursor)
+        btn_refresh.setFixedHeight(34)
         btn_refresh.setStyleSheet("""
             QPushButton {
-                background-color: #141C2E;
+                background-color: #121927;
                 color: #C9D1D9;
-                border: 1px solid #232F48;
+                border: 1px solid #233148;
                 border-radius: 6px;
-                padding: 6px 12px;
+                padding: 0 14px;
                 font-size: 11px;
                 font-weight: 600;
             }
             QPushButton:hover {
-                background-color: #1A253D;
+                background-color: #1B263B;
                 border-color: #58A6FF;
                 color: #FFFFFF;
             }
@@ -274,80 +345,114 @@ class InboxView(QWidget):
         root.addLayout(top_row)
 
         # -------------------------------------------------------------
-        # 1. Drag & Drop Dropzone
+        # 2. Sleek Compact Drag & Drop Banner
         # -------------------------------------------------------------
         self.drop_zone = DropZoneFrame()
+        self.drop_zone.setObjectName("inboxDropZone")
         self.drop_zone.files_dropped.connect(self._on_files_dropped)
-        dz_layout = QVBoxLayout(self.drop_zone)
-        dz_layout.setContentsMargins(16, 14, 16, 14)
-        dz_layout.setAlignment(Qt.AlignCenter)
-        dz_layout.setSpacing(6)
+        self.drop_zone.setFixedHeight(105)
 
-        lbl_dz_icon = QLabel("📥")
-        lbl_dz_icon.setStyleSheet("font-size: 26px; background: transparent; border: none;")
+        dz_layout = QHBoxLayout(self.drop_zone)
+        dz_layout.setContentsMargins(24, 12, 24, 12)
+        dz_layout.setSpacing(18)
+
+        dz_icon_frame = QFrame()
+        dz_icon_frame.setFixedSize(54, 54)
+        dz_icon_frame.setStyleSheet("""
+            background: #141E33;
+            border: 1px solid #283856;
+            border-radius: 27px;
+        """)
+        dz_icon_lay = QVBoxLayout(dz_icon_frame)
+        dz_icon_lay.setContentsMargins(0, 0, 0, 0)
+        dz_icon_lay.setAlignment(Qt.AlignCenter)
+        lbl_dz_icon = QLabel()
+        lbl_dz_icon.setPixmap(create_vector_pixmap("arrow_up", "#58A6FF", 22))
+        lbl_dz_icon.setStyleSheet("border: none; background: transparent;")
         lbl_dz_icon.setAlignment(Qt.AlignCenter)
-        dz_layout.addWidget(lbl_dz_icon)
+        dz_icon_lay.addWidget(lbl_dz_icon)
+        dz_layout.addWidget(dz_icon_frame)
 
-        lbl_dz_txt = QLabel("Neue PDF-Bücher einfach per Drag & Drop hierher ziehen")
-        lbl_dz_txt.setFont(QFont("Segoe UI", 12, QFont.Bold))
-        lbl_dz_txt.setStyleSheet("color: #F0F6FC; background: transparent; border: none;")
-        lbl_dz_txt.setAlignment(Qt.AlignCenter)
-        dz_layout.addWidget(lbl_dz_txt)
+        dz_text_col = QVBoxLayout()
+        dz_text_col.setContentsMargins(0, 0, 0, 0)
+        dz_text_col.setSpacing(3)
+        dz_text_col.setAlignment(Qt.AlignVCenter)
 
-        lbl_dz_hint = QLabel("Die Dateien landen sicher in der Warteschlange und gehen auch beim Schließen nicht verloren.")
-        lbl_dz_hint.setFont(QFont("Segoe UI", 9))
-        lbl_dz_hint.setStyleSheet("color: #8B949E; background: transparent; border: none;")
-        lbl_dz_hint.setAlignment(Qt.AlignCenter)
-        dz_layout.addWidget(lbl_dz_hint)
+        lbl_dz_title = QLabel("PDF-Bücher einfach per Drag & Drop hier ablegen")
+        lbl_dz_title.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        lbl_dz_title.setStyleSheet("color: #F0F6FC; background: transparent; border: none;")
+        dz_text_col.addWidget(lbl_dz_title)
 
-        btn_select_files = QPushButton("Oder Dateien auswählen...")
+        lbl_dz_sub = QLabel(f"Wird automatisch in '{os.path.basename(self.inbox_dir)}' zwischengespeichert und per KI analysiert.")
+        lbl_dz_sub.setFont(QFont("Segoe UI", 9))
+        lbl_dz_sub.setStyleSheet("color: #8B949E; background: transparent; border: none;")
+        dz_text_col.addWidget(lbl_dz_sub)
+
+        dz_layout.addLayout(dz_text_col)
+        dz_layout.addStretch()
+
+        btn_select_files = QPushButton("  Dateien auswählen...")
+        btn_select_files.setIcon(create_vector_icon("plus", "#FFFFFF", 12))
         btn_select_files.setCursor(Qt.PointingHandCursor)
-        btn_select_files.setFixedWidth(180)
+        btn_select_files.setFixedHeight(36)
         btn_select_files.setStyleSheet("""
             QPushButton {
-                background-color: #1F6FEB;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #287FFB);
                 color: #FFFFFF;
                 border: 1px solid #388BFD;
-                border-radius: 5px;
-                padding: 6px 12px;
+                border-radius: 7px;
+                padding: 0 16px;
                 font-weight: bold;
                 font-size: 11px;
-                margin-top: 4px;
             }
             QPushButton:hover {
-                background-color: #388BFD;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2C7DF4, stop:1 #3B8CFF);
+                border-color: #58A6FF;
             }
         """)
         btn_select_files.clicked.connect(self._browse_and_add_files)
-        dz_layout.addWidget(btn_select_files, alignment=Qt.AlignCenter)
+        dz_layout.addWidget(btn_select_files)
 
         root.addWidget(self.drop_zone)
 
         # -------------------------------------------------------------
-        # 2. Staging Queue Table
+        # 3. Staging Queue Section Header
         # -------------------------------------------------------------
         queue_header = QHBoxLayout()
+        queue_header.setContentsMargins(0, 4, 0, 0)
         self.lbl_queue_count = QLabel("Warteschlange (0 Bücher)")
-        self.lbl_queue_count.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self.lbl_queue_count.setFont(QFont("Segoe UI", 12, QFont.Bold))
         self.lbl_queue_count.setStyleSheet("color: #F0F6FC;")
         queue_header.addWidget(self.lbl_queue_count)
+
+        self.lbl_queue_sub = QLabel("— Bereit zur Übernahme in den Bibliothekskatalog")
+        self.lbl_queue_sub.setFont(QFont("Segoe UI", 9))
+        self.lbl_queue_sub.setStyleSheet("color: #8B949E; margin-left: 4px;")
+        queue_header.addWidget(self.lbl_queue_sub)
         queue_header.addStretch()
 
-        self.btn_batch_file = QPushButton("  ⚡ Alle Bereiten einsortieren")
+        self.btn_batch_file = QPushButton("  Alle Bereiten einsortieren")
         self.btn_batch_file.setIcon(create_vector_icon("check", "#FFFFFF", 14))
         self.btn_batch_file.setCursor(Qt.PointingHandCursor)
+        self.btn_batch_file.setFixedHeight(34)
         self.btn_batch_file.setStyleSheet("""
             QPushButton {
-                background-color: #238636;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #238636, stop:1 #2EA043);
                 color: #FFFFFF;
-                border: 1px solid #2EA043;
-                border-radius: 5px;
-                padding: 6px 14px;
+                border: 1px solid #3FB950;
+                border-radius: 6px;
+                padding: 0 16px;
                 font-size: 11px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #2EA043;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2EA043, stop:1 #3FB950);
+                border-color: #56D364;
+            }
+            QPushButton:disabled {
+                background: #17261D;
+                color: #486A53;
+                border: 1px solid #233D2D;
             }
         """)
         self.btn_batch_file.clicked.connect(self._file_all_ready)
@@ -355,38 +460,61 @@ class InboxView(QWidget):
 
         root.addLayout(queue_header)
 
+        # -------------------------------------------------------------
+        # 4. Premium Modern Table Widget
+        # -------------------------------------------------------------
         self.table = QTableWidget()
         self.table.setItemDelegate(NoFocusItemDelegate(self.table))
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
-            "Vorschau & Titel", "Autor", "KI-Kategorie", "Status / Duplikat", "Dateigröße", "Aktion"
+            "VORSCHAU & BUCHT общеTITEL", "AUTOR", "KI-KATEGORIE", "STATUS / DUPLIKAT", "DATEIGRÖSSE", "AKTION"
+        ])
+        self.table.setHorizontalHeaderLabels([
+            "BUCHTITEL & COVER", "AUTOR", "KI-KATEGORIE", "STATUS", "DATEIGRÖSSE", "AKTION"
         ])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self.table.verticalHeader().setDefaultSectionSize(48)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+
+        self.table.setColumnWidth(1, 160)
+        self.table.setColumnWidth(2, 220)
+        self.table.setColumnWidth(3, 150)
+        self.table.setColumnWidth(4, 110)
+        self.table.setColumnWidth(5, 170)
+
+        self.table.verticalHeader().setDefaultSectionSize(64)
         self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: #0E131F;
+                background-color: #0B0F19;
                 color: #C9D1D9;
-                border: 1px solid #1E283D;
-                border-radius: 8px;
-                gridline-color: #172033;
-                selection-background-color: #1A2640;
+                border: 1px solid #1A2436;
+                border-radius: 10px;
+                selection-background-color: #141E33;
+                selection-color: #F0F6FC;
                 font-size: 12px;
+                outline: none;
+            }
+            QTableWidget::item {
+                border-bottom: 1px solid #141C2B;
+                padding: 6px 8px;
+            }
+            QTableWidget::item:selected {
+                background-color: #141E33;
             }
             QHeaderView::section {
-                background-color: #121826;
-                color: #8B949E;
+                background-color: #101624;
+                color: #7D8590;
                 border: none;
-                border-bottom: 1px solid #1E283D;
-                padding: 8px;
-                font-weight: bold;
-                font-size: 11px;
+                border-bottom: 1px solid #1E2B40;
+                padding: 10px 8px;
+                font-weight: 700;
+                font-size: 10px;
+                letter-spacing: 0.5px;
             }
         """)
         root.addWidget(self.table, stretch=1)
@@ -421,7 +549,7 @@ class InboxView(QWidget):
                     counter += 1
                 try:
                     shutil.copy2(src, dest)
-                except Exception as e:
+                except Exception:
                     continue
 
             add_to_inbox_queue(file_path=dest, status="pending")
@@ -451,6 +579,76 @@ class InboxView(QWidget):
         if pending_items:
             self._start_analysis_worker(pending_items)
 
+        # 4. Generate small cover previews in background
+        self._start_cover_worker(self._items)
+
+    def _start_cover_worker(self, items: List[Dict]) -> None:
+        needed = [it for it in items if it["id"] not in self._cover_cache]
+        if not needed:
+            return
+        if self._cover_thread and self._cover_thread.isRunning():
+            self._cover_thread.cancel()
+            self._cover_thread.wait(200)
+        self._cover_thread = InboxCoverWorker(needed, parent=self)
+        self._cover_thread.cover_ready.connect(self._on_cover_ready)
+        self._cover_thread.start()
+
+    def _on_cover_ready(self, item_id: int, pixmap: QPixmap) -> None:
+        self._cover_cache[item_id] = pixmap
+        # Update row cell widget
+        for r in range(self.table.rowCount()):
+            if r < len(self._items) and self._items[r]["id"] == item_id:
+                w = self.table.cellWidget(r, 0)
+                if w:
+                    lbl_icon = w.findChild(QLabel, "coverLabel")
+                    if lbl_icon:
+                        lbl_icon.setPixmap(pixmap.scaled(38, 52, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                break
+
+    def _create_title_widget(self, item: Dict) -> QWidget:
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(6, 6, 8, 6)
+        lay.setSpacing(12)
+
+        item_id = item["id"]
+        cover_lbl = QLabel()
+        cover_lbl.setObjectName("coverLabel")
+        cover_lbl.setFixedSize(38, 52)
+        cover_lbl.setAlignment(Qt.AlignCenter)
+        cover_lbl.setStyleSheet("""
+            background: #141B2B;
+            border: 1px solid #23334E;
+            border-radius: 4px;
+        """)
+
+        if item_id in self._cover_cache:
+            cover_lbl.setPixmap(self._cover_cache[item_id].scaled(38, 52, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            cover_lbl.setPixmap(create_vector_pixmap("book", "#58A6FF", 18))
+
+        lay.addWidget(cover_lbl)
+
+        info_box = QVBoxLayout()
+        info_box.setSpacing(2)
+        info_box.setAlignment(Qt.AlignVCenter)
+
+        title_text = item.get("suggested_title") or os.path.splitext(item.get("filename", ""))[0]
+        lbl_t = QLabel(title_text)
+        lbl_t.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        lbl_t.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
+        lbl_t.setToolTip(f"Klicke zum Bearbeiten\nDateiname: {item.get('filename')}")
+        info_box.addWidget(lbl_t)
+
+        lbl_fn = QLabel(item.get("filename", ""))
+        lbl_fn.setFont(QFont("Segoe UI", 8))
+        lbl_fn.setStyleSheet("color: #6E7681; border: none; background: transparent;")
+        info_box.addWidget(lbl_fn)
+
+        lay.addLayout(info_box)
+        lay.addStretch()
+        return w
+
     def _reload_table_data(self) -> None:
         self._items = get_inbox_queue()
         # Filter out items whose files no longer exist on disk
@@ -464,36 +662,62 @@ class InboxView(QWidget):
 
         self.table.setRowCount(len(self._items))
         self.lbl_queue_count.setText(f"Warteschlange ({len(self._items)} Bücher)")
+        self.btn_batch_file.setEnabled(len(self._items) > 0)
         self.queue_updated.emit(len(self._items))
 
         all_cats = [c[0] for c in get_category_counts()] or STANDARD_CATEGORIES
 
         for row, it in enumerate(self._items):
             item_id = it["id"]
-            # Col 0: Title Edit & Icon
-            title_val = it.get("suggested_title") or it.get("filename", "")
-            item_title = QTableWidgetItem(f"  📖 {title_val}")
-            item_title.setToolTip(f"Datei: {it['filename']}\nKlicke zum Bearbeiten")
-            self.table.setItem(row, 0, item_title)
 
-            # Col 1: Author
-            author_val = it.get("suggested_author") or "Unbekannt"
-            item_author = QTableWidgetItem(author_val)
-            self.table.setItem(row, 1, item_author)
+            # Col 0: Styled Cover + Title Card Widget
+            title_widget = self._create_title_widget(it)
+            self.table.setCellWidget(row, 0, title_widget)
+
+            # Col 1: Author (Editable LineEdit)
+            author_edit = QLineEdit(it.get("suggested_author") or "Unbekannt")
+            author_edit.setStyleSheet("""
+                QLineEdit {
+                    background-color: #121A2A;
+                    color: #C9D1D9;
+                    border: 1px solid #23314A;
+                    border-radius: 5px;
+                    padding: 5px 8px;
+                    font-size: 11px;
+                }
+                QLineEdit:focus {
+                    border-color: #58A6FF;
+                    background-color: #17243B;
+                    color: #FFFFFF;
+                }
+            """)
+            author_edit.textChanged.connect(lambda txt, iid=item_id: update_inbox_item(iid, suggested_author=txt))
+            self.table.setCellWidget(row, 1, author_edit)
 
             # Col 2: Category Combobox
             combo_cat = QComboBox()
             combo_cat.setStyleSheet("""
                 QComboBox {
-                    background-color: #141C2E;
+                    background-color: #121A2A;
                     color: #58A6FF;
-                    border: 1px solid #232F48;
-                    border-radius: 4px;
-                    padding: 4px 8px;
+                    border: 1px solid #23314A;
+                    border-radius: 5px;
+                    padding: 5px 8px;
                     font-size: 11px;
                     font-weight: 600;
                 }
+                QComboBox:hover {
+                    border-color: #58A6FF;
+                }
                 QComboBox::drop-down { border: none; }
+                QComboBox QAbstractItemView {
+                    background-color: #121A2A;
+                    color: #C9D1D9;
+                    selection-background-color: #1F6FEB;
+                    selection-color: #FFFFFF;
+                    border: 1px solid #23314A;
+                    outline: none;
+                }
             """)
             combo_cat.addItems(all_cats)
             cur_cat = it.get("suggested_category", "Sonstiges")
@@ -503,81 +727,110 @@ class InboxView(QWidget):
             combo_cat.currentTextChanged.connect(lambda txt, iid=item_id: update_inbox_item(iid, suggested_category=txt))
             self.table.setCellWidget(row, 2, combo_cat)
 
-            # Col 3: Status / Duplicate Warning
+            # Col 3: Status / Duplicate Warning Badge
             dup = it.get("duplicate_warning", "")
             conf = it.get("confidence", 0)
             status = it.get("status", "pending")
             status_box = QWidget()
             s_lay = QHBoxLayout(status_box)
             s_lay.setContentsMargins(6, 4, 6, 4)
-            s_lay.setSpacing(6)
+            s_lay.setAlignment(Qt.AlignCenter)
 
             if dup:
                 lbl_dup = QLabel("⚠️ Duplikat")
                 lbl_dup.setToolTip(dup)
-                lbl_dup.setStyleSheet("color: #F0883E; font-weight: bold; background: #2B1E12; border: 1px solid #6E4016; border-radius: 4px; padding: 2px 6px; font-size: 11px;")
+                lbl_dup.setStyleSheet("""
+                    color: #FFA657;
+                    font-weight: bold;
+                    background: #2D1A10;
+                    border: 1px solid #633616;
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 10px;
+                """)
                 s_lay.addWidget(lbl_dup)
             elif status == "ready":
                 lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
-                lbl_ready.setStyleSheet("color: #3FB950; font-weight: bold; background: #0E2416; border: 1px solid #1E502C; border-radius: 4px; padding: 2px 6px; font-size: 11px;")
+                lbl_ready.setStyleSheet("""
+                    color: #3FB950;
+                    font-weight: bold;
+                    background: #0D2616;
+                    border: 1px solid #1E542C;
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 10px;
+                """)
                 s_lay.addWidget(lbl_ready)
             else:
                 lbl_pend = QLabel("⏳ Analysiere...")
-                lbl_pend.setStyleSheet("color: #8B949E; font-size: 11px;")
+                lbl_pend.setStyleSheet("""
+                    color: #8B949E;
+                    background: #141C2B;
+                    border: 1px solid #222F47;
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 10px;
+                """)
                 s_lay.addWidget(lbl_pend)
 
-            s_lay.addStretch()
             self.table.setCellWidget(row, 3, status_box)
 
-            # Col 4: File Size
+            # Col 4: File Size & Pages
             sz_mb = it.get("file_size", 0) / (1024 * 1024)
             p_cnt = it.get("page_count", 0)
-            sz_txt = f"{sz_mb:.1f} MB" + (f" ({p_cnt} S.)" if p_cnt > 0 else "")
+            sz_txt = f"{sz_mb:.1f} MB\n{p_cnt} Seiten" if p_cnt > 0 else f"{sz_mb:.1f} MB"
             item_sz = QTableWidgetItem(sz_txt)
             item_sz.setTextAlignment(Qt.AlignCenter)
+            item_sz.setFlags(item_sz.flags() & ~Qt.ItemIsEditable)
             self.table.setItem(row, 4, item_sz)
 
-            # Col 5: Action buttons
+            # Col 5: Action buttons (Fixed width to avoid text truncation)
             act_box = QWidget()
             act_lay = QHBoxLayout(act_box)
-            act_lay.setContentsMargins(4, 4, 4, 4)
+            act_lay.setContentsMargins(6, 4, 6, 4)
             act_lay.setSpacing(6)
+            act_lay.setAlignment(Qt.AlignCenter)
 
-            btn_file = QPushButton("Einsortieren")
+            btn_file = QPushButton(" Einsortieren")
+            btn_file.setIcon(create_vector_icon("check", "#FFFFFF", 12))
             btn_file.setCursor(Qt.PointingHandCursor)
+            btn_file.setFixedHeight(30)
+            btn_file.setMinimumWidth(110)
             btn_file.setStyleSheet("""
                 QPushButton {
-                    background-color: #1F6FEB;
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #287FFB);
                     color: #FFFFFF;
                     border: 1px solid #388BFD;
-                    border-radius: 4px;
-                    padding: 4px 10px;
+                    border-radius: 5px;
+                    padding: 0 10px;
                     font-size: 11px;
                     font-weight: 600;
                 }
                 QPushButton:hover {
-                    background-color: #388BFD;
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2C7DF4, stop:1 #3B8CFF);
+                    border-color: #58A6FF;
                 }
             """)
             btn_file.clicked.connect(lambda _, iid=item_id: self._file_single_book(iid))
             act_lay.addWidget(btn_file)
 
             btn_del = QPushButton("×")
-            btn_del.setToolTip("Aus Posteingang entfernen")
-            btn_del.setFixedSize(24, 24)
+            btn_del.setToolTip("Aus Posteingang entfernen & Datei löschen")
+            btn_del.setFixedSize(30, 30)
             btn_del.setCursor(Qt.PointingHandCursor)
             btn_del.setStyleSheet("""
                 QPushButton {
                     color: #FF7B72;
-                    background: transparent;
+                    background: #1C1417;
                     border: 1px solid #482329;
-                    border-radius: 4px;
-                    font-size: 14px;
+                    border-radius: 5px;
+                    font-size: 15px;
                     font-weight: bold;
                 }
                 QPushButton:hover {
                     background: #381920;
                     border-color: #F85149;
+                    color: #FFFFFF;
                 }
             """)
             btn_del.clicked.connect(lambda _, iid=item_id: self._delete_item(iid))
@@ -600,29 +853,34 @@ class InboxView(QWidget):
             if r < len(self._items) and self._items[r]["id"] == item_id:
                 # Update item title if changed
                 if data.get("suggested_title"):
-                    it_title = self.table.item(r, 0)
-                    if it_title:
-                        it_title.setText(f"  📖 {data['suggested_title']}")
+                    title_w = self.table.cellWidget(r, 0)
+                    if title_w:
+                        lbls = title_w.findChildren(QLabel)
+                        if len(lbls) >= 2:
+                            lbls[1].setText(data["suggested_title"])
 
-                # Update author
+                # Update author edit
                 if data.get("suggested_author"):
-                    it_auth = self.table.item(r, 1)
-                    if it_auth:
-                        it_auth.setText(data['suggested_author'])
+                    auth_w = self.table.cellWidget(r, 1)
+                    if isinstance(auth_w, QLineEdit):
+                        auth_w.blockSignals(True)
+                        auth_w.setText(data["suggested_author"])
+                        auth_w.blockSignals(False)
 
                 # Update category combo
                 combo = self.table.cellWidget(r, 2)
                 if isinstance(combo, QComboBox) and data.get("suggested_category"):
                     idx = combo.findText(data["suggested_category"])
                     if idx >= 0:
+                        combo.blockSignals(True)
                         combo.setCurrentIndex(idx)
+                        combo.blockSignals(False)
 
                 # Update status box
                 stat_box = self.table.cellWidget(r, 3)
                 if stat_box:
                     dup = data.get("duplicate_warning", "")
                     conf = data.get("confidence", 0)
-                    # Re-layout
                     lay = stat_box.layout()
                     while lay.count():
                         w = lay.takeAt(0).widget()
@@ -631,20 +889,36 @@ class InboxView(QWidget):
                     if dup:
                         lbl_dup = QLabel("⚠️ Duplikat")
                         lbl_dup.setToolTip(dup)
-                        lbl_dup.setStyleSheet("color: #F0883E; font-weight: bold; background: #2B1E12; border: 1px solid #6E4016; border-radius: 4px; padding: 2px 6px; font-size: 11px;")
+                        lbl_dup.setStyleSheet("""
+                            color: #FFA657;
+                            font-weight: bold;
+                            background: #2D1A10;
+                            border: 1px solid #633616;
+                            border-radius: 6px;
+                            padding: 4px 8px;
+                            font-size: 10px;
+                        """)
                         lay.addWidget(lbl_dup)
                     else:
                         lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
-                        lbl_ready.setStyleSheet("color: #3FB950; font-weight: bold; background: #0E2416; border: 1px solid #1E502C; border-radius: 4px; padding: 2px 6px; font-size: 11px;")
+                        lbl_ready.setStyleSheet("""
+                            color: #3FB950;
+                            font-weight: bold;
+                            background: #0D2616;
+                            border: 1px solid #1E542C;
+                            border-radius: 6px;
+                            padding: 4px 8px;
+                            font-size: 10px;
+                        """)
                         lay.addWidget(lbl_ready)
-                    lay.addStretch()
 
                 # Update size/pages
                 p_cnt = data.get("page_count", 0)
                 if p_cnt > 0:
                     it_sz = self.table.item(r, 4)
-                    if it_sz and "S." not in it_sz.text():
-                        it_sz.setText(f"{it_sz.text()} ({p_cnt} S.)")
+                    if it_sz and "Seiten" not in it_sz.text():
+                        sz_mb = self._items[r].get("file_size", 0) / (1024 * 1024)
+                        it_sz.setText(f"{sz_mb:.1f} MB\n{p_cnt} Seiten")
                 break
 
     def _on_all_analyzed(self) -> None:
