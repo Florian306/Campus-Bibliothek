@@ -924,6 +924,38 @@ class TextbookSearchView(QWidget):
         self.inp_search.returnPressed.connect(self._trigger_search)
         inp_row.addWidget(self.inp_search, stretch=1)
 
+        self.combo_year_filter = QComboBox()
+        self.combo_year_filter.addItems([
+            "Aktuelle Literatur (ab 2010)",
+            "Moderne Literatur (ab 2000)",
+            "Ab 1990",
+            "Alle Jahre (inkl. Historisch)",
+        ])
+        self.combo_year_filter.setStyleSheet("""
+            QComboBox {
+                background-color: #0B0F19;
+                color: #58A6FF;
+                border: 1px solid #304163;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QComboBox:hover {
+                border-color: #58A6FF;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView {
+                background-color: #121A2A;
+                color: #C9D1D9;
+                selection-background-color: #1F6FEB;
+                selection-color: #FFFFFF;
+                border: 1px solid #23314A;
+                outline: none;
+            }
+        """)
+        inp_row.addWidget(self.combo_year_filter)
+
         self.btn_search = QPushButton(" Fachbücher suchen")
         self.btn_search.setIcon(create_vector_icon("search", "#FFFFFF", 14))
         self.btn_search.setCursor(Qt.PointingHandCursor)
@@ -1069,12 +1101,20 @@ class TextbookSearchView(QWidget):
         self.btn_search.setText(" Suche läuft...")
         self.lbl_status.setText(f"Recherchiere Fachliteratur zu »{query}« über DNB, Crossref, Open Library & Google Books...")
 
-        # Clear existing cards
-        self._clear_results()
+        # Determine min_year from dropdown
+        idx = self.combo_year_filter.currentIndex()
+        if idx == 0:
+            min_yr = 2010
+        elif idx == 1:
+            min_yr = 2000
+        elif idx == 2:
+            min_yr = 1990
+        else:
+            min_yr = 0
 
         def worker():
             try:
-                results = search_all_textbooks(query, max_results=80)
+                results = search_all_textbooks(query, min_year=min_yr, max_results=80)
                 self.signals.search_finished.emit(results)
             except Exception as e:
                 self.signals.search_error.emit(str(e))

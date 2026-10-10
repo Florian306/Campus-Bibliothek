@@ -275,7 +275,7 @@ def query_crossref_books(query: str, limit: int = 15) -> List[Dict[str, Any]]:
 
     words = clean_q.split()[:5]
     q_str = " ".join(words)
-    url = f"https://api.crossref.org/works?query.bibliographic={urllib.parse.quote(q_str)}&filter=type:book&rows={limit}"
+    url = f"https://api.crossref.org/works?query.bibliographic={urllib.parse.quote(q_str)}&filter=type:book,from-pub-date:1990-01-01&rows={limit}"
 
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "CampusLibrary/2.0 (mailto:info@campus-library.de)"})
@@ -414,6 +414,7 @@ def query_openlibrary_books(query: str, limit: int = 25) -> List[Dict[str, Any]]
 def search_all_textbooks(
     query: str,
     faculty_filter: Optional[str] = None,
+    min_year: Optional[int] = 2000,
     limit_per_source: int = 35,
     max_results: Optional[int] = 80,
 ) -> List[Dict[str, Any]]:
@@ -456,15 +457,55 @@ def search_all_textbooks(
             if b.get("category") != faculty_filter:
                 continue
 
+        # Filter by publication year if requested
+        if min_year and min_year > 0:
+            b_yr = b.get("year") or 0
+            if b_yr > 0 and b_yr < min_year:
+                continue
+
         unique_books.append(b)
 
-    # Sort prioritized: books with ISBN, DOI and citations first
-    unique_books.sort(key=lambda x: (
-        1 if x.get("isbn") else 0,
-        1 if x.get("doi") else 0,
-        x.get("citation_count", 0),
-        x.get("year", 0)
-    ), reverse=True)
+    # Sort prioritized: modern textbooks (2000-2026), exact title match, ISBN & DOI
+    def _compute_relevance_score(book: Dict[str, Any]) -> float:
+        score = 0.0
+        yr = book.get("year") or 0
+        title = (book.get("title") or "").lower()
+        q_lower = query.lower().strip()
+
+        # 1. Exact / strong title match bonus
+        if q_lower in title:
+            score += 50.0
+            if title.startswith(q_lower):
+                score += 30.0
+
+        # 2. Modern publication year scoring (boost 2000-2026 strongly, demote historical < 1980)
+        if yr >= 2020:
+            score += 100.0
+        elif yr >= 2010:
+            score += 85.0
+        elif yr >= 2000:
+            score += 70.0
+        elif yr >= 1990:
+            score += 40.0
+        elif yr >= 1980:
+            score += 15.0
+        elif yr > 0:
+            # Historical literature penalty
+            score -= 60.0
+
+        # 3. Identifiers & Citation Boost
+        if book.get("isbn"):
+            score += 25.0
+        if book.get("doi"):
+            score += 20.0
+        if book.get("cover_url"):
+            score += 15.0
+
+        cites = min(book.get("citation_count", 0), 50)
+        score += cites * 0.5
+        return score
+
+    unique_books.sort(key=_compute_relevance_score, reverse=True)
 
     if max_results and max_results > 0:
         return unique_books[:max_results]
