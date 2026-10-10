@@ -455,12 +455,15 @@ class QuickLookDialog(QDialog):
                 update_reading_progress(bid, p_int)
             if path and os.path.exists(path):
                 cfg = load_config()
+                parent_win = self.parentWidget()
+                book_data = self.book
+                cached_toc = self._cached_toc
+                self.accept()
                 if cfg.get("use_internal_reader", True):
-                    dlg = PdfReaderDialog(self.book, initial_page=p_int, toc_items=self._cached_toc, parent=self)
+                    dlg = PdfReaderDialog(book_data, initial_page=p_int, toc_items=cached_toc, parent=parent_win)
                     dlg.exec()
                 else:
                     open_pdf_in_edge(path, page=p_int)
-                    self.accept()
 
     def _jump_selected_chapter(self) -> None:
         if hasattr(self, "tree_toc"):
@@ -492,8 +495,12 @@ class QuickLookDialog(QDialog):
         if path and os.path.exists(path):
             page = self.book.get("current_page", 1)
             cfg = load_config()
+            parent_win = self.parentWidget()
+            book_data = self.book
+            cached_toc = self._cached_toc
+            self.accept()
             if cfg.get("use_internal_reader", True):
-                dlg = PdfReaderDialog(self.book, initial_page=page, toc_items=self._cached_toc, parent=self)
+                dlg = PdfReaderDialog(book_data, initial_page=page, toc_items=cached_toc, parent=parent_win)
                 dlg.exec()
             else:
                 open_pdf_in_edge(path, page=page)

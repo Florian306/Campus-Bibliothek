@@ -469,7 +469,6 @@ class CatalogView(QWidget):
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
             dlg = PdfReaderDialog(book, initial_page=saved_page, parent=self)
-            dlg.progress_updated.connect(lambda bid, p: self.load_data())
             dlg.exec()
             self.load_data()
         else:

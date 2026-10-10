@@ -1160,7 +1160,6 @@ class DeskView(QWidget):
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
             dlg = PdfReaderDialog(self.active_book, initial_page=curr_p, parent=self)
-            dlg.progress_updated.connect(lambda bid, p: self.load_data())
             dlg.exec()
             self.load_data()
             self.data_changed.emit()
