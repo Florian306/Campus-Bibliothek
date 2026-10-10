@@ -1,13 +1,8 @@
-"""Modern Integrated In-App PDF Reader Dialog for PySide6.
-Features native QPdfView with high-DPI anti-aliased rendering, TOC sidebar,
-real-time reading progress tracking in SQLite, note-taking panel, and AI explanation assistant.
-"""
-
 import os
 import subprocess
 from typing import Any, Dict, List, Optional
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF
-from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QEvent
+from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut, QPainter, QPen, QBrush
 try:
     from PySide6.QtPdf import QPdfDocument, QPdfSearchModel
     from PySide6.QtPdfWidgets import QPdfView
@@ -39,6 +34,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QGraphicsColorizeEffect,
+    QMenu,
 )
 
 from core.library_db import (
@@ -55,6 +51,101 @@ from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ai.tutor_engine import _resolve_model
 from ui.qt.theme import NoFocusItemDelegate
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
+
+
+class PdfSelectionOverlay(QWidget):
+    """Transparent interactive overlay atop QPdfView viewport for native mouse drag selection."""
+
+    text_selected = Signal(str)
+
+    def __init__(self, parent_view: Optional[QWidget] = None):
+        super().__init__(parent_view)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.IBeamCursor)
+
+        self._start_pos: Optional[QPoint] = None
+        self._current_pos: Optional[QPoint] = None
+        self._is_selecting = False
+        self._selection_rects: List[QRect] = []
+        self._selected_text = ""
+
+    def clear_selection(self) -> None:
+        self._start_pos = None
+        self._current_pos = None
+        self._is_selecting = False
+        self._selection_rects.clear()
+        self._selected_text = ""
+        self.update()
+
+    def get_selected_text(self) -> str:
+        return self._selected_text
+
+    def paintEvent(self, event) -> None:
+        if not self._selection_rects:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        # Semi-transparent blue highlight overlay
+        fill_color = QColor(56, 139, 253, 75)
+        border_color = QColor(88, 166, 255, 180)
+        painter.setBrush(QBrush(fill_color))
+        painter.setPen(QPen(border_color, 1))
+        for r in self._selection_rects:
+            painter.drawRect(r)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self._start_pos = event.pos()
+            self._current_pos = event.pos()
+            self._is_selecting = True
+            self._selection_rects.clear()
+            self._selected_text = ""
+            self.update()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._is_selecting and self._start_pos:
+            self._current_pos = event.pos()
+            rect = QRect(self._start_pos, self._current_pos).normalized()
+            if rect.width() > 3 and rect.height() > 3:
+                self._selection_rects = [rect]
+            self.update()
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton and self._is_selecting:
+            self._is_selecting = False
+            self._current_pos = event.pos()
+            if self._start_pos:
+                rect = QRect(self._start_pos, self._current_pos).normalized()
+                if rect.width() > 6 and rect.height() > 6:
+                    self._selection_rects = [rect]
+                    # Trigger text extraction callback on parent reader dialog
+                    parent_dialog = self.window()
+                    if hasattr(parent_dialog, "_resolve_text_for_rect"):
+                        txt = parent_dialog._resolve_text_for_rect(rect)
+                        self._selected_text = txt
+                        if txt:
+                            self.text_selected.emit(txt)
+                else:
+                    self.clear_selection()
+            self.update()
+            event.accept()
+        elif event.button() == Qt.RightButton:
+            # Context menu for selected text
+            parent_dialog = self.window()
+            if hasattr(parent_dialog, "_show_selection_context_menu"):
+                parent_dialog._show_selection_context_menu(event.globalPosition().toPoint(), self._selected_text)
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 
 class AiExplainerWorker(QThread):
@@ -214,6 +305,11 @@ class PdfReaderDialog(QDialog):
         # Search index navigation state
         self._current_search_match_idx = -1
         self._total_search_matches = 0
+        self._last_searched_query = ""
+
+        # Performance & Selection state
+        self._selection_overlay: Optional[PdfSelectionOverlay] = None
+        self._thumbnails_loaded = False
 
         if not HAS_QT_PDF:
             # Fallback when QtPdf is not present in binary
@@ -578,6 +674,15 @@ class PdfReaderDialog(QDialog):
                 border: none;
             }
         """)
+
+        # Overlay for mouse text selection
+        vp = self.view.viewport()
+        if vp:
+            self._selection_overlay = PdfSelectionOverlay(vp)
+            self._selection_overlay.setGeometry(vp.rect())
+            self._selection_overlay.show()
+            vp.installEventFilter(self)
+
         self.splitter.addWidget(self.view)
 
         # Right: Notes & AI Explainer Panel
@@ -771,7 +876,7 @@ class PdfReaderDialog(QDialog):
         self.list_thumbnails.itemClicked.connect(self._on_thumbnail_item_clicked)
         lay_thumbs.addWidget(self.list_thumbnails)
         self.sidebar_tabs.addTab(tab_thumbs, "🖼️ Vorschau")
-
+        self.sidebar_tabs.currentChanged.connect(self._on_sidebar_tab_changed)
         layout.addWidget(self.sidebar_tabs, stretch=1)
         return panel
 
@@ -950,12 +1055,15 @@ class PdfReaderDialog(QDialog):
         # Load TOC tree
         self._populate_toc()
 
-        # Load Bookmarks list
+        # Bookmarks list
         self._refresh_bookmarks_list()
         self._update_bookmark_button_state(self.initial_page)
 
-        # Start background thumbnail generator
-        self._start_thumbnail_generation()
+    def _on_sidebar_tab_changed(self, index: int) -> None:
+        # Tab 2 is "🖼️ Vorschau" (Thumbnails)
+        if index == 2 and not self._thumbnails_loaded:
+            self._thumbnails_loaded = True
+            self._start_thumbnail_generation()
 
     def _start_thumbnail_generation(self) -> None:
         if not self.file_path or not os.path.exists(self.file_path):
@@ -1118,19 +1226,21 @@ class PdfReaderDialog(QDialog):
             self.lbl_search_count.setText("")
             self._current_search_match_idx = -1
             self._total_search_matches = 0
+            self._last_searched_query = ""
 
     def _on_search_query_changed(self, text: str) -> None:
+        # Reset match indicators without jumping or moving view focus
         query = text.strip()
-        if not self.search_model:
-            return
         if not query:
-            self.search_model.setSearchString("")
+            if self.search_model:
+                self.search_model.setSearchString("")
             self.lbl_search_count.setText("")
             self._current_search_match_idx = -1
             self._total_search_matches = 0
-            return
-        self.lbl_search_count.setText("Suche läuft...")
-        self.search_model.setSearchString(query)
+            self._last_searched_query = ""
+        else:
+            if query != getattr(self, "_last_searched_query", ""):
+                self.lbl_search_count.setText("Eingabe mit Enter bestätigen...")
 
     def _on_search_count_changed(self) -> None:
         if not self.search_model:
@@ -1157,26 +1267,44 @@ class PdfReaderDialog(QDialog):
         query = self.input_search.text().strip()
         if not query:
             return
+
+        last_query = getattr(self, "_last_searched_query", "")
+        if query != last_query:
+            # Start fresh search for new query
+            self._last_searched_query = query
+            self._current_search_match_idx = 0
+            self.lbl_search_count.setText("Suche läuft...")
+            self.search_model.setSearchString(query)
+            # If model already has results synchronously, jump immediately
+            total = self.search_model.count()
+            self._total_search_matches = total
+            if total > 0:
+                self.lbl_search_count.setText(f"1 von {total} Treffern")
+                self._jump_to_search_result(0)
+        else:
+            # Cycle to next match on consecutive Enter presses
+            self._search_next()
+
+    def _search_next(self) -> None:
+        if not self.search_model:
+            return
         total = self.search_model.count()
         self._total_search_matches = total
         if total <= 0:
-            # Re-trigger search query in case user typed quickly before model updated
-            self.search_model.setSearchString(query)
             return
-        self._search_next()
-
-    def _search_next(self) -> None:
-        if not self.search_model or self._total_search_matches <= 0:
-            return
-        self._current_search_match_idx = (self._current_search_match_idx + 1) % self._total_search_matches
-        self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {self._total_search_matches} Treffern")
+        self._current_search_match_idx = (self._current_search_match_idx + 1) % total
+        self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {total} Treffern")
         self._jump_to_search_result(self._current_search_match_idx)
 
     def _search_prev(self) -> None:
-        if not self.search_model or self._total_search_matches <= 0:
+        if not self.search_model:
             return
-        self._current_search_match_idx = (self._current_search_match_idx - 1) % self._total_search_matches
-        self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {self._total_search_matches} Treffern")
+        total = self.search_model.count()
+        self._total_search_matches = total
+        if total <= 0:
+            return
+        self._current_search_match_idx = (self._current_search_match_idx - 1) % total
+        self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {total} Treffern")
         self._jump_to_search_result(self._current_search_match_idx)
 
     def _jump_to_search_result(self, match_idx: int) -> None:
@@ -1185,7 +1313,7 @@ class PdfReaderDialog(QDialog):
         link = self.search_model.resultAtIndex(match_idx)
         if link and link.isValid():
             p = link.page()
-            self._jump_to_page(p + 1)
+            self._jump_to_page(p + 1, keep_focus=True)
             # Sync search highlight on view
             if hasattr(self.view, "setCurrentSearchResultIndex"):
                 try:
@@ -1246,7 +1374,7 @@ class PdfReaderDialog(QDialog):
             p_int = max(1, int(page))
             self._jump_to_page(p_int)
 
-    def _jump_to_page(self, page_num: int) -> None:
+    def _jump_to_page(self, page_num: int, keep_focus: bool = False) -> None:
         p_count = self.doc.pageCount()
         if p_count <= 0:
             return
@@ -1258,7 +1386,8 @@ class PdfReaderDialog(QDialog):
         self._record_progress(idx + 1)
         self._update_bookmark_button_state(idx + 1)
         self._sync_active_thumbnail(idx)
-        self.view.setFocus()
+        if not keep_focus:
+            self.view.setFocus()
 
     def _on_pdf_page_changed(self, page_index: int) -> None:
         current_p = page_index + 1
@@ -1454,6 +1583,157 @@ class PdfReaderDialog(QDialog):
             self.showFullScreen()
             self.btn_fullscreen.setText("  ⛶ Fenster")
 
+    def eventFilter(self, watched, event) -> bool:
+        if self.view and watched == self.view.viewport() and self._selection_overlay:
+            if event.type() in (QEvent.Resize, QEvent.Move, QEvent.Paint):
+                self._selection_overlay.setGeometry(self.view.viewport().rect())
+        return super().eventFilter(watched, event)
+
+    def _resolve_text_for_rect(self, view_rect: QRect) -> str:
+        """Translates view pixel selection to PDF points and extracts text from active page."""
+        if not self.file_path or not os.path.exists(self.file_path):
+            return ""
+        curr_p = self.view.pageNavigator().currentPage() + 1
+        vp = self.view.viewport()
+        if not vp:
+            return ""
+
+        extracted = ""
+        try:
+            import fitz
+            doc = fitz.open(self.file_path)
+            if 0 <= (curr_p - 1) < len(doc):
+                page = doc[curr_p - 1]
+                p_rect = page.rect  # in points
+                vp_w = max(1, vp.width())
+                vp_h = max(1, vp.height())
+
+                scale_x = p_rect.width / vp_w
+                scale_y = p_rect.height / vp_h
+
+                norm_rect = fitz.Rect(
+                    view_rect.left() * scale_x,
+                    view_rect.top() * scale_y,
+                    view_rect.right() * scale_x,
+                    view_rect.bottom() * scale_y,
+                )
+                extracted = page.get_textbox(norm_rect).strip()
+
+                # Fallback: if area extraction missed small line, try words within bounds
+                if not extracted:
+                    words = page.get_text("words")
+                    matched_words = [
+                        w[4] for w in words
+                        if norm_rect.intersects(fitz.Rect(w[0], w[1], w[2], w[3]))
+                    ]
+                    extracted = " ".join(matched_words).strip()
+
+            doc.close()
+        except Exception:
+            pass
+
+        # Fallback to QPdfDocument selection
+        if not extracted and self.doc:
+            try:
+                sel = self.doc.getSelection(curr_p - 1, view_rect.topLeft(), view_rect.bottomRight())
+                if sel and sel.text():
+                    extracted = sel.text().strip()
+            except Exception:
+                pass
+
+        if extracted:
+            # Auto-paste extracted text into AI tutor prompt area if ready
+            if hasattr(self, "txt_ai_response"):
+                self.txt_ai_response.setPlainText(f"📌 Markierter Text:\n\n\"{extracted}\"")
+                self.notes_panel.setVisible(True)
+                self.btn_toggle_notes.setChecked(True)
+
+        return extracted
+
+    def _show_selection_context_menu(self, global_pos: QPoint, text: str) -> None:
+        if not text:
+            # If nothing was selected via drag, allow copying the whole page
+            menu = QMenu(self)
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #162035;
+                    color: #F0F6FC;
+                    border: 1px solid #304163;
+                    border-radius: 6px;
+                    padding: 4px;
+                }
+                QMenu::item {
+                    padding: 6px 16px;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #1F6FEB;
+                    color: #FFFFFF;
+                }
+            """)
+            act_copy_page = menu.addAction("📋 Ganze Seite kopieren")
+            act_copy_page.triggered.connect(self._copy_page_text)
+            menu.exec(global_pos)
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #162035;
+                color: #F0F6FC;
+                border: 1px solid #304163;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #1F6FEB;
+                color: #FFFFFF;
+            }
+        """)
+
+        act_copy = menu.addAction("📋 Markierten Text kopieren")
+        act_copy.triggered.connect(lambda: self._copy_specific_text(text))
+
+        act_explain = menu.addAction("💡 Begriff durch KI erklären")
+        act_explain.triggered.connect(lambda: self._ask_ai_on_text(text, mode="explain"))
+
+        act_summarize = menu.addAction("📑 Auszug zusammenfassen")
+        act_summarize.triggered.connect(lambda: self._ask_ai_on_text(text, mode="summarize"))
+
+        menu.addSeparator()
+        act_note = menu.addAction("✏️ Als Notiz anheften")
+        act_note.triggered.connect(lambda: self._create_note_from_text(text))
+
+        menu.exec(global_pos)
+
+    def _copy_specific_text(self, text: str) -> None:
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(text)
+            self.btn_copy_text.setText("  ✓ Auszug kopiert!")
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("  📋 Text kopieren"))
+
+    def _ask_ai_on_text(self, text: str, mode: str = "explain") -> None:
+        self.notes_panel.setVisible(True)
+        self.btn_toggle_notes.setChecked(True)
+        self.txt_ai_response.setPlainText(f"⏳ KI analysiert Auszug:\n\"{text[:100]}...\"")
+        self._explainer_thread = AiExplainerWorker(self.book_title, text, prompt_mode=mode, parent=self)
+        self._explainer_thread.finished_explanation.connect(lambda resp: self.txt_ai_response.setPlainText(resp))
+        self._explainer_thread.error_occurred.connect(lambda err: self.txt_ai_response.setPlainText(f"Fehler bei KI-Analyse:\n{err}"))
+        self._explainer_thread.start()
+
+    def _create_note_from_text(self, text: str) -> None:
+        curr_p = self.view.pageNavigator().currentPage() + 1
+        add_book_note(self.book_id, text, page_number=curr_p)
+        self._refresh_notes_list()
+        self.notes_panel.setVisible(True)
+        self.btn_toggle_notes.setChecked(True)
+
     def _setup_shortcuts(self) -> None:
         shortcut_esc = QShortcut(QKeySequence(Qt.Key_Escape), self)
         shortcut_esc.activated.connect(self.accept)
@@ -1461,11 +1741,27 @@ class PdfReaderDialog(QDialog):
         shortcut_f11 = QShortcut(QKeySequence(Qt.Key_F11), self)
         shortcut_f11.activated.connect(self._toggle_fullscreen)
 
-        shortcut_left = QShortcut(QKeySequence(Qt.Key_Left), self)
-        shortcut_left.activated.connect(self._prev_page)
+        # Page navigation (Left, Right, PageUp, PageDown, J, K, Space)
+        QShortcut(QKeySequence(Qt.Key_Left), self).activated.connect(self._prev_page)
+        QShortcut(QKeySequence(Qt.Key_Right), self).activated.connect(self._next_page)
+        QShortcut(QKeySequence(Qt.Key_PageUp), self).activated.connect(self._prev_page)
+        QShortcut(QKeySequence(Qt.Key_PageDown), self).activated.connect(self._next_page)
+        QShortcut(QKeySequence(Qt.Key_J), self).activated.connect(self._next_page)
+        QShortcut(QKeySequence(Qt.Key_K), self).activated.connect(self._prev_page)
 
-        shortcut_right = QShortcut(QKeySequence(Qt.Key_Right), self)
-        shortcut_right.activated.connect(self._next_page)
+        # First / Last Page (Home / End)
+        QShortcut(QKeySequence(Qt.Key_Home), self).activated.connect(lambda: self._jump_to_page(1))
+        QShortcut(QKeySequence(Qt.Key_End), self).activated.connect(lambda: self._jump_to_page(self.doc.pageCount()))
+
+        # Zoom Shortcuts (+ / -)
+        QShortcut(QKeySequence("Ctrl+="), self).activated.connect(self._zoom_in)
+        QShortcut(QKeySequence("Ctrl++"), self).activated.connect(self._zoom_in)
+        QShortcut(QKeySequence("Ctrl+-"), self).activated.connect(self._zoom_out)
+        QShortcut(QKeySequence("Ctrl+0"), self).activated.connect(self._fit_width)
+
+        # Copy Selection Shortcut (Ctrl+C)
+        shortcut_copy = QShortcut(QKeySequence("Ctrl+C"), self)
+        shortcut_copy.activated.connect(self._on_shortcut_copy)
 
         # Strg + F for Search Bar
         shortcut_find = QShortcut(QKeySequence("Ctrl+F"), self)
@@ -1474,6 +1770,14 @@ class PdfReaderDialog(QDialog):
         # Strg + D for Bookmark Toggle
         shortcut_bookmark = QShortcut(QKeySequence("Ctrl+D"), self)
         shortcut_bookmark.activated.connect(self._toggle_bookmark)
+
+    def _on_shortcut_copy(self) -> None:
+        if self._selection_overlay:
+            sel = self._selection_overlay.get_selected_text()
+            if sel:
+                self._copy_specific_text(sel)
+                return
+        self._copy_page_text()
 
     def closeEvent(self, event) -> None:
         if self._thumb_thread and self._thumb_thread.isRunning():
