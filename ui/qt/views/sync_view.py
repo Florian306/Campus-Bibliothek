@@ -33,7 +33,7 @@ class ScanSignals(QObject):
     progress = Signal(int, str)
     finished = Signal(dict)
     log_message = Signal(str)
-    sync_completed = Signal(bool, str, str)  # is_push, success, message
+    sync_completed = Signal(bool, bool, str)  # is_push, success, message
 
 
 class SyncView(QWidget):
