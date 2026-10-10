@@ -223,7 +223,7 @@ class AiExplainerWorker(QThread):
 class PageThumbnailWorker(QThread):
     thumbnail_ready = Signal(int, bytes, int, int)  # page_idx, raw_samples, width, height
 
-    def __init__(self, file_path: str, max_pages: int = 150, parent=None):
+    def __init__(self, file_path: str, max_pages: Optional[int] = None, parent=None):
         super().__init__(parent)
         self.file_path = file_path
         self.max_pages = max_pages
@@ -238,7 +238,7 @@ class PageThumbnailWorker(QThread):
         try:
             import fitz
             doc = fitz.open(self.file_path)
-            total = min(len(doc), self.max_pages)
+            total = len(doc) if self.max_pages is None else min(len(doc), self.max_pages)
             for p_idx in range(total):
                 if self._is_cancelled:
                     break
@@ -1084,7 +1084,7 @@ class PdfReaderDialog(QDialog):
             self._thumb_thread.wait(200)
 
         self.list_thumbnails.clear()
-        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=150, parent=self)
+        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=None, parent=self)
         self._thumb_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_thread.start()
 
