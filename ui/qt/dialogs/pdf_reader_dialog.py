@@ -200,6 +200,7 @@ class PdfReaderDialog(QDialog):
         if self.view and self.search_model and self.doc:
             self.search_model.setDocument(self.doc)
             self.view.setSearchModel(self.search_model)
+            self.search_model.countChanged.connect(self._on_search_count_changed)
 
         self._explainer_thread: Optional[AiExplainerWorker] = None
         self._toc_thread: Optional[TocLoaderWorker] = None
@@ -255,6 +256,8 @@ class PdfReaderDialog(QDialog):
         self.btn_toggle_toc.setIcon(create_vector_icon("notes", "#58A6FF", 14))
         self.btn_toggle_toc.setCheckable(True)
         self.btn_toggle_toc.setChecked(True)
+        self.btn_toggle_toc.setAutoDefault(False)
+        self.btn_toggle_toc.setDefault(False)
         self.btn_toggle_toc.setCursor(Qt.PointingHandCursor)
         self.btn_toggle_toc.setStyleSheet(self._button_style())
         self.btn_toggle_toc.clicked.connect(self._toggle_toc_panel)
@@ -265,6 +268,8 @@ class PdfReaderDialog(QDialog):
         self.btn_toggle_notes.setIcon(create_vector_icon("book", "#A371F7", 14))
         self.btn_toggle_notes.setCheckable(True)
         self.btn_toggle_notes.setChecked(False)
+        self.btn_toggle_notes.setAutoDefault(False)
+        self.btn_toggle_notes.setDefault(False)
         self.btn_toggle_notes.setCursor(Qt.PointingHandCursor)
         self.btn_toggle_notes.setStyleSheet(self._button_style())
         self.btn_toggle_notes.clicked.connect(self._toggle_notes_panel)
@@ -281,6 +286,8 @@ class PdfReaderDialog(QDialog):
         btn_prev.setIcon(create_vector_icon("clock", "#C9D1D9", 14)) # left chevron fallback
         btn_prev.setText("◀")
         btn_prev.setFixedSize(30, 30)
+        btn_prev.setAutoDefault(False)
+        btn_prev.setDefault(False)
         btn_prev.setCursor(Qt.PointingHandCursor)
         btn_prev.setStyleSheet(self._button_style())
         btn_prev.clicked.connect(self._prev_page)
@@ -313,6 +320,8 @@ class PdfReaderDialog(QDialog):
         btn_next = QPushButton()
         btn_next.setText("▶")
         btn_next.setFixedSize(30, 30)
+        btn_next.setAutoDefault(False)
+        btn_next.setDefault(False)
         btn_next.setCursor(Qt.PointingHandCursor)
         btn_next.setStyleSheet(self._button_style())
         btn_next.clicked.connect(self._next_page)
@@ -327,6 +336,8 @@ class PdfReaderDialog(QDialog):
         # Zoom Controls
         btn_zoom_out = QPushButton("−")
         btn_zoom_out.setFixedSize(30, 30)
+        btn_zoom_out.setAutoDefault(False)
+        btn_zoom_out.setDefault(False)
         btn_zoom_out.setCursor(Qt.PointingHandCursor)
         btn_zoom_out.setStyleSheet(self._button_style())
         btn_zoom_out.clicked.connect(self._zoom_out)
@@ -334,12 +345,16 @@ class PdfReaderDialog(QDialog):
 
         btn_zoom_in = QPushButton("+")
         btn_zoom_in.setFixedSize(30, 30)
+        btn_zoom_in.setAutoDefault(False)
+        btn_zoom_in.setDefault(False)
         btn_zoom_in.setCursor(Qt.PointingHandCursor)
         btn_zoom_in.setStyleSheet(self._button_style())
         btn_zoom_in.clicked.connect(self._zoom_in)
         top_layout.addWidget(btn_zoom_in)
 
         self.btn_fit_width = QPushButton("Breite anpassen")
+        self.btn_fit_width.setAutoDefault(False)
+        self.btn_fit_width.setDefault(False)
         self.btn_fit_width.setCursor(Qt.PointingHandCursor)
         self.btn_fit_width.setFixedHeight(30)
         self.btn_fit_width.setStyleSheet(self._button_style())
@@ -349,6 +364,8 @@ class PdfReaderDialog(QDialog):
         # Page Mode Toggle: MultiPage vs SinglePage
         self.btn_page_mode = QPushButton("  📜 Fortlaufend")
         self.btn_page_mode.setToolTip("Zwischen fortlaufendem Scrollen und Einzelseite wechseln")
+        self.btn_page_mode.setAutoDefault(False)
+        self.btn_page_mode.setDefault(False)
         self.btn_page_mode.setCursor(Qt.PointingHandCursor)
         self.btn_page_mode.setFixedHeight(30)
         self.btn_page_mode.setStyleSheet(self._button_style())
@@ -358,6 +375,8 @@ class PdfReaderDialog(QDialog):
         # Color Theme / Filter Mode Toggle
         self.btn_reading_theme = QPushButton("  ☀️ Normal")
         self.btn_reading_theme.setToolTip("Farbmodus wechseln (Normal / Sepia / Dunkel)")
+        self.btn_reading_theme.setAutoDefault(False)
+        self.btn_reading_theme.setDefault(False)
         self.btn_reading_theme.setCursor(Qt.PointingHandCursor)
         self.btn_reading_theme.setFixedHeight(30)
         self.btn_reading_theme.setStyleSheet(self._button_style())
@@ -367,17 +386,32 @@ class PdfReaderDialog(QDialog):
         # Bookmark Toggle Button
         self.btn_bookmark = QPushButton("  ☆ Lesezeichen")
         self.btn_bookmark.setToolTip("Lesezeichen auf aktueller Seite setzen / entfernen (Strg+D)")
+        self.btn_bookmark.setAutoDefault(False)
+        self.btn_bookmark.setDefault(False)
         self.btn_bookmark.setCursor(Qt.PointingHandCursor)
         self.btn_bookmark.setFixedHeight(30)
         self.btn_bookmark.setStyleSheet(self._button_style())
         self.btn_bookmark.clicked.connect(self._toggle_bookmark)
         top_layout.addWidget(self.btn_bookmark)
 
+        # Copy Current Page Text Button
+        self.btn_copy_text = QPushButton("  📋 Text kopieren")
+        self.btn_copy_text.setToolTip("Gesamten Text der aktuellen Seite in die Zwischenablage kopieren")
+        self.btn_copy_text.setAutoDefault(False)
+        self.btn_copy_text.setDefault(False)
+        self.btn_copy_text.setCursor(Qt.PointingHandCursor)
+        self.btn_copy_text.setFixedHeight(30)
+        self.btn_copy_text.setStyleSheet(self._button_style())
+        self.btn_copy_text.clicked.connect(self._copy_page_text)
+        top_layout.addWidget(self.btn_copy_text)
+
         # Search Toggle Button
         self.btn_search = QPushButton("  🔍 Suchen")
         self.btn_search.setToolTip("Volltextsuche einblenden (Strg+F)")
         self.btn_search.setCheckable(True)
         self.btn_search.setChecked(False)
+        self.btn_search.setAutoDefault(False)
+        self.btn_search.setDefault(False)
         self.btn_search.setCursor(Qt.PointingHandCursor)
         self.btn_search.setStyleSheet(self._button_style())
         self.btn_search.clicked.connect(self._toggle_search_bar)
@@ -395,6 +429,8 @@ class PdfReaderDialog(QDialog):
         # Fullscreen Toggle Button
         self.btn_fullscreen = QPushButton("  ⛶ Vollbild")
         self.btn_fullscreen.setToolTip("Vollbildmodus ein/ausschalten (F11)")
+        self.btn_fullscreen.setAutoDefault(False)
+        self.btn_fullscreen.setDefault(False)
         self.btn_fullscreen.setCursor(Qt.PointingHandCursor)
         self.btn_fullscreen.setFixedHeight(30)
         self.btn_fullscreen.setStyleSheet(self._button_style())
@@ -404,7 +440,9 @@ class PdfReaderDialog(QDialog):
         # Open externally in Edge button
         btn_edge = QPushButton("  In Edge")
         btn_edge.setIcon(create_vector_icon("research", "#58A6FF", 14))
-        btn_edge.setToolTip("Dokument alternativ in Microsoft Edge öffnen")
+        btn_edge.setToolTip("Dokument alternativ in Microsoft Edge öffnen (ideal für Stifte, Freihandmarkierungen & Notizen)")
+        btn_edge.setAutoDefault(False)
+        btn_edge.setDefault(False)
         btn_edge.setCursor(Qt.PointingHandCursor)
         btn_edge.setFixedHeight(30)
         btn_edge.setStyleSheet(self._button_style())
@@ -413,6 +451,8 @@ class PdfReaderDialog(QDialog):
 
         # Close Reader
         btn_close = QPushButton("Schließen")
+        btn_close.setAutoDefault(False)
+        btn_close.setDefault(False)
         btn_close.setCursor(Qt.PointingHandCursor)
         btn_close.setFixedHeight(30)
         btn_close.setStyleSheet("""
@@ -474,10 +514,12 @@ class PdfReaderDialog(QDialog):
             }
         """)
         self.input_search.textChanged.connect(self._on_search_query_changed)
-        self.input_search.returnPressed.connect(self._search_next)
+        self.input_search.returnPressed.connect(self._on_search_return_pressed)
         search_lay.addWidget(self.input_search)
 
         self.btn_search_prev = QPushButton("◀ Vorheriger")
+        self.btn_search_prev.setAutoDefault(False)
+        self.btn_search_prev.setDefault(False)
         self.btn_search_prev.setFixedHeight(28)
         self.btn_search_prev.setCursor(Qt.PointingHandCursor)
         self.btn_search_prev.setStyleSheet(self._button_style())
@@ -485,6 +527,8 @@ class PdfReaderDialog(QDialog):
         search_lay.addWidget(self.btn_search_prev)
 
         self.btn_search_next = QPushButton("Nächster ▶")
+        self.btn_search_next.setAutoDefault(False)
+        self.btn_search_next.setDefault(False)
         self.btn_search_next.setFixedHeight(28)
         self.btn_search_next.setCursor(Qt.PointingHandCursor)
         self.btn_search_next.setStyleSheet(self._button_style())
@@ -498,6 +542,8 @@ class PdfReaderDialog(QDialog):
         search_lay.addStretch()
 
         btn_close_search = QPushButton("✕")
+        btn_close_search.setAutoDefault(False)
+        btn_close_search.setDefault(False)
         btn_close_search.setFixedSize(24, 24)
         btn_close_search.setCursor(Qt.PointingHandCursor)
         btn_close_search.setStyleSheet("color: #8B949E; background: transparent; border: none; font-size: 14px; font-weight: bold;")
@@ -597,6 +643,7 @@ class PdfReaderDialog(QDialog):
 
         self.tree_toc = QTreeWidget()
         self.tree_toc.setFocusPolicy(Qt.NoFocus)
+        self.tree_toc.setSelectionMode(QTreeWidget.NoSelection)
         self.tree_toc.setItemDelegate(NoFocusItemDelegate(self.tree_toc))
         self.tree_toc.setHeaderHidden(True)
         self.tree_toc.setAnimated(True)
@@ -749,6 +796,8 @@ class PdfReaderDialog(QDialog):
         # Quick AI Action Buttons
         ai_btn_row = QHBoxLayout()
         btn_explain = QPushButton("💡 Begriff erklären")
+        btn_explain.setAutoDefault(False)
+        btn_explain.setDefault(False)
         btn_explain.setCursor(Qt.PointingHandCursor)
         btn_explain.setStyleSheet("""
             QPushButton {
@@ -769,6 +818,8 @@ class PdfReaderDialog(QDialog):
         ai_btn_row.addWidget(btn_explain)
 
         btn_sum = QPushButton("📑 Seite fassen")
+        btn_sum.setAutoDefault(False)
+        btn_sum.setDefault(False)
         btn_sum.setCursor(Qt.PointingHandCursor)
         btn_sum.setStyleSheet("""
             QPushButton {
@@ -1072,21 +1123,47 @@ class PdfReaderDialog(QDialog):
         query = text.strip()
         if not self.search_model:
             return
-        self.search_model.setSearchString(query)
-        total = self.search_model.count()
-        self._total_search_matches = total
         if not query:
+            self.search_model.setSearchString("")
             self.lbl_search_count.setText("")
             self._current_search_match_idx = -1
+            self._total_search_matches = 0
             return
+        self.lbl_search_count.setText("Suche läuft...")
+        self.search_model.setSearchString(query)
 
+    def _on_search_count_changed(self) -> None:
+        if not self.search_model:
+            return
+        query = self.input_search.text().strip()
+        if not query:
+            return
+        total = self.search_model.count()
+        self._total_search_matches = total
         if total == 0:
             self.lbl_search_count.setText("Keine Treffer")
             self._current_search_match_idx = -1
         else:
-            self._current_search_match_idx = 0
-            self.lbl_search_count.setText(f"1 von {total} Treffern")
-            self._jump_to_search_result(0)
+            if self._current_search_match_idx < 0 or self._current_search_match_idx >= total:
+                self._current_search_match_idx = 0
+                self.lbl_search_count.setText(f"1 von {total} Treffern")
+                self._jump_to_search_result(0)
+            else:
+                self.lbl_search_count.setText(f"{self._current_search_match_idx + 1} von {total} Treffern")
+
+    def _on_search_return_pressed(self) -> None:
+        if not self.search_model:
+            return
+        query = self.input_search.text().strip()
+        if not query:
+            return
+        total = self.search_model.count()
+        self._total_search_matches = total
+        if total <= 0:
+            # Re-trigger search query in case user typed quickly before model updated
+            self.search_model.setSearchString(query)
+            return
+        self._search_next()
 
     def _search_next(self) -> None:
         if not self.search_model or self._total_search_matches <= 0:
@@ -1109,6 +1186,12 @@ class PdfReaderDialog(QDialog):
         if link and link.isValid():
             p = link.page()
             self._jump_to_page(p + 1)
+            # Sync search highlight on view
+            if hasattr(self.view, "setCurrentSearchResultIndex"):
+                try:
+                    self.view.setCurrentSearchResultIndex(match_idx)
+                except Exception:
+                    pass
 
     def _populate_toc(self) -> None:
         if self._preloaded_toc is not None:
@@ -1228,6 +1311,43 @@ class PdfReaderDialog(QDialog):
         if self.book_id:
             update_reading_progress(self.book_id, page_num)
             self.progress_updated.emit(self.book_id, page_num)
+
+    def _copy_page_text(self) -> None:
+        """Extracts and copies raw readable text from the current page into system clipboard."""
+        curr_p = self.view.pageNavigator().currentPage() + 1
+        page_text = ""
+        try:
+            import fitz
+            doc = fitz.open(self.file_path)
+            if 0 <= (curr_p - 1) < len(doc):
+                page_text = doc[curr_p - 1].get_text("text").strip()
+            doc.close()
+        except Exception:
+            pass
+
+        if not page_text and self.doc:
+            try:
+                sel = self.doc.getAllText(curr_p - 1)
+                if sel and sel.text():
+                    page_text = sel.text().strip()
+            except Exception:
+                pass
+
+        if not page_text:
+            QMessageBox.information(
+                self,
+                "Text kopieren",
+                f"Auf Seite {curr_p} wurde kein digitaler Text gefunden (möglicherweise ein Scan ohne OCR).\n"
+                f"Du kannst die Datei in Edge öffnen, um optische Werkzeuge zu nutzen."
+            )
+            return
+
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(page_text)
+            self.btn_copy_text.setText("  ✓ Kopiert!")
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("  📋 Text kopieren"))
 
     def _open_in_edge(self) -> None:
         curr_p = self.view.pageNavigator().currentPage() + 1
