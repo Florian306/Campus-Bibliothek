@@ -39,7 +39,7 @@ from core.library_db import (
     toggle_extract_desk,
 )
 from core.config import load_config
-from ai.pdf_extractor import extract_pdf_toc
+from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ui.qt.theme import NoFocusItemDelegate
 from ui.qt.icons import create_vector_icon
 from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
@@ -276,15 +276,18 @@ class QuickLookDialog(QDialog):
         self.lbl_toc_status.setAlignment(Qt.AlignCenter)
         self.lbl_toc_status.setStyleSheet("color: #8B949E; padding: 40px; font-size: 12px;")
         self.toc_layout.addWidget(self.lbl_toc_status)
-
         self.tabs.addTab(self.toc_tab, create_vector_icon("notes", "#8B949E", 14), "Inhaltsverzeichnis")
 
-        # Start asynchronous TOC extraction without blocking the UI
+        # Check in-memory TOC cache first for instant rendering
         fp = self.book.get("file_path", "")
         if fp and os.path.exists(fp):
-            self._toc_thread = TocLoaderThread(fp)
-            self._toc_thread.finished_toc.connect(self._on_toc_loaded)
-            self._toc_thread.start()
+            norm_fp = os.path.abspath(fp)
+            if norm_fp in _TOC_CACHE:
+                self._on_toc_loaded(_TOC_CACHE[norm_fp])
+            else:
+                self._toc_thread = TocLoaderThread(fp)
+                self._toc_thread.finished_toc.connect(self._on_toc_loaded)
+                self._toc_thread.start()
         else:
             self.lbl_toc_status.setText("Keine Datei verknüpft oder Datei existiert nicht mehr.")
 
@@ -490,10 +493,6 @@ class QuickLookDialog(QDialog):
             page = self.book.get("current_page", 1)
             cfg = load_config()
             if cfg.get("use_internal_reader", True):
-                # If background TOC loader in Quick-Look is currently finishing, wait briefly to pass preloaded TOC
-                if self._cached_toc is None and getattr(self, "_toc_thread", None) and self._toc_thread.isRunning():
-                    self._toc_thread.wait(600)
-
                 dlg = PdfReaderDialog(self.book, initial_page=page, toc_items=self._cached_toc, parent=self)
                 dlg.exec()
             else:

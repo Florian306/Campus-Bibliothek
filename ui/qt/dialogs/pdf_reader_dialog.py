@@ -43,7 +43,7 @@ from core.library_db import (
     delete_book_note,
     open_pdf_in_edge,
 )
-from ai.pdf_extractor import extract_pdf_toc
+from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ai.tutor_engine import _resolve_model
 from ui.qt.theme import NoFocusItemDelegate
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
@@ -608,6 +608,13 @@ class PdfReaderDialog(QDialog):
         if self._preloaded_toc is not None:
             self._apply_toc_items(self._preloaded_toc)
             return
+
+        # Check global in-memory cache first for zero-wait rendering
+        if self.file_path:
+            norm_path = os.path.abspath(self.file_path)
+            if norm_path in _TOC_CACHE:
+                self._apply_toc_items(_TOC_CACHE[norm_path])
+                return
 
         # Load TOC in background to keep PDF reader immediately responsive
         def bg_load():
