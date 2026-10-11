@@ -454,6 +454,7 @@ class QuickLookDialog(QDialog):
             bid = str(self.book.get("id", ""))
             if bid:
                 update_reading_progress(bid, p_int)
+                self.was_data_modified = True
             if path and os.path.exists(path):
                 cfg = load_config()
                 parent_win = self.parentWidget()
@@ -754,7 +755,7 @@ class QuickLookDialog(QDialog):
                 background-color: #388BFD;
             }
         """)
-        btn_open.clicked.connect(lambda _, p=fpath, t=ext.get("title", "Auszug"): self._open_extract_pdf(p, t))
+        btn_open.clicked.connect(lambda _, eid=ext_id, p=fpath, t=ext.get("title", "Auszug"), cp=ext.get("current_page", 1): self._open_extract_pdf(eid, p, t, cp))
         h_layout.addWidget(btn_open)
 
         # 2. Explorer (For NotebookLM drag-and-drop)
@@ -829,20 +830,21 @@ class QuickLookDialog(QDialog):
 
         return card
 
-    def _open_extract_pdf(self, file_path: str, title: str) -> None:
+    def _open_extract_pdf(self, extract_id: str, file_path: str, title: str, initial_page: int = 1) -> None:
         if not file_path or not os.path.exists(file_path):
             return
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
             ext_book = {
-                "id": str(self.book.get("id", "")),
+                "id": str(extract_id or self.book.get("id", "")),
                 "title": f"{self.book.get('title', '')} • {title}",
                 "file_path": file_path,
             }
-            dlg = PdfReaderDialog(ext_book, initial_page=1, parent=self)
+            dlg = PdfReaderDialog(ext_book, initial_page=max(1, int(initial_page or 1)), parent=self)
             dlg.exec()
+            self._refresh_extracts_list()
         else:
-            open_pdf_in_edge(file_path)
+            open_pdf_in_edge(file_path, page=max(1, int(initial_page or 1)))
 
     def _on_toggle_extract_desk(self, extract_id: str) -> None:
         toggle_extract_desk(extract_id)

@@ -333,16 +333,18 @@ class ExtractCard(QFrame):
     def _open_pdf(self) -> None:
         if self.file_path and os.path.exists(self.file_path):
             cfg = load_config()
+            curr_p = max(1, int(self.ext_data.get("current_page") or 1))
+            ext_id = str(self.ext_data.get("id") or self.ext_data.get("parent_book_id", ""))
             if cfg.get("use_internal_reader", True):
                 book_ctx = {
-                    "id": self.ext_data.get("parent_book_id", ""),
+                    "id": ext_id,
                     "title": self.ext_data.get("title", "Auszug"),
                     "file_path": self.file_path,
                 }
-                dlg = PdfReaderDialog(book_ctx, initial_page=1, parent=self)
+                dlg = PdfReaderDialog(book_ctx, initial_page=curr_p, parent=self)
                 dlg.exec()
             else:
-                open_pdf_in_edge(self.file_path)
+                open_pdf_in_edge(self.file_path, page=curr_p)
 
     def _show_in_explorer(self) -> None:
         if self.file_path and os.path.exists(self.file_path):

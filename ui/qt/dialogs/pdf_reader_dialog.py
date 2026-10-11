@@ -1819,7 +1819,22 @@ class PdfReaderDialog(QDialog):
                 return
         self._copy_page_text()
 
+    def _save_current_position(self) -> None:
+        """Ensures the currently active viewing page is persistently saved before closing."""
+        if hasattr(self, "view") and self.view and hasattr(self.view, "pageNavigator"):
+            curr_p = self.view.pageNavigator().currentPage() + 1
+            self._record_progress(curr_p)
+
+    def accept(self) -> None:
+        self._save_current_position()
+        super().accept()
+
+    def reject(self) -> None:
+        self._save_current_position()
+        super().reject()
+
     def closeEvent(self, event) -> None:
+        self._save_current_position()
         if self._thumb_thread and self._thumb_thread.isRunning():
             self._thumb_thread.cancel()
             self._thumb_thread.wait(200)

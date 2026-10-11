@@ -199,6 +199,16 @@ def init_library_schema() -> None:
             pass
 
         try:
+            cursor.execute("ALTER TABLE books ADD COLUMN current_page INTEGER DEFAULT 1;")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE book_extracts ADD COLUMN current_page INTEGER DEFAULT 1;")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE research_papers ADD COLUMN category TEXT DEFAULT '';")
         except Exception:
             pass
@@ -601,8 +611,8 @@ def get_all_books(
             (SELECT category FROM book_categories WHERE book_id = b.id AND is_primary = 1) AS primary_category,
             (SELECT GROUP_CONCAT(tag, ', ') FROM book_tags WHERE book_id = b.id) AS tags_str,
             (SELECT 1 FROM desk_items WHERE book_id = b.id) AS is_on_desk,
-            (SELECT current_page FROM desk_items WHERE book_id = b.id) AS current_page,
-            (SELECT progress_pct FROM desk_items WHERE book_id = b.id) AS reading_progress,
+            COALESCE((SELECT current_page FROM desk_items WHERE book_id = b.id), b.current_page, 1) AS current_page,
+            COALESCE((SELECT progress_pct FROM desk_items WHERE book_id = b.id), CASE WHEN b.page_count > 0 THEN MIN(100, CAST((COALESCE(b.current_page, 1) * 100.0 / b.page_count) AS INTEGER)) ELSE 0 END) AS reading_progress,
             (SELECT latest_edition FROM edition_alerts WHERE book_id = b.id AND is_dismissed = 0) AS new_edition_available,
             (SELECT COUNT(*) FROM book_extracts WHERE parent_book_id = b.id) AS extract_count
         FROM books b
@@ -649,8 +659,8 @@ def get_book_by_id(book_id: str) -> Optional[Dict[str, Any]]:
             (SELECT category FROM book_categories WHERE book_id = b.id AND is_primary = 1) AS primary_category,
             (SELECT GROUP_CONCAT(tag, ', ') FROM book_tags WHERE book_id = b.id) AS tags_str,
             (SELECT 1 FROM desk_items WHERE book_id = b.id) AS is_on_desk,
-            (SELECT current_page FROM desk_items WHERE book_id = b.id) AS current_page,
-            (SELECT progress_pct FROM desk_items WHERE book_id = b.id) AS reading_progress,
+            COALESCE((SELECT current_page FROM desk_items WHERE book_id = b.id), b.current_page, 1) AS current_page,
+            COALESCE((SELECT progress_pct FROM desk_items WHERE book_id = b.id), CASE WHEN b.page_count > 0 THEN MIN(100, CAST((COALESCE(b.current_page, 1) * 100.0 / b.page_count) AS INTEGER)) ELSE 0 END) AS reading_progress,
             (SELECT latest_edition FROM edition_alerts WHERE book_id = b.id AND is_dismissed = 0) AS new_edition_available,
             (SELECT COUNT(*) FROM book_extracts WHERE parent_book_id = b.id) AS extract_count
         FROM books b
@@ -732,14 +742,32 @@ def update_reading_progress(book_id: Any, current_page: int) -> None:
                 tot = 1
             pct = min(100, max(0, int((curr_p / tot) * 100)))
             status = "Abgeschlossen" if pct >= 100 else "Am Lesen"
-            conn.execute(
-                """
-                UPDATE desk_items 
-                SET current_page = ?, total_pages = ?, progress_pct = ?, status = ?, last_read_at = ?
-                WHERE book_id = ?;
-                """,
-                (curr_p, tot, pct, status, time.time(), bid)
-            )
+            if bid.startswith("ext_"):
+                conn.execute(
+                    """
+                    UPDATE book_extracts
+                    SET current_page = ?
+                    WHERE id = ?;
+                    """,
+                    (curr_p, bid)
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE desk_items 
+                    SET current_page = ?, total_pages = ?, progress_pct = ?, status = ?, last_read_at = ?
+                    WHERE book_id = ?;
+                    """,
+                    (curr_p, tot, pct, status, time.time(), bid)
+                )
+                conn.execute(
+                    """
+                    UPDATE books
+                    SET current_page = ?, last_opened = ?
+                    WHERE id = ?;
+                    """,
+                    (curr_p, time.time(), bid)
+                )
 
 
 def get_book_notes(book_id: str) -> List[Dict[str, Any]]:
