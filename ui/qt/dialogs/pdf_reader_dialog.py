@@ -87,13 +87,14 @@ class PdfSelectionOverlay(QWidget):
         if not self._highlight_rects:
             return
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
-        # Authentic PDF reader blue selection highlight (identical to Adobe Acrobat / Chrome)
-        sel_color = QColor(33, 115, 243, 85)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        # Smooth modern translucent selection highlight
+        sel_color = QColor(56, 139, 253, 95)
+        border_color = QColor(56, 139, 253, 140)
         painter.setBrush(QBrush(sel_color))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(QPen(border_color, 0.8))
         for r in self._highlight_rects:
-            painter.drawRect(r)
+            painter.drawRoundedRect(r, 2.5, 2.5)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
@@ -388,51 +389,92 @@ class PdfReaderDialog(QDialog):
         sep1.setStyleSheet("border: none; background-color: #232F48; width: 1px;")
         top_layout.addWidget(sep1)
 
-        # Page Navigation: Prev, SpinBox, Total, Next
-        btn_prev = QPushButton()
-        btn_prev.setIcon(create_vector_icon("clock", "#C9D1D9", 14)) # left chevron fallback
-        btn_prev.setText("◀")
-        btn_prev.setFixedSize(30, 30)
+        # Page Navigation Group: [ ◀ ] [ 1 ] / 342 [ ▶ ] in a cohesive pill container
+        page_nav_box = QFrame()
+        page_nav_box.setStyleSheet("""
+            QFrame#page_nav_box {
+                background-color: #141C2E;
+                border: 1px solid #232F48;
+                border-radius: 6px;
+            }
+        """)
+        page_nav_box.setObjectName("page_nav_box")
+        page_nav_layout = QHBoxLayout(page_nav_box)
+        page_nav_layout.setContentsMargins(3, 2, 6, 2)
+        page_nav_layout.setSpacing(4)
+
+        btn_prev = QPushButton("◀")
+        btn_prev.setFixedSize(26, 26)
         btn_prev.setAutoDefault(False)
         btn_prev.setDefault(False)
         btn_prev.setCursor(Qt.PointingHandCursor)
-        btn_prev.setStyleSheet(self._button_style())
+        btn_prev.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1F2D4A;
+                color: #58A6FF;
+            }
+        """)
         btn_prev.clicked.connect(self._prev_page)
-        top_layout.addWidget(btn_prev)
+        page_nav_layout.addWidget(btn_prev)
 
         self.spin_page = QSpinBox()
         self.spin_page.setMinimum(1)
         self.spin_page.setMaximum(9999)
         self.spin_page.setValue(self.initial_page)
-        self.spin_page.setFixedWidth(65)
-        self.spin_page.setFixedHeight(30)
+        self.spin_page.setFixedWidth(54)
+        self.spin_page.setFixedHeight(24)
         self.spin_page.setAlignment(Qt.AlignCenter)
+        self.spin_page.setButtonSymbols(QSpinBox.NoButtons)
         self.spin_page.setStyleSheet("""
             QSpinBox {
-                background-color: #141C2E;
-                color: #FFFFFF;
+                background-color: #0E1422;
+                color: #58A6FF;
                 border: 1px solid #232F48;
                 border-radius: 4px;
-                font-weight: bold;
+                font-weight: 700;
                 font-size: 12px;
+                padding: 0;
+            }
+            QSpinBox:focus {
+                border-color: #388BFD;
             }
         """)
         self.spin_page.valueChanged.connect(self._on_spin_page_changed)
-        top_layout.addWidget(self.spin_page)
+        page_nav_layout.addWidget(self.spin_page)
 
         self.lbl_total_pages = QLabel("/ 1")
-        self.lbl_total_pages.setStyleSheet("color: #8B949E; font-size: 12px; border: none; background: transparent;")
-        top_layout.addWidget(self.lbl_total_pages)
+        self.lbl_total_pages.setStyleSheet("color: #8B949E; font-size: 12px; font-weight: 600; border: none; background: transparent; padding: 0 4px;")
+        page_nav_layout.addWidget(self.lbl_total_pages)
 
-        btn_next = QPushButton()
-        btn_next.setText("▶")
-        btn_next.setFixedSize(30, 30)
+        btn_next = QPushButton("▶")
+        btn_next.setFixedSize(26, 26)
         btn_next.setAutoDefault(False)
         btn_next.setDefault(False)
         btn_next.setCursor(Qt.PointingHandCursor)
-        btn_next.setStyleSheet(self._button_style())
+        btn_next.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1F2D4A;
+                color: #58A6FF;
+            }
+        """)
         btn_next.clicked.connect(self._next_page)
-        top_layout.addWidget(btn_next)
+        page_nav_layout.addWidget(btn_next)
+
+        top_layout.addWidget(page_nav_box)
 
         # Separator
         sep2 = QFrame()
@@ -440,33 +482,94 @@ class PdfReaderDialog(QDialog):
         sep2.setStyleSheet("border: none; background-color: #232F48; width: 1px;")
         top_layout.addWidget(sep2)
 
-        # Zoom Controls
+        # Zoom Controls Group: [ − ] [ + ] [ Breite anpassen ]
+        zoom_box = QFrame()
+        zoom_box.setStyleSheet("""
+            QFrame#zoom_box {
+                background-color: #141C2E;
+                border: 1px solid #232F48;
+                border-radius: 6px;
+            }
+        """)
+        zoom_box.setObjectName("zoom_box")
+        zoom_layout = QHBoxLayout(zoom_box)
+        zoom_layout.setContentsMargins(3, 2, 4, 2)
+        zoom_layout.setSpacing(3)
+
         btn_zoom_out = QPushButton("−")
-        btn_zoom_out.setFixedSize(30, 30)
+        btn_zoom_out.setFixedSize(26, 26)
         btn_zoom_out.setAutoDefault(False)
         btn_zoom_out.setDefault(False)
         btn_zoom_out.setCursor(Qt.PointingHandCursor)
-        btn_zoom_out.setStyleSheet(self._button_style())
+        btn_zoom_out.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #1F2D4A;
+                color: #58A6FF;
+            }
+        """)
         btn_zoom_out.clicked.connect(self._zoom_out)
-        top_layout.addWidget(btn_zoom_out)
+        zoom_layout.addWidget(btn_zoom_out)
 
         btn_zoom_in = QPushButton("+")
-        btn_zoom_in.setFixedSize(30, 30)
+        btn_zoom_in.setFixedSize(26, 26)
         btn_zoom_in.setAutoDefault(False)
         btn_zoom_in.setDefault(False)
         btn_zoom_in.setCursor(Qt.PointingHandCursor)
-        btn_zoom_in.setStyleSheet(self._button_style())
+        btn_zoom_in.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background-color: #1F2D4A;
+                color: #58A6FF;
+            }
+        """)
         btn_zoom_in.clicked.connect(self._zoom_in)
-        top_layout.addWidget(btn_zoom_in)
+        zoom_layout.addWidget(btn_zoom_in)
+
+        # Internal subtle separator inside zoom group
+        inner_sep = QFrame()
+        inner_sep.setFrameShape(QFrame.VLine)
+        inner_sep.setStyleSheet("border: none; background-color: #232F48; width: 1px; margin: 2px 2px;")
+        zoom_layout.addWidget(inner_sep)
 
         self.btn_fit_width = QPushButton("Breite anpassen")
         self.btn_fit_width.setAutoDefault(False)
         self.btn_fit_width.setDefault(False)
         self.btn_fit_width.setCursor(Qt.PointingHandCursor)
-        self.btn_fit_width.setFixedHeight(30)
-        self.btn_fit_width.setStyleSheet(self._button_style())
+        self.btn_fit_width.setFixedHeight(26)
+        self.btn_fit_width.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #1F2D4A;
+                color: #58A6FF;
+            }
+        """)
         self.btn_fit_width.clicked.connect(self._fit_width)
-        top_layout.addWidget(self.btn_fit_width)
+        zoom_layout.addWidget(self.btn_fit_width)
+
+        top_layout.addWidget(zoom_box)
 
         # Page Mode Toggle: MultiPage vs SinglePage
         self.btn_page_mode = QPushButton("  📜 Fortlaufend")
@@ -1431,15 +1534,33 @@ class PdfReaderDialog(QDialog):
             self._jump_to_page(cur + 2)
 
     def _zoom_in(self) -> None:
+        cur = self.view.pageNavigator().currentPage()
+        self._is_jumping = True
         self.view.setZoomMode(QPdfView.ZoomMode.Custom)
         self.view.setZoomFactor(self.view.zoomFactor() * 1.15)
+        if cur >= 0:
+            self.view.pageNavigator().jump(cur, QPointF(0, 0), self.view.zoomFactor())
+            self.spin_page.setValue(cur + 1)
+        self._is_jumping = False
 
     def _zoom_out(self) -> None:
+        cur = self.view.pageNavigator().currentPage()
+        self._is_jumping = True
         self.view.setZoomMode(QPdfView.ZoomMode.Custom)
         self.view.setZoomFactor(self.view.zoomFactor() / 1.15)
+        if cur >= 0:
+            self.view.pageNavigator().jump(cur, QPointF(0, 0), self.view.zoomFactor())
+            self.spin_page.setValue(cur + 1)
+        self._is_jumping = False
 
     def _fit_width(self) -> None:
+        cur = self.view.pageNavigator().currentPage()
+        self._is_jumping = True
         self.view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
+        if cur >= 0:
+            self.view.pageNavigator().jump(cur, QPointF(0, 0), self.view.zoomFactor())
+            self.spin_page.setValue(cur + 1)
+        self._is_jumping = False
 
     def _toggle_toc_panel(self) -> None:
         self.toc_panel.setVisible(self.btn_toggle_toc.isChecked())
@@ -1655,10 +1776,10 @@ class PdfReaderDialog(QDialog):
                         min_y = min(w[1] for w in l_words)
                         max_y = max(w[3] for w in l_words)
 
-                        vx = int(min_x * inv_scale_x)
-                        vy = int(min_y * inv_scale_y)
-                        vw = max(2, int((max_x - min_x) * inv_scale_x))
-                        vh = max(2, int((max_y - min_y) * inv_scale_y))
+                        vx = int(min_x * inv_scale_x) - 1
+                        vy = int(min_y * inv_scale_y) - 1
+                        vw = max(2, int((max_x - min_x) * inv_scale_x) + 2)
+                        vh = max(2, int((max_y - min_y) * inv_scale_y) + 2)
 
                         line_view_rects.append(QRect(vx, vy, vw, vh))
 
