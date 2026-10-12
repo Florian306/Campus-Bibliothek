@@ -43,12 +43,14 @@ FACULTY_KNOWLEDGE: Dict[str, Dict[str, List[str]]] = {
             r"\bfunktionentheorie\b", r"\bzahlentheorie\b", r"\bnumber theory\b",
             r"\bdiskrete mathematik\b", r"\bdiscrete mathematics\b", r"\boptimierung\b",
             r"\bhöhere mathematik\b", r"\bhochschulmathematik\b", r"\bschulmathematik\b",
+            r"\bvorkurs mathematik\b", r"\bmathematik vorkurs\b", r"\bmathe\b",
             r"\bwirtschaftsmathematik\b", r"\bstatistik\b", r"\bstatistics\b"
         ],
         "keywords": [
             r"\bvektor(en)?\b", r"\bmatrix\b", r"\bmatrizen\b", r"\bdifferential\b",
             r"\bintegral\b", r"\bgrenzwerte?\b", r"\bkonvergenz\b", r"\beigenwert(e)?\b",
-            r"\bableitung(en)?\b", r"\bkurvenintegral\b", r"\bpolynom(e)?\b", r"\baxiom(e)?\b"
+            r"\bableitung(en)?\b", r"\bkurvenintegral\b", r"\bpolynom(e)?\b", r"\baxiom(e)?\b",
+            r"\bvorkurs\b", r"\brechenmethoden\b", r"\bformelsammlung\b"
         ]
     },
     "Physik & Astronomie": {

@@ -28,61 +28,169 @@ import threading
 _PDF_IO_SEMAPHORE = threading.Semaphore(1)
 
 
+SERIES_OR_GENRE_KEYWORDS = {
+    "kompakt", "vorkurs", "masterclass", "springer-lehrbuch", "springer", "spektrum",
+    "lehrbuch", "studienbuch", "studium", "basiswissen", "prüfungswissen", "prüfungs-repetitorium",
+    "repetitorium", "leitfaden", "skript", "vorlesung", "kurs", "grundkurs", "aufbaukurs",
+    "einführung", "handbuch", "taschenbuch", "lehr- und übungsbuch", "übungsbuch",
+    "arbeitsbuch", "fallstudien", "edition", "mitteilung", "reihe", "band", "teil",
+    "de gruyter", "pearson", "wiley", "oldenbourg", "vieweg", "hanser", "utb"
+}
+
+
 def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
-    """Inspects front-matter text blocks and bookmarks to extract genuine book title and author."""
+    """Inspects front-matter text spans and blocks with typographic font-size weighting
+    to reliably separate book series/courses, actual titles, and genuine author names.
+    """
     total_pages = len(doc)
     found_title = None
     found_author = None
 
-    # 1. Front-matter prominent blocks (Page 0 and 1)
+    # Step 1: Check embedded metadata first if available
+    try:
+        meta = doc.metadata or {}
+        raw_meta_author = str(meta.get("author") or "").replace('\x00', '').strip()
+        raw_meta_title = str(meta.get("title") or "").replace('\x00', '').strip()
+
+        # Sanitize metadata author
+        if raw_meta_author:
+            clean_m_auth = re.sub(
+                r'\[?\s*(?:Illustrator(?:in)?|Grafik(?:er)?|Redaktion|Red\.|Hrsg\.|Herausgeber|Fotograf(?:in)?|Bearb\.|Bearbeiter|Mitarb\.|Mitarbeiter)\s*\]?',
+                '', raw_meta_author, flags=re.IGNORECASE
+            ).strip()
+            if clean_m_auth.lower() not in ('sjoerg', 'admin', 'user', 'author', 'scan', 'root', 'unknown', 'alin.cason', 'fk') and len(clean_m_auth) >= 3:
+                # Discard if it looks like software, filename or series
+                if not re.search(r'\.(?:indd|indb|qxd|doc|docx|pdf)$', clean_m_auth, re.I) and not any(kw in clean_m_auth.lower() for kw in SERIES_OR_GENRE_KEYWORDS):
+                    found_author = clean_m_auth
+
+        # Sanitize metadata title
+        if raw_meta_title and len(raw_meta_title) >= 4:
+            is_bad_m_title = (
+                bool(re.search(r'\.(?:indd|indb|qxd|qxp|doc|docx|tex|rtf|pdf|pmd)$', raw_meta_title, re.I))
+                or bool(re.match(r'^(?:97[89]\d{10}|\d{9}[\dX]|\d{10,13})$', raw_meta_title))
+                or any(j in raw_meta_title.lower() for j in ["titelei", "frontmatter", "cover", "impressum", "unbenannt", "untitled", "microsoft word"])
+            )
+            if not is_bad_m_title:
+                found_title = raw_meta_title
+    except Exception:
+        pass
+
+    # Step 2: Front-matter visual inspection (Page 0 and 1)
     for p_no in range(min(2, total_pages)):
         try:
-            blocks = doc[p_no].get_text("blocks")
-            for b in blocks:
-                text = b[4].strip()
-                if not text or len(text) < 3 or len(text) > 120:
+            page = doc[p_no]
+            # Use detailed dict layout to inspect font sizes
+            page_dict = page.get_text("dict")
+            text_lines = []
+
+            for b in page_dict.get("blocks", []):
+                if b.get("type") != 0:  # text block only
                     continue
-                if any(k in text.lower() for k in [
+                for l in b.get("lines", []):
+                    line_spans = l.get("spans", [])
+                    if not line_spans:
+                        continue
+                    line_text = "".join(s.get("text", "") for s in line_spans).strip()
+                    if not line_text:
+                        continue
+                    # Average or max font size for this line
+                    max_size = max(s.get("size", 10.0) for s in line_spans)
+                    text_lines.append((line_text, max_size, b.get("bbox", (0, 0, 0, 0))))
+
+            if not text_lines:
+                continue
+
+            # Filter junk lines
+            valid_lines = []
+            for lt, sz, bbox in text_lines:
+                cand = re.sub(r'\s+', ' ', lt).strip()
+                if not (3 <= len(cand) <= 120):
+                    continue
+                if any(k in cand.lower() for k in [
                     "http", "doi:", "isbn", "copyright", "©", "urheberrecht",
                     "alle rechte", "gespeichert", "ip ", "download", "druck:",
-                    "satz:", "verlag", "bibliografische", "open-access", "for personal use"
+                    "satz:", "verlag", "bibliografische", "open-access", "for personal use",
+                    "titelei", "vorsatz", "inhaltsverzeichnis", "inhalt", "impressum",
+                    "preface", "vorwort", "danksagung", "all rights reserved"
                 ]):
-                    continue
-                lines = [l.strip() for l in text.splitlines() if l.strip()]
-                cand = " ".join(lines)
-                cand = re.sub(r'\s+', ' ', cand).strip()
-                if not (3 <= len(cand) <= 95):
                     continue
                 if re.match(r'^\d+$', cand) or re.search(r'\.(?:indd|indb|qxd|doc|docx|pdf)$', cand, re.I):
                     continue
-                if any(j in cand.lower() for j in [
-                    "titelei", "vorsatz", "inhaltsverzeichnis", "inhalt", "impressum", "cover",
-                    "copyright", "author", "this page intentionally left blank", "table of contents",
-                    "preface", "vorwort", "danksagung", "acknowledgements", "all rights reserved"
-                ]):
-                    continue
+                valid_lines.append((cand, sz, bbox))
 
-                words = cand.split()
-                is_person = (
-                    2 <= len(words) <= 4
-                    and all(w[0].isupper() for w in words if w.isalpha())
-                    and not any(k in cand.lower() for k in ["band", "auflage", "lehrbuch", "einführung", "grundkurs", "handbuch", "buch", "reihe", "edition", "mitteilung"])
-                )
+            if not valid_lines:
+                continue
 
-                if is_person and not found_author and not found_title:
-                    found_author = cand
-                elif not found_title:
-                    # Clean out bullet points like '●'
-                    cand = cand.replace("●", "-").replace("  ", " ")
-                    found_title = cand
-                elif not found_author and is_person:
-                    found_author = cand
+            # Group adjacent lines with similar font sizes into candidate title/author blocks
+            grouped_candidates = []
+            curr_text = valid_lines[0][0]
+            curr_size = valid_lines[0][1]
+
+            for next_txt, next_sz, _ in valid_lines[1:]:
+                # If font size is very close (within 15%) and length isn't too huge, join
+                if abs(curr_size - next_sz) <= max(curr_size, next_sz) * 0.15 and len(curr_text) + len(next_txt) < 110:
+                    curr_text += " " + next_txt
+                else:
+                    grouped_candidates.append((curr_text.strip(), curr_size))
+                    curr_text = next_txt
+                    curr_size = next_sz
+            if curr_text:
+                grouped_candidates.append((curr_text.strip(), curr_size))
+
+            # Helper to check if a string is a series/course name rather than a person
+            def is_series_or_course(text_val: str) -> bool:
+                low = text_val.lower()
+                return any(kw in low for kw in SERIES_OR_GENRE_KEYWORDS)
+
+            # Helper to check if a string looks like a person's name
+            def is_person_name(text_val: str) -> bool:
+                if is_series_or_course(text_val):
+                    return False
+                words = text_val.split()
+                if not (2 <= len(words) <= 4):
+                    return False
+                alpha_words = [w for w in words if w.isalpha()]
+                if not alpha_words:
+                    return False
+                return all(w[0].isupper() for w in alpha_words)
+
+            # Sort grouped candidates by font size descending to find the prominent title
+            title_candidates = [
+                c for c in grouped_candidates
+                if not is_series_or_course(c[0])
+                and not any(c[0].lower().startswith(x) for x in ["prof.", "dr.", "von "])
+            ]
+
+            if not found_title and title_candidates:
+                # Primary title candidate has highest font size
+                best_title_cand = max(title_candidates, key=lambda x: x[1])[0]
+                # Clean out bullet points like '●'
+                best_title_cand = best_title_cand.replace("●", "-").replace("  ", " ").strip()
+                if len(best_title_cand) >= 4:
+                    found_title = best_title_cand
+
+            # Extract author if not already determined by metadata
+            if not found_author:
+                for cand_text, cand_sz in grouped_candidates:
+                    # If this candidate is the chosen title, skip
+                    if found_title and cand_text == found_title:
+                        continue
+                    if is_series_or_course(cand_text):
+                        continue
+
+                    # Clean prefixes like "Von ", "Author: "
+                    cleaned_author_cand = re.sub(r'^(?:von|by|autor(?:en)?|author(?:s)?)\s*:\s*', '', cand_text, flags=re.I).strip()
+                    if is_person_name(cleaned_author_cand):
+                        found_author = cleaned_author_cand
+                        break
+
+            # If title is found, we can finish page 0/1 inspection
+            if found_title and found_author:
+                break
         except Exception:
             pass
-        if found_title:
-            break
 
-    # 2. Bookmarks / TOC Fallback if front page was completely empty
+    # Step 3: Bookmarks / TOC Fallback if title still not found
     if not found_title:
         try:
             toc = doc.get_toc()

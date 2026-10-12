@@ -106,7 +106,8 @@ class InboxAnalysisWorker(QThread):
             suggested_cat, confidence, reason = classify_textbook(
                 filename=fn,
                 text=text_snippet,
-                existing_folders=self.existing_categories
+                existing_folders=self.existing_categories,
+                title=extracted_title
             )
 
             # 3. Check for duplicates

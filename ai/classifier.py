@@ -25,14 +25,16 @@ def clean_text_for_scoring(text: str) -> str:
 def classify_textbook(
     filename: str,
     text: str,
-    existing_folders: Optional[List[str]] = None
+    existing_folders: Optional[List[str]] = None,
+    title: Optional[str] = None
 ) -> Tuple[str, int, str]:
     """Scores academic faculties using weighted anchors, keyword patterns, and TOC signals.
     
     Returns:
         (best_faculty, confidence_percent, explanation)
     """
-    clean_fn = clean_text_for_scoring(filename)
+    scoring_name = f"{filename} {title}" if title else filename
+    clean_fn = clean_text_for_scoring(scoring_name)
     clean_text = text.lower() if text else ""
 
     # 1. Existing user folder matching (exact or high-similarity match)
