@@ -88,13 +88,13 @@ class PdfSelectionOverlay(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        # Smooth modern translucent selection highlight
-        sel_color = QColor(56, 139, 253, 95)
-        border_color = QColor(56, 139, 253, 140)
+        # Elegant modern translucent selection highlight (Edge / Acrobat style)
+        sel_color = QColor(41, 128, 255, 90)
+        border_color = QColor(56, 139, 253, 160)
         painter.setBrush(QBrush(sel_color))
-        painter.setPen(QPen(border_color, 0.8))
+        painter.setPen(QPen(border_color, 1.0))
         for r in self._highlight_rects:
-            painter.drawRoundedRect(r, 2.5, 2.5)
+            painter.drawRoundedRect(r, 3.0, 3.0)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
@@ -389,92 +389,52 @@ class PdfReaderDialog(QDialog):
         sep1.setStyleSheet("border: none; background-color: #232F48; width: 1px;")
         top_layout.addWidget(sep1)
 
-        # Page Navigation Group: [ ◀ ] [ 1 ] / 342 [ ▶ ] in a cohesive pill container
-        page_nav_box = QFrame()
-        page_nav_box.setStyleSheet("""
-            QFrame#page_nav_box {
-                background-color: #141C2E;
-                border: 1px solid #232F48;
-                border-radius: 6px;
-            }
-        """)
-        page_nav_box.setObjectName("page_nav_box")
-        page_nav_layout = QHBoxLayout(page_nav_box)
-        page_nav_layout.setContentsMargins(3, 2, 6, 2)
-        page_nav_layout.setSpacing(4)
-
+        # Page Navigation: [ ◀ ] [ SpinBox ] [ / 342 ] [ ▶ ]
         btn_prev = QPushButton("◀")
-        btn_prev.setFixedSize(26, 26)
+        btn_prev.setFixedSize(32, 30)
         btn_prev.setAutoDefault(False)
         btn_prev.setDefault(False)
         btn_prev.setCursor(Qt.PointingHandCursor)
-        btn_prev.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #1F2D4A;
-                color: #58A6FF;
-            }
-        """)
+        btn_prev.setStyleSheet(self._button_style())
         btn_prev.clicked.connect(self._prev_page)
-        page_nav_layout.addWidget(btn_prev)
+        top_layout.addWidget(btn_prev)
 
         self.spin_page = QSpinBox()
         self.spin_page.setMinimum(1)
         self.spin_page.setMaximum(9999)
         self.spin_page.setValue(self.initial_page)
-        self.spin_page.setFixedWidth(54)
-        self.spin_page.setFixedHeight(24)
+        self.spin_page.setFixedWidth(64)
+        self.spin_page.setFixedHeight(30)
         self.spin_page.setAlignment(Qt.AlignCenter)
-        self.spin_page.setButtonSymbols(QSpinBox.NoButtons)
         self.spin_page.setStyleSheet("""
             QSpinBox {
-                background-color: #0E1422;
-                color: #58A6FF;
-                border: 1px solid #232F48;
-                border-radius: 4px;
-                font-weight: 700;
-                font-size: 12px;
-                padding: 0;
+                background-color: #141C2E;
+                color: #FFFFFF;
+                border: 1px solid #304163;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 13px;
+                padding: 1px 4px;
             }
             QSpinBox:focus {
-                border-color: #388BFD;
+                border-color: #58A6FF;
             }
         """)
         self.spin_page.valueChanged.connect(self._on_spin_page_changed)
-        page_nav_layout.addWidget(self.spin_page)
+        top_layout.addWidget(self.spin_page)
 
         self.lbl_total_pages = QLabel("/ 1")
-        self.lbl_total_pages.setStyleSheet("color: #8B949E; font-size: 12px; font-weight: 600; border: none; background: transparent; padding: 0 4px;")
-        page_nav_layout.addWidget(self.lbl_total_pages)
+        self.lbl_total_pages.setStyleSheet("color: #C9D1D9; font-size: 13px; font-weight: 600; border: none; background: transparent; padding: 0 4px;")
+        top_layout.addWidget(self.lbl_total_pages)
 
         btn_next = QPushButton("▶")
-        btn_next.setFixedSize(26, 26)
+        btn_next.setFixedSize(32, 30)
         btn_next.setAutoDefault(False)
         btn_next.setDefault(False)
         btn_next.setCursor(Qt.PointingHandCursor)
-        btn_next.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #1F2D4A;
-                color: #58A6FF;
-            }
-        """)
+        btn_next.setStyleSheet(self._button_style())
         btn_next.clicked.connect(self._next_page)
-        page_nav_layout.addWidget(btn_next)
-
-        top_layout.addWidget(page_nav_box)
+        top_layout.addWidget(btn_next)
 
         # Separator
         sep2 = QFrame()
@@ -482,94 +442,33 @@ class PdfReaderDialog(QDialog):
         sep2.setStyleSheet("border: none; background-color: #232F48; width: 1px;")
         top_layout.addWidget(sep2)
 
-        # Zoom Controls Group: [ − ] [ + ] [ Breite anpassen ]
-        zoom_box = QFrame()
-        zoom_box.setStyleSheet("""
-            QFrame#zoom_box {
-                background-color: #141C2E;
-                border: 1px solid #232F48;
-                border-radius: 6px;
-            }
-        """)
-        zoom_box.setObjectName("zoom_box")
-        zoom_layout = QHBoxLayout(zoom_box)
-        zoom_layout.setContentsMargins(3, 2, 4, 2)
-        zoom_layout.setSpacing(3)
-
+        # Zoom Controls: [ − ] [ + ] [ Breite anpassen ]
         btn_zoom_out = QPushButton("−")
-        btn_zoom_out.setFixedSize(26, 26)
+        btn_zoom_out.setFixedSize(32, 30)
         btn_zoom_out.setAutoDefault(False)
         btn_zoom_out.setDefault(False)
         btn_zoom_out.setCursor(Qt.PointingHandCursor)
-        btn_zoom_out.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: 700;
-            }
-            QPushButton:hover {
-                background-color: #1F2D4A;
-                color: #58A6FF;
-            }
-        """)
+        btn_zoom_out.setStyleSheet(self._button_style())
         btn_zoom_out.clicked.connect(self._zoom_out)
-        zoom_layout.addWidget(btn_zoom_out)
+        top_layout.addWidget(btn_zoom_out)
 
         btn_zoom_in = QPushButton("+")
-        btn_zoom_in.setFixedSize(26, 26)
+        btn_zoom_in.setFixedSize(32, 30)
         btn_zoom_in.setAutoDefault(False)
         btn_zoom_in.setDefault(False)
         btn_zoom_in.setCursor(Qt.PointingHandCursor)
-        btn_zoom_in.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: 700;
-            }
-            QPushButton:hover {
-                background-color: #1F2D4A;
-                color: #58A6FF;
-            }
-        """)
+        btn_zoom_in.setStyleSheet(self._button_style())
         btn_zoom_in.clicked.connect(self._zoom_in)
-        zoom_layout.addWidget(btn_zoom_in)
-
-        # Internal subtle separator inside zoom group
-        inner_sep = QFrame()
-        inner_sep.setFrameShape(QFrame.VLine)
-        inner_sep.setStyleSheet("border: none; background-color: #232F48; width: 1px; margin: 2px 2px;")
-        zoom_layout.addWidget(inner_sep)
+        top_layout.addWidget(btn_zoom_in)
 
         self.btn_fit_width = QPushButton("Breite anpassen")
         self.btn_fit_width.setAutoDefault(False)
         self.btn_fit_width.setDefault(False)
         self.btn_fit_width.setCursor(Qt.PointingHandCursor)
-        self.btn_fit_width.setFixedHeight(26)
-        self.btn_fit_width.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                padding: 0 8px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #1F2D4A;
-                color: #58A6FF;
-            }
-        """)
+        self.btn_fit_width.setFixedHeight(30)
+        self.btn_fit_width.setStyleSheet(self._button_style())
         self.btn_fit_width.clicked.connect(self._fit_width)
-        zoom_layout.addWidget(self.btn_fit_width)
-
-        top_layout.addWidget(zoom_box)
+        top_layout.addWidget(self.btn_fit_width)
 
         # Page Mode Toggle: MultiPage vs SinglePage
         self.btn_page_mode = QPushButton("  📜 Fortlaufend")
@@ -1741,16 +1640,20 @@ class PdfReaderDialog(QDialog):
                 vp_w = max(1, vp.width())
                 vp_h = max(1, vp.height())
 
-                scale_x = p_rect.width / vp_w
-                scale_y = p_rect.height / vp_h
-                inv_scale_x = vp_w / p_rect.width
-                inv_scale_y = vp_h / p_rect.height
+                # PDF viewers preserve aspect ratio uniformly.
+                # In QPdfView with FitToWidth or Custom, scale = rendered_width / point_width
+                scale = vp_w / max(1.0, p_rect.width)
+                inv_scale = 1.0 / scale if scale > 0 else 1.0
+
+                # Compute page horizontal offset if page is centered inside viewport
+                rendered_page_w = p_rect.width * scale
+                offset_x = max(0.0, (vp_w - rendered_page_w) / 2.0)
 
                 norm_rect = fitz.Rect(
-                    view_rect.left() * scale_x,
-                    view_rect.top() * scale_y,
-                    view_rect.right() * scale_x,
-                    view_rect.bottom() * scale_y,
+                    (view_rect.left() - offset_x) * inv_scale,
+                    view_rect.top() * inv_scale,
+                    (view_rect.right() - offset_x) * inv_scale,
+                    view_rect.bottom() * inv_scale,
                 )
 
                 # Extract words: (x0, y0, x1, y1, word, block_no, line_no, word_no)
@@ -1761,38 +1664,36 @@ class PdfReaderDialog(QDialog):
                 ]
 
                 if hit_words:
-                    # Group words by (block_no, line_no) or similar y-coordinates to form lines
+                    # Group words by (block_no, line_no)
                     lines_map: Dict[Tuple[int, int], List[Any]] = {}
                     for w in hit_words:
-                        key = (w[5], w[6])  # block_no, line_no
+                        key = (w[5], w[6])
                         if key not in lines_map:
                             lines_map[key] = []
                         lines_map[key].append(w)
 
-                    # Build compact line bounding rects mapped back to view coordinates
+                    # Build pixel-accurate line highlight bounding boxes
                     for key, l_words in lines_map.items():
                         min_x = min(w[0] for w in l_words)
                         max_x = max(w[2] for w in l_words)
                         min_y = min(w[1] for w in l_words)
                         max_y = max(w[3] for w in l_words)
 
-                        vx = int(min_x * inv_scale_x) - 1
-                        vy = int(min_y * inv_scale_y) - 1
-                        vw = max(2, int((max_x - min_x) * inv_scale_x) + 2)
-                        vh = max(2, int((max_y - min_y) * inv_scale_y) + 2)
+                        vx = int(offset_x + min_x * scale) - 1
+                        vy = int(min_y * scale) - 1
+                        vw = max(2, int((max_x - min_x) * scale) + 2)
+                        vh = max(2, int((max_y - min_y) * scale) + 2)
 
                         line_view_rects.append(QRect(vx, vy, vw, vh))
 
                     selected_text = " ".join(w[4] for w in hit_words).strip()
                 else:
-                    # Fallback textbox extraction
                     selected_text = page.get_textbox(norm_rect).strip()
 
             doc.close()
         except Exception:
             pass
 
-        # Fallback to single normalized rectangle if word extraction didn't yield lines
         if not line_view_rects and selected_text:
             line_view_rects = [view_rect]
 
