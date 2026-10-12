@@ -48,6 +48,18 @@ try:
 except Exception:
     pass
 
+try:
+    tmp_ret = collect_all('pydantic')
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+except Exception:
+    pass
+
+try:
+    tmp_ret = collect_all('pydantic_core')
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+except Exception:
+    pass
+
 hiddenimports += [
     'ui.qt_app',
     'ui.qt.theme',
