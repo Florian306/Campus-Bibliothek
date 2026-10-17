@@ -390,52 +390,116 @@ class PdfReaderDialog(QDialog):
         sep1.setStyleSheet("border: none; background-color: #232F48; width: 1px;")
         top_layout.addWidget(sep1)
 
-        # Page Navigation: [ ◀ ] [ SpinBox ] [ / 342 ] [ ▶ ]
-        btn_prev = QPushButton("◀")
-        btn_prev.setFixedSize(32, 30)
+        # Page Navigation Pill Capsule: [ ◀ ] [ Page Input ] [ / Total ] [ ▶ ]
+        nav_capsule = QFrame()
+        nav_capsule.setFixedHeight(32)
+        nav_capsule.setStyleSheet("""
+            QFrame#NavCapsule {
+                background-color: #121826;
+                border: 1px solid #233148;
+                border-radius: 6px;
+            }
+            QFrame#NavCapsule:hover {
+                border-color: #388BFD;
+            }
+        """)
+        nav_capsule.setObjectName("NavCapsule")
+        nav_layout = QHBoxLayout(nav_capsule)
+        nav_layout.setContentsMargins(3, 2, 3, 2)
+        nav_layout.setSpacing(2)
+
+        # Previous Page Button (integrated arrow)
+        btn_prev = QPushButton("‹")
+        btn_prev.setFixedSize(26, 26)
         btn_prev.setAutoDefault(False)
         btn_prev.setDefault(False)
         btn_prev.setCursor(Qt.PointingHandCursor)
-        btn_prev.setStyleSheet(self._button_style())
+        btn_prev.setToolTip("Vorherige Seite (←)")
+        btn_prev.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                font-size: 16px;
+                font-weight: bold;
+                padding-bottom: 2px;
+            }
+            QPushButton:hover {
+                background-color: #1C263B;
+                color: #58A6FF;
+            }
+            QPushButton:pressed {
+                background-color: #0F1624;
+            }
+        """)
         btn_prev.clicked.connect(self._prev_page)
-        top_layout.addWidget(btn_prev)
+        nav_layout.addWidget(btn_prev)
 
+        # Clean Page Number SpinBox (without ugly native up/down buttons)
         self.spin_page = QSpinBox()
+        self.spin_page.setButtonSymbols(QSpinBox.NoButtons)
         self.spin_page.setMinimum(1)
         self.spin_page.setMaximum(9999)
         self.spin_page.setValue(self.initial_page)
-        self.spin_page.setFixedWidth(64)
-        self.spin_page.setFixedHeight(30)
+        self.spin_page.setFixedWidth(46)
+        self.spin_page.setFixedHeight(26)
         self.spin_page.setAlignment(Qt.AlignCenter)
+        self.spin_page.setToolTip("Direkt zu Seitenzahl springen (Zahl eingeben + Enter)")
         self.spin_page.setStyleSheet("""
             QSpinBox {
-                background-color: #141C2E;
+                background-color: #182236;
                 color: #FFFFFF;
-                border: 1px solid #304163;
-                border-radius: 5px;
+                border: 1px solid #2A3B57;
+                border-radius: 4px;
                 font-weight: bold;
-                font-size: 13px;
-                padding: 1px 4px;
+                font-size: 12px;
+                padding: 0px;
+                selection-background-color: #1F6FEB;
             }
             QSpinBox:focus {
                 border-color: #58A6FF;
+                background-color: #1E2B45;
             }
         """)
         self.spin_page.valueChanged.connect(self._on_spin_page_changed)
-        top_layout.addWidget(self.spin_page)
+        nav_layout.addWidget(self.spin_page)
 
+        # Total Pages Label
         self.lbl_total_pages = QLabel("/ 1")
-        self.lbl_total_pages.setStyleSheet("color: #C9D1D9; font-size: 13px; font-weight: 600; border: none; background: transparent; padding: 0 4px;")
-        top_layout.addWidget(self.lbl_total_pages)
+        self.lbl_total_pages.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        self.lbl_total_pages.setStyleSheet("color: #798CA6; border: none; background: transparent; padding: 0 4px;")
+        nav_layout.addWidget(self.lbl_total_pages)
 
-        btn_next = QPushButton("▶")
-        btn_next.setFixedSize(32, 30)
+        # Next Page Button (integrated arrow)
+        btn_next = QPushButton("›")
+        btn_next.setFixedSize(26, 26)
         btn_next.setAutoDefault(False)
         btn_next.setDefault(False)
         btn_next.setCursor(Qt.PointingHandCursor)
-        btn_next.setStyleSheet(self._button_style())
+        btn_next.setToolTip("Nächste Seite (→)")
+        btn_next.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #C9D1D9;
+                border: none;
+                border-radius: 4px;
+                font-size: 16px;
+                font-weight: bold;
+                padding-bottom: 2px;
+            }
+            QPushButton:hover {
+                background-color: #1C263B;
+                color: #58A6FF;
+            }
+            QPushButton:pressed {
+                background-color: #0F1624;
+            }
+        """)
         btn_next.clicked.connect(self._next_page)
-        top_layout.addWidget(btn_next)
+        nav_layout.addWidget(btn_next)
+
+        top_layout.addWidget(nav_capsule)
 
         # Separator
         sep2 = QFrame()
