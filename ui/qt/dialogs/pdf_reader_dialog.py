@@ -271,6 +271,19 @@ class TocLoaderWorker(QThread):
         self.finished_toc.emit(items)
 
 
+class FixedPillCapsule(QFrame):
+    """Rigid layout pill frame that guarantees fixed geometry and prevents QBoxLayout squeezing."""
+    def __init__(self, width: int, height: int, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(width, height)
+
+    def sizeHint(self) -> QSize:
+        return QSize(self.width(), self.height())
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(self.width(), self.height())
+
+
 class PdfReaderDialog(QDialog):
     """Integrated In-App PDF Reader with TOC Navigation, Auto-Saved Progress, Notes & AI Assistant."""
 
@@ -287,7 +300,7 @@ class PdfReaderDialog(QDialog):
 
         self.setWindowTitle(f"Campus-Reader • {self.book_title}")
         self.resize(1300, 880)
-        self.setMinimumSize(960, 640)
+        self.setMinimumSize(1020, 680)
         self.setWindowFlags(
             Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
         )
@@ -357,8 +370,8 @@ class PdfReaderDialog(QDialog):
             }
         """)
         top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(14, 8, 14, 8)
-        top_layout.setSpacing(8)
+        top_layout.setContentsMargins(10, 6, 10, 6)
+        top_layout.setSpacing(5)
 
         # Toggle TOC Button (Left Sidebar Toggle)
         self.btn_toggle_toc = QPushButton("  Inhalt")
@@ -394,8 +407,7 @@ class PdfReaderDialog(QDialog):
         top_layout.addWidget(sep1)
 
         # Page Navigation Pill Capsule: [ ‹ ] [ Page Input ] [ / Total ] [ › ]
-        nav_capsule = QFrame()
-        nav_capsule.setFixedSize(148, 32)
+        nav_capsule = FixedPillCapsule(156, 32)
         nav_capsule.setStyleSheet("""
             QFrame#NavCapsule {
                 background-color: #111726;
@@ -411,22 +423,17 @@ class PdfReaderDialog(QDialog):
         nav_layout.setContentsMargins(4, 2, 4, 2)
         nav_layout.setSpacing(3)
 
-        # Previous Page Button
-        btn_prev = QPushButton("‹")
-        btn_prev.setFixedSize(26, 26)
-        btn_prev.setAutoDefault(False)
-        btn_prev.setDefault(False)
-        btn_prev.setCursor(Qt.PointingHandCursor)
-        btn_prev.setToolTip("Vorherige Seite (←)")
-        btn_prev.setStyleSheet("""
+        # Micro icon-button stylesheet to strictly override global QPushButton padding
+        icon_btn_style = """
             QPushButton {
                 background: transparent;
                 color: #C9D1D9;
                 border: none;
                 border-radius: 4px;
-                font-size: 16px;
+                font-size: 15px;
                 font-weight: bold;
-                padding-bottom: 2px;
+                padding: 0px;
+                margin: 0px;
             }
             QPushButton:hover {
                 background-color: #1F2C44;
@@ -435,17 +442,52 @@ class PdfReaderDialog(QDialog):
             QPushButton:pressed {
                 background-color: #0F1624;
             }
-        """)
+        """
+
+        # Square Icon Pill Button Stylesheet (32x32)
+        square_icon_style = """
+            QPushButton {
+                background-color: #111726;
+                color: #C9D1D9;
+                border: 1px solid #233148;
+                border-radius: 6px;
+                font-size: 14px;
+                padding: 0px;
+                margin: 0px;
+            }
+            QPushButton:hover {
+                background-color: #1A253D;
+                border-color: #388BFD;
+                color: #FFFFFF;
+            }
+            QPushButton:pressed {
+                background-color: #0F1624;
+            }
+            QPushButton:checked {
+                background-color: #1A2E4C;
+                border-color: #58A6FF;
+                color: #58A6FF;
+            }
+        """
+
+        # Previous Page Button
+        btn_prev = QPushButton("‹")
+        btn_prev.setFixedSize(26, 26)
+        btn_prev.setAutoDefault(False)
+        btn_prev.setDefault(False)
+        btn_prev.setCursor(Qt.PointingHandCursor)
+        btn_prev.setToolTip("Vorherige Seite (←)")
+        btn_prev.setStyleSheet(icon_btn_style)
         btn_prev.clicked.connect(self._prev_page)
         nav_layout.addWidget(btn_prev)
 
-        # Clean Page Number SpinBox
+        # Clean Page Number SpinBox with explicitly styled child QLineEdit
         self.spin_page = QSpinBox()
         self.spin_page.setButtonSymbols(QSpinBox.NoButtons)
         self.spin_page.setMinimum(1)
         self.spin_page.setMaximum(9999)
         self.spin_page.setValue(self.initial_page)
-        self.spin_page.setFixedWidth(48)
+        self.spin_page.setFixedWidth(50)
         self.spin_page.setFixedHeight(24)
         self.spin_page.setAlignment(Qt.AlignCenter)
         self.spin_page.setToolTip("Direkt zu Seitenzahl springen (Zahl eingeben + Enter)")
@@ -456,13 +498,26 @@ class PdfReaderDialog(QDialog):
                 border: 1px solid #283955;
                 border-radius: 4px;
                 font-weight: 700;
-                font-size: 12px;
+                font-size: 13px;
                 padding: 0px;
-                selection-background-color: #1F6FEB;
+                margin: 0px;
             }
             QSpinBox:focus {
                 border-color: #58A6FF;
                 background-color: #1D2A45;
+                color: #FFFFFF;
+            }
+            QSpinBox QLineEdit {
+                background: transparent;
+                color: #58A6FF;
+                border: none;
+                padding: 0px;
+                margin: 0px;
+                font-weight: 700;
+                font-size: 13px;
+                qproperty-alignment: AlignCenter;
+            }
+            QSpinBox QLineEdit:focus {
                 color: #FFFFFF;
             }
         """)
@@ -472,7 +527,7 @@ class PdfReaderDialog(QDialog):
         # Total Pages Label
         self.lbl_total_pages = QLabel("/ 1")
         self.lbl_total_pages.setFont(QFont("Segoe UI", 9, QFont.Bold))
-        self.lbl_total_pages.setStyleSheet("color: #798CA6; border: none; background: transparent; padding: 0 4px;")
+        self.lbl_total_pages.setStyleSheet("color: #798CA6; border: none; background: transparent; padding: 0 2px;")
         nav_layout.addWidget(self.lbl_total_pages)
 
         # Next Page Button
@@ -482,24 +537,7 @@ class PdfReaderDialog(QDialog):
         btn_next.setDefault(False)
         btn_next.setCursor(Qt.PointingHandCursor)
         btn_next.setToolTip("Nächste Seite (→)")
-        btn_next.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 16px;
-                font-weight: bold;
-                padding-bottom: 2px;
-            }
-            QPushButton:hover {
-                background-color: #1F2C44;
-                color: #58A6FF;
-            }
-            QPushButton:pressed {
-                background-color: #0F1624;
-            }
-        """)
+        btn_next.setStyleSheet(icon_btn_style)
         btn_next.clicked.connect(self._next_page)
         nav_layout.addWidget(btn_next)
 
@@ -512,9 +550,8 @@ class PdfReaderDialog(QDialog):
         sep2.setFixedHeight(24)
         top_layout.addWidget(sep2)
 
-        # Zoom Controls Pill Capsule: [ − ] [ + ] [ Breite anpassen ]
-        zoom_capsule = QFrame()
-        zoom_capsule.setFixedSize(176, 32)
+        # Zoom Controls Pill Capsule: [ − ] [ + ] [ Breite ]
+        zoom_capsule = FixedPillCapsule(136, 32)
         zoom_capsule.setStyleSheet("""
             QFrame#ZoomCapsule {
                 background-color: #111726;
@@ -536,23 +573,7 @@ class PdfReaderDialog(QDialog):
         btn_zoom_out.setDefault(False)
         btn_zoom_out.setCursor(Qt.PointingHandCursor)
         btn_zoom_out.setToolTip("Verkleinern (Strg -)")
-        btn_zoom_out.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 15px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1F2C44;
-                color: #58A6FF;
-            }
-            QPushButton:pressed {
-                background-color: #0F1624;
-            }
-        """)
+        btn_zoom_out.setStyleSheet(icon_btn_style)
         btn_zoom_out.clicked.connect(self._zoom_out)
         zoom_layout.addWidget(btn_zoom_out)
 
@@ -562,23 +583,7 @@ class PdfReaderDialog(QDialog):
         btn_zoom_in.setDefault(False)
         btn_zoom_in.setCursor(Qt.PointingHandCursor)
         btn_zoom_in.setToolTip("Vergrößern (Strg +)")
-        btn_zoom_in.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #C9D1D9;
-                border: none;
-                border-radius: 4px;
-                font-size: 15px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1F2C44;
-                color: #58A6FF;
-            }
-            QPushButton:pressed {
-                background-color: #0F1624;
-            }
-        """)
+        btn_zoom_in.setStyleSheet(icon_btn_style)
         btn_zoom_in.clicked.connect(self._zoom_in)
         zoom_layout.addWidget(btn_zoom_in)
 
@@ -589,18 +594,20 @@ class PdfReaderDialog(QDialog):
         zoom_sep.setFixedHeight(18)
         zoom_layout.addWidget(zoom_sep)
 
-        self.btn_fit_width = QPushButton("Breite anpassen")
+        self.btn_fit_width = QPushButton("Breite")
+        self.btn_fit_width.setToolTip("Dokument an Fensterbreite anpassen (Strg+0)")
         self.btn_fit_width.setAutoDefault(False)
         self.btn_fit_width.setDefault(False)
         self.btn_fit_width.setCursor(Qt.PointingHandCursor)
-        self.btn_fit_width.setFixedHeight(26)
+        self.btn_fit_width.setFixedHeight(24)
         self.btn_fit_width.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 color: #C9D1D9;
                 border: none;
                 border-radius: 4px;
-                padding: 0 8px;
+                padding: 0 6px;
+                margin: 0px;
                 font-size: 11px;
                 font-weight: 600;
             }
@@ -617,78 +624,78 @@ class PdfReaderDialog(QDialog):
 
         top_layout.addWidget(zoom_capsule)
 
-        # Page Mode Toggle: MultiPage vs SinglePage
-        self.btn_page_mode = QPushButton("  📜 Fortlaufend")
-        self.btn_page_mode.setToolTip("Zwischen fortlaufendem Scrollen und Einzelseite wechseln")
+        # Page Mode Toggle: MultiPage vs SinglePage (Icon Pill)
+        self.btn_page_mode = QPushButton("📜")
+        self.btn_page_mode.setToolTip("Seitenmodus: Fortlaufend / Einzelseite wechseln (Strg+M)")
         self.btn_page_mode.setAutoDefault(False)
         self.btn_page_mode.setDefault(False)
         self.btn_page_mode.setCursor(Qt.PointingHandCursor)
-        self.btn_page_mode.setFixedHeight(32)
-        self.btn_page_mode.setStyleSheet(self._button_style())
+        self.btn_page_mode.setFixedSize(32, 32)
+        self.btn_page_mode.setStyleSheet(square_icon_style)
         self.btn_page_mode.clicked.connect(self._toggle_page_mode)
         top_layout.addWidget(self.btn_page_mode)
 
-        # Color Theme / Filter Mode Toggle
-        self.btn_reading_theme = QPushButton("  ☀️ Normal")
+        # Color Theme / Filter Mode Toggle (Icon Pill)
+        self.btn_reading_theme = QPushButton("☀️")
         self.btn_reading_theme.setToolTip("Farbmodus wechseln (Normal / Sepia / Dunkel)")
         self.btn_reading_theme.setAutoDefault(False)
         self.btn_reading_theme.setDefault(False)
         self.btn_reading_theme.setCursor(Qt.PointingHandCursor)
-        self.btn_reading_theme.setFixedHeight(32)
-        self.btn_reading_theme.setStyleSheet(self._button_style())
+        self.btn_reading_theme.setFixedSize(32, 32)
+        self.btn_reading_theme.setStyleSheet(square_icon_style)
         self.btn_reading_theme.clicked.connect(self._cycle_reading_theme)
         top_layout.addWidget(self.btn_reading_theme)
 
-        # Bookmark Toggle Button
-        self.btn_bookmark = QPushButton("  ☆ Lesezeichen")
+        # Bookmark Toggle Button (Icon Pill)
+        self.btn_bookmark = QPushButton("☆")
         self.btn_bookmark.setToolTip("Lesezeichen auf aktueller Seite setzen / entfernen (Strg+D)")
         self.btn_bookmark.setAutoDefault(False)
         self.btn_bookmark.setDefault(False)
         self.btn_bookmark.setCursor(Qt.PointingHandCursor)
-        self.btn_bookmark.setFixedHeight(32)
-        self.btn_bookmark.setStyleSheet(self._button_style())
+        self.btn_bookmark.setFixedSize(32, 32)
+        self.btn_bookmark.setStyleSheet(square_icon_style)
         self.btn_bookmark.clicked.connect(self._toggle_bookmark)
         top_layout.addWidget(self.btn_bookmark)
 
-        # Copy Current Page Text Button
-        self.btn_copy_text = QPushButton("  📋 Kopieren")
-        self.btn_copy_text.setToolTip("Gesamten Text der aktuellen Seite in die Zwischenablage kopieren")
+        # Copy Current Page Text Button (Icon Pill)
+        self.btn_copy_text = QPushButton("📋")
+        self.btn_copy_text.setToolTip("Gesamten Text der aktuellen Seite kopieren")
         self.btn_copy_text.setAutoDefault(False)
         self.btn_copy_text.setDefault(False)
         self.btn_copy_text.setCursor(Qt.PointingHandCursor)
-        self.btn_copy_text.setFixedHeight(32)
-        self.btn_copy_text.setStyleSheet(self._button_style())
+        self.btn_copy_text.setFixedSize(32, 32)
+        self.btn_copy_text.setStyleSheet(square_icon_style)
         self.btn_copy_text.clicked.connect(self._copy_page_text)
         top_layout.addWidget(self.btn_copy_text)
 
-        # Search Toggle Button
-        self.btn_search = QPushButton("  🔍 Suchen")
+        # Search Toggle Button (Icon Pill)
+        self.btn_search = QPushButton("🔍")
         self.btn_search.setToolTip("Volltextsuche einblenden (Strg+F)")
         self.btn_search.setCheckable(True)
         self.btn_search.setChecked(False)
         self.btn_search.setAutoDefault(False)
         self.btn_search.setDefault(False)
         self.btn_search.setCursor(Qt.PointingHandCursor)
-        self.btn_search.setFixedHeight(32)
-        self.btn_search.setStyleSheet(self._button_style())
+        self.btn_search.setFixedSize(32, 32)
+        self.btn_search.setStyleSheet(square_icon_style)
         self.btn_search.clicked.connect(self._toggle_search_bar)
         top_layout.addWidget(self.btn_search)
 
         top_layout.addStretch()
 
-        # Fullscreen Toggle Button
-        self.btn_fullscreen = QPushButton("  ⛶ Vollbild")
+        # Fullscreen Toggle Button (Square Icon Pill)
+        self.btn_fullscreen = QPushButton("⛶")
         self.btn_fullscreen.setToolTip("Vollbildmodus ein/ausschalten (F11)")
         self.btn_fullscreen.setAutoDefault(False)
         self.btn_fullscreen.setDefault(False)
         self.btn_fullscreen.setCursor(Qt.PointingHandCursor)
-        self.btn_fullscreen.setFixedHeight(32)
-        self.btn_fullscreen.setStyleSheet(self._button_style())
+        self.btn_fullscreen.setFixedSize(32, 32)
+        self.btn_fullscreen.setStyleSheet(square_icon_style)
         self.btn_fullscreen.clicked.connect(self._toggle_fullscreen)
         top_layout.addWidget(self.btn_fullscreen)
 
         # Open externally in Edge button
-        btn_edge = QPushButton("  In Edge")
+        btn_edge = QPushButton("  Edge")
         btn_edge.setIcon(create_vector_icon("research", "#58A6FF", 14))
         btn_edge.setToolTip("Dokument alternativ in Microsoft Edge öffnen (ideal für Stifte, Freihandmarkierungen & Notizen)")
         btn_edge.setAutoDefault(False)
@@ -699,21 +706,23 @@ class PdfReaderDialog(QDialog):
         btn_edge.clicked.connect(self._open_in_edge)
         top_layout.addWidget(btn_edge)
 
-        # Close Reader (Modern subtle ruby pill)
-        btn_close = QPushButton("Schließen")
+        # Close Reader Button (Square ruby pill)
+        btn_close = QPushButton("✕")
+        btn_close.setToolTip("Reader schließen (Esc)")
         btn_close.setAutoDefault(False)
         btn_close.setDefault(False)
         btn_close.setCursor(Qt.PointingHandCursor)
-        btn_close.setFixedHeight(32)
+        btn_close.setFixedSize(32, 32)
         btn_close.setStyleSheet("""
             QPushButton {
                 background-color: #211215;
                 color: #FF7B72;
                 border: 1px solid #482329;
                 border-radius: 6px;
-                padding: 0 14px;
-                font-weight: 600;
-                font-size: 11px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 0px;
+                margin: 0px;
             }
             QPushButton:hover {
                 background-color: #381920;
@@ -1178,7 +1187,7 @@ class PdfReaderDialog(QDialog):
                 color: #C9D1D9;
                 border: 1px solid #233148;
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 4px 8px;
                 font-size: 11px;
                 font-weight: 600;
             }
@@ -1289,16 +1298,18 @@ class PdfReaderDialog(QDialog):
     def _update_bookmark_button_state(self, page_num: int) -> None:
         is_bm = is_page_bookmarked(self.book_id, page_num)
         if is_bm:
-            self.btn_bookmark.setText("  ★ Gespeichert")
+            self.btn_bookmark.setText("★")
+            self.btn_bookmark.setToolTip("Lesezeichen auf dieser Seite entfernen (Strg+D)")
             self.btn_bookmark.setStyleSheet("""
                 QPushButton {
                     background-color: #382A10;
                     color: #F2CC60;
                     border: 1px solid #D29922;
                     border-radius: 6px;
-                    padding: 4px 12px;
-                    font-size: 11px;
+                    font-size: 14px;
                     font-weight: bold;
+                    padding: 0px;
+                    margin: 0px;
                 }
                 QPushButton:hover {
                     background-color: #4A3716;
@@ -1307,8 +1318,24 @@ class PdfReaderDialog(QDialog):
                 }
             """)
         else:
-            self.btn_bookmark.setText("  ☆ Lesezeichen")
-            self.btn_bookmark.setStyleSheet(self._button_style())
+            self.btn_bookmark.setText("☆")
+            self.btn_bookmark.setToolTip("Lesezeichen auf dieser Seite setzen (Strg+D)")
+            self.btn_bookmark.setStyleSheet("""
+                QPushButton {
+                    background-color: #111726;
+                    color: #C9D1D9;
+                    border: 1px solid #233148;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    padding: 0px;
+                    margin: 0px;
+                }
+                QPushButton:hover {
+                    background-color: #1A253D;
+                    border-color: #388BFD;
+                    color: #FFFFFF;
+                }
+            """)
 
     def _cycle_reading_theme(self) -> None:
         modes = ["normal", "sepia", "dark"]
@@ -1324,23 +1351,40 @@ class PdfReaderDialog(QDialog):
 
         if mode == "normal":
             vp.setGraphicsEffect(None)
-            self.btn_reading_theme.setText("  ☀️ Normal")
-            self.btn_reading_theme.setStyleSheet(self._button_style())
+            self.btn_reading_theme.setText("☀️")
+            self.btn_reading_theme.setToolTip("Farbmodus: Normal (klicken für Sepia)")
+            self.btn_reading_theme.setStyleSheet("""
+                QPushButton {
+                    background-color: #111726;
+                    color: #C9D1D9;
+                    border: 1px solid #233148;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    padding: 0px;
+                    margin: 0px;
+                }
+                QPushButton:hover {
+                    background-color: #1A253D;
+                    border-color: #388BFD;
+                    color: #FFFFFF;
+                }
+            """)
         elif mode == "sepia":
             effect = QGraphicsColorizeEffect(self)
             effect.setColor(QColor("#E8D8B8"))
             effect.setStrength(0.48)
             vp.setGraphicsEffect(effect)
-            self.btn_reading_theme.setText("  📜 Sepia")
+            self.btn_reading_theme.setText("📜")
+            self.btn_reading_theme.setToolTip("Farbmodus: Sepia (klicken für Dunkel)")
             self.btn_reading_theme.setStyleSheet("""
                 QPushButton {
                     background-color: #2F2618;
                     color: #F8E3B6;
                     border: 1px solid #D4A359;
                     border-radius: 6px;
-                    padding: 4px 12px;
-                    font-size: 11px;
-                    font-weight: 600;
+                    font-size: 14px;
+                    padding: 0px;
+                    margin: 0px;
                 }
                 QPushButton:hover {
                     background-color: #3F3320;
@@ -1352,16 +1396,17 @@ class PdfReaderDialog(QDialog):
             effect.setColor(QColor("#2B3342"))
             effect.setStrength(0.78)
             vp.setGraphicsEffect(effect)
-            self.btn_reading_theme.setText("  🌙 Dunkel")
+            self.btn_reading_theme.setText("🌙")
+            self.btn_reading_theme.setToolTip("Farbmodus: Dunkel (klicken für Normal)")
             self.btn_reading_theme.setStyleSheet("""
                 QPushButton {
                     background-color: #1A1F2C;
                     color: #8B949E;
                     border: 1px solid #388BFD;
                     border-radius: 6px;
-                    padding: 4px 12px;
-                    font-size: 11px;
-                    font-weight: 600;
+                    font-size: 14px;
+                    padding: 0px;
+                    margin: 0px;
                 }
                 QPushButton:hover {
                     background-color: #232B3E;
@@ -1375,10 +1420,12 @@ class PdfReaderDialog(QDialog):
             return
         if self.view.pageMode() == QPdfView.PageMode.MultiPage:
             self.view.setPageMode(QPdfView.PageMode.SinglePage)
-            self.btn_page_mode.setText("  📄 Einzelseite")
+            self.btn_page_mode.setText("📄")
+            self.btn_page_mode.setToolTip("Modus: Einzelseite (klicken für fortlaufend)")
         else:
             self.view.setPageMode(QPdfView.PageMode.MultiPage)
-            self.btn_page_mode.setText("  📜 Fortlaufend")
+            self.btn_page_mode.setText("📜")
+            self.btn_page_mode.setToolTip("Modus: Fortlaufend (klicken für Einzelseite)")
 
     def _toggle_search_bar(self, checked: Optional[bool] = None) -> None:
         if checked is None:
@@ -1662,9 +1709,9 @@ class PdfReaderDialog(QDialog):
         clipboard = QApplication.clipboard()
         if clipboard:
             clipboard.setText(page_text)
-            self.btn_copy_text.setText("  ✓ Kopiert!")
+            self.btn_copy_text.setText("✓")
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("  📋 Kopieren"))
+            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("📋"))
 
     def _open_in_edge(self) -> None:
         curr_p = self.view.pageNavigator().currentPage() + 1
@@ -1995,9 +2042,9 @@ class PdfReaderDialog(QDialog):
         clipboard = QApplication.clipboard()
         if clipboard:
             clipboard.setText(text)
-            self.btn_copy_text.setText("  ✓ Auszug kopiert!")
+            self.btn_copy_text.setText("✓")
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("  📋 Text kopieren"))
+            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("📋"))
 
     def _ask_ai_on_text(self, text: str, mode: str = "explain") -> None:
         self.notes_panel.setVisible(True)
