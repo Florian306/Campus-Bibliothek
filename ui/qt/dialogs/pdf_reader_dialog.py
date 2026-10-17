@@ -395,7 +395,7 @@ class PdfReaderDialog(QDialog):
 
         # Page Navigation Pill Capsule: [ ‹ ] [ Page Input ] [ / Total ] [ › ]
         nav_capsule = QFrame()
-        nav_capsule.setFixedHeight(32)
+        nav_capsule.setFixedSize(148, 32)
         nav_capsule.setStyleSheet("""
             QFrame#NavCapsule {
                 background-color: #111726;
@@ -408,8 +408,8 @@ class PdfReaderDialog(QDialog):
         """)
         nav_capsule.setObjectName("NavCapsule")
         nav_layout = QHBoxLayout(nav_capsule)
-        nav_layout.setContentsMargins(4, 2, 6, 2)
-        nav_layout.setSpacing(4)
+        nav_layout.setContentsMargins(4, 2, 4, 2)
+        nav_layout.setSpacing(3)
 
         # Previous Page Button
         btn_prev = QPushButton("‹")
@@ -514,7 +514,7 @@ class PdfReaderDialog(QDialog):
 
         # Zoom Controls Pill Capsule: [ − ] [ + ] [ Breite anpassen ]
         zoom_capsule = QFrame()
-        zoom_capsule.setFixedHeight(32)
+        zoom_capsule.setFixedSize(176, 32)
         zoom_capsule.setStyleSheet("""
             QFrame#ZoomCapsule {
                 background-color: #111726;
@@ -651,7 +651,7 @@ class PdfReaderDialog(QDialog):
         top_layout.addWidget(self.btn_bookmark)
 
         # Copy Current Page Text Button
-        self.btn_copy_text = QPushButton("  📋 Text kopieren")
+        self.btn_copy_text = QPushButton("  📋 Kopieren")
         self.btn_copy_text.setToolTip("Gesamten Text der aktuellen Seite in die Zwischenablage kopieren")
         self.btn_copy_text.setAutoDefault(False)
         self.btn_copy_text.setDefault(False)
@@ -675,13 +675,6 @@ class PdfReaderDialog(QDialog):
         top_layout.addWidget(self.btn_search)
 
         top_layout.addStretch()
-
-        # Book Title in Header
-        lbl_center_title = QLabel(self.book_title)
-        lbl_center_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        lbl_center_title.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
-        lbl_center_title.setMaximumWidth(280)
-        top_layout.addWidget(lbl_center_title)
 
         # Fullscreen Toggle Button
         self.btn_fullscreen = QPushButton("  ⛶ Vollbild")
@@ -1185,7 +1178,7 @@ class PdfReaderDialog(QDialog):
                 color: #C9D1D9;
                 border: 1px solid #233148;
                 border-radius: 6px;
-                padding: 4px 12px;
+                padding: 4px 10px;
                 font-size: 11px;
                 font-weight: 600;
             }
@@ -1671,7 +1664,7 @@ class PdfReaderDialog(QDialog):
             clipboard.setText(page_text)
             self.btn_copy_text.setText("  ✓ Kopiert!")
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("  📋 Text kopieren"))
+            QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("  📋 Kopieren"))
 
     def _open_in_edge(self) -> None:
         curr_p = self.view.pageNavigator().currentPage() + 1
