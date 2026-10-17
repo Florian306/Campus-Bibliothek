@@ -1316,30 +1316,63 @@ class JarvisView(QWidget):
 
         c1_head = QHBoxLayout()
         lbl_c1_icon = QLabel()
-        lbl_c1_icon.setPixmap(create_vector_pixmap("calendar", "#58A6FF", 18))
-        lbl_c1_icon.setStyleSheet("border: none;")
+        lbl_c1_icon.setPixmap(create_vector_pixmap("calendar", "#58A6FF", 16))
+        lbl_c1_icon.setStyleSheet("border: none; background: transparent;")
         c1_head.addWidget(lbl_c1_icon)
         
         self.lbl_c1_title = QLabel("DEIN TAG & KALENDER")
         self.lbl_c1_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        self.lbl_c1_title.setStyleSheet("color: #F0F6FC; border: none;")
+        self.lbl_c1_title.setStyleSheet("color: #F0F6FC; border: none; letter-spacing: 0.5px;")
         c1_head.addWidget(self.lbl_c1_title)
         c1_head.addStretch()
 
         self.lbl_next_event_pill = QLabel("Nächster Termin...")
         self.lbl_next_event_pill.setFont(QFont("Segoe UI", 8, QFont.Bold))
-        self.lbl_next_event_pill.setStyleSheet("background: #1B2B47; color: #58A6FF; border-radius: 4px; padding: 2px 6px; border: none;")
+        self.lbl_next_event_pill.setStyleSheet("""
+            background-color: #16243E;
+            color: #58A6FF;
+            border: 1px solid #1F4273;
+            border-radius: 5px;
+            padding: 3px 8px;
+        """)
         c1_head.addWidget(self.lbl_next_event_pill)
         col1_layout.addLayout(c1_head)
 
         # Scroll Area for Calendar events
         scroll_cal = QScrollArea()
         scroll_cal.setWidgetResizable(True)
-        scroll_cal.setStyleSheet("QScrollArea { border: none; background: transparent; } QWidget { background: transparent; }")
+        scroll_cal.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_cal.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background: transparent;
+            }
+            QWidget {
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: rgba(13, 19, 34, 0.4);
+                width: 6px;
+                margin: 0px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical {
+                background: #1F2D4A;
+                min-height: 24px;
+                border-radius: 3px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #388BFD;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
         self.cal_container = QWidget()
         self.cal_layout = QVBoxLayout(self.cal_container)
-        self.cal_layout.setContentsMargins(0, 0, 0, 0)
-        self.cal_layout.setSpacing(6)
+        self.cal_layout.setContentsMargins(0, 2, 4, 4)
+        self.cal_layout.setSpacing(8)
         scroll_cal.setWidget(self.cal_container)
         col1_layout.addWidget(scroll_cal, stretch=1)
 
@@ -1646,13 +1679,13 @@ class JarvisView(QWidget):
             self.cal_layout.addWidget(empty_card)
         else:
             cat_styles = {
-                "Prüfung": {"color": "#F85149", "bg": "#2B161B", "badge_bg": "#44181E", "icon": "📝"},
-                "Uni": {"color": "#58A6FF", "bg": "#121C30", "badge_bg": "#172E54", "icon": "🎓"},
-                "Praxis": {"color": "#3FB950", "bg": "#12231A", "badge_bg": "#173822", "icon": "💼"},
-                "Lernen": {"color": "#A371F7", "bg": "#1E1730", "badge_bg": "#301D54", "icon": "📚"},
-                "Aufgabe": {"color": "#D29922", "bg": "#241D12", "badge_bg": "#3D2E17", "icon": "⚡"},
-                "Privat": {"color": "#F778BA", "bg": "#2B1724", "badge_bg": "#451B38", "icon": "☕"},
-                "Termin": {"color": "#79C0FF", "bg": "#131C2D", "badge_bg": "#1E2F4D", "icon": "📅"},
+                "Prüfung": {"color": "#FF5C5C", "bg": "#1A1015", "badge_bg": "#33141C", "border": "#5C1D24", "icon": "🎯"},
+                "Uni": {"color": "#58A6FF", "bg": "#0E1726", "badge_bg": "#122543", "border": "#1F4273", "icon": "🎓"},
+                "Praxis": {"color": "#3FB950", "bg": "#0D1B14", "badge_bg": "#12301F", "border": "#1B5430", "icon": "💼"},
+                "Lernen": {"color": "#BC8CFF", "bg": "#171226", "badge_bg": "#291B47", "border": "#46287C", "icon": "📚"},
+                "Aufgabe": {"color": "#F0883E", "bg": "#1A150F", "badge_bg": "#332111", "border": "#5C3514", "icon": "⚡"},
+                "Privat": {"color": "#F778BA", "bg": "#1A101A", "badge_bg": "#33162F", "border": "#5C1D50", "icon": "☕"},
+                "Termin": {"color": "#79C0FF", "bg": "#0E1624", "badge_bg": "#15243B", "border": "#213F6B", "icon": "📅"},
             }
 
             for ev in events:
@@ -1660,124 +1693,152 @@ class JarvisView(QWidget):
                 cat = ev.get("category", "Termin")
                 style = cat_styles.get(cat, cat_styles["Termin"])
                 accent_col = style["color"]
-                bg_col = style["bg"]
                 badge_bg = style["badge_bg"]
+                border_col = style["border"]
                 smart_icon = style["icon"]
 
-                # Modern Bento Card with left accent strip and sleek hover effect
+                ev_date = ev.get("event_date", "")
+                rel_str = format_event_relative(ev_date) if ev_date else ""
+                is_today_event = (rel_str == "Heute") or (ev_date == datetime.date.today().isoformat())
+
+                # Premium Card: Sleek dark glass aesthetic with subtle tinted left highlight
+                card_bg = "#121826" if not is_today_event else "#151F33"
+                left_border_width = "4px" if is_today_event else "3px"
+
                 item.setStyleSheet(f"""
                     QFrame#CalBentoCard {{
-                        background-color: #111726;
+                        background-color: {card_bg};
                         border: 1px solid #1E283D;
-                        border-left: 4px solid {accent_col};
-                        border-radius: 8px;
+                        border-left: {left_border_width} solid {accent_col};
+                        border-radius: 9px;
                     }}
                     QFrame#CalBentoCard:hover {{
+                        background-color: #172238;
                         border-color: {accent_col};
-                        background-color: #151D30;
                     }}
                 """)
                 item.setObjectName("CalBentoCard")
 
                 c_layout = QHBoxLayout(item)
                 c_layout.setContentsMargins(10, 8, 12, 8)
-                c_layout.setSpacing(12)
+                c_layout.setSpacing(11)
 
-                # Date Block / Badge on the left
-                ev_date = ev.get("event_date", "")
+                # --- 1. Date Block (Left Column) ---
                 day_label = format_event_day(ev_date) if ev_date else ""
-                
-                date_block = QFrame()
-                date_block.setFixedWidth(56)
-                date_block.setStyleSheet(f"""
-                    QFrame {{
-                        background-color: {badge_bg};
-                        border: 1px solid {accent_col}33;
-                        border-radius: 6px;
-                    }}
-                """)
-                db_lay = QVBoxLayout(date_block)
-                db_lay.setContentsMargins(2, 4, 2, 4)
-                db_lay.setSpacing(1)
-                db_lay.setAlignment(Qt.AlignCenter)
-
-                # Day name (e.g. Di, Sa, Heute) and day number
                 if " " in day_label:
                     d_wday, d_num = day_label.split(" ", 1)
                 else:
                     d_wday = day_label
                     d_num = ""
 
+                date_block = QFrame()
+                date_block.setFixedWidth(52)
+                date_block.setStyleSheet(f"""
+                    QFrame {{
+                        background: {badge_bg};
+                        border: 1px solid {border_col};
+                        border-radius: 7px;
+                    }}
+                """)
+                db_lay = QVBoxLayout(date_block)
+                db_lay.setContentsMargins(3, 5, 3, 5)
+                db_lay.setSpacing(0)
+                db_lay.setAlignment(Qt.AlignCenter)
+
                 lbl_wday = QLabel(d_wday.upper())
                 lbl_wday.setFont(QFont("Segoe UI", 7, QFont.Bold))
-                lbl_wday.setStyleSheet(f"color: {accent_col}; border: none; background: transparent;")
+                lbl_wday.setStyleSheet(f"color: {accent_col}; border: none; background: transparent; letter-spacing: 0.5px;")
                 lbl_wday.setAlignment(Qt.AlignCenter)
                 db_lay.addWidget(lbl_wday)
 
                 if d_num:
                     lbl_dnum = QLabel(d_num)
-                    lbl_dnum.setFont(QFont("Segoe UI", 9, QFont.Bold))
-                    lbl_dnum.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
+                    lbl_dnum.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                    lbl_dnum.setStyleSheet("color: #FFFFFF; border: none; background: transparent; padding-top: 1px;")
                     lbl_dnum.setAlignment(Qt.AlignCenter)
                     db_lay.addWidget(lbl_dnum)
 
                 c_layout.addWidget(date_block)
 
-                # Event Content Column
+                # --- 2. Center Content Column ---
                 info_col = QVBoxLayout()
-                info_col.setSpacing(3)
+                info_col.setSpacing(4)
                 info_col.setAlignment(Qt.AlignVCenter)
 
-                # Header Row: Time + Duration + Category + Countdown Badge
+                # Header Tag Row: Time Pill + Category Badge + Countdown Tag
                 top_row = QHBoxLayout()
                 top_row.setSpacing(6)
 
                 start_t = ev.get("start_time", "09:00")
                 end_t = ev.get("end_time", "")
                 dur_str = calculate_event_duration(start_t, end_t)
-                rel_str = format_event_relative(ev_date) if ev_date else ""
 
                 if start_t == "Ganztägig" or not end_t or ":" not in end_t:
-                    time_label = start_t
+                    time_display = start_t
                 else:
-                    time_label = f"{start_t}–{end_t}"
+                    time_display = f"{start_t}–{end_t}"
                     if dur_str:
-                        time_label = f"{time_label} ({dur_str})"
+                        time_display = f"{time_display} · {dur_str}"
 
-                lbl_time = QLabel(f"⏱️ {time_label}")
-                lbl_time.setFont(QFont("Segoe UI", 8, QFont.Bold))
-                lbl_time.setStyleSheet("color: #C9D1D9; border: none; background: transparent;")
+                # Time Label with small icon
+                lbl_time = QLabel(f"🕐 {time_display}")
+                lbl_time.setFont(QFont("Segoe UI", 8, QFont.Medium))
+                lbl_time.setStyleSheet("color: #A5B4C7; border: none; background: transparent;")
                 top_row.addWidget(lbl_time)
 
+                # Category Pill
                 lbl_cat = QLabel(f"{smart_icon} {cat}")
                 lbl_cat.setFont(QFont("Segoe UI", 7, QFont.Bold))
-                lbl_cat.setStyleSheet(f"background: {badge_bg}; color: {accent_col}; border-radius: 4px; padding: 1px 6px; border: 1px solid {accent_col}55;")
+                lbl_cat.setStyleSheet(f"""
+                    background: {badge_bg};
+                    color: {accent_col};
+                    border: 1px solid {border_col};
+                    border-radius: 4px;
+                    padding: 1px 7px;
+                """)
                 top_row.addWidget(lbl_cat)
-
-                # Countdown Pill (e.g. "In 6 Tagen", "Heute", "Morgen")
-                if rel_str and rel_str not in ("Heute",):
-                    lbl_countdown = QLabel(f"⏳ {rel_str}")
-                    lbl_countdown.setFont(QFont("Segoe UI", 7, QFont.Bold))
-                    lbl_countdown.setStyleSheet("background: #1C2234; color: #8B949E; border-radius: 4px; padding: 1px 6px; border: 1px solid #2B384E;")
-                    top_row.addWidget(lbl_countdown)
 
                 top_row.addStretch()
 
+                # Countdown Tag on the right edge of top row
+                if rel_str and rel_str not in ("Heute",):
+                    lbl_rel = QLabel(rel_str)
+                    lbl_rel.setFont(QFont("Segoe UI", 7, QFont.Bold))
+                    lbl_rel.setStyleSheet("""
+                        background-color: #161F30;
+                        color: #798CA6;
+                        border: 1px solid #233148;
+                        border-radius: 4px;
+                        padding: 1px 7px;
+                    """)
+                    top_row.addWidget(lbl_rel)
+                elif is_today_event:
+                    lbl_today_badge = QLabel("HEUTE")
+                    lbl_today_badge.setFont(QFont("Segoe UI", 7, QFont.Bold))
+                    lbl_today_badge.setStyleSheet(f"""
+                        background: {badge_bg};
+                        color: {accent_col};
+                        border: 1px solid {accent_col};
+                        border-radius: 4px;
+                        padding: 1px 7px;
+                    """)
+                    top_row.addWidget(lbl_today_badge)
+
                 info_col.addLayout(top_row)
 
-                # Title
+                # Event Title
                 lbl_title = QLabel(ev.get("title", ""))
-                lbl_title.setFont(QFont("Segoe UI", 9, QFont.Bold))
-                lbl_title.setStyleSheet("color: #FFFFFF; border: none; background: transparent;")
+                lbl_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
+                lbl_title.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
                 lbl_title.setWordWrap(True)
                 info_col.addWidget(lbl_title)
 
-                # Location (if present)
+                # Optional Location Bar
                 loc = ev.get("location", "")
                 if loc:
                     lbl_loc = QLabel(f"📍 {loc}")
                     lbl_loc.setFont(QFont("Segoe UI", 8))
-                    lbl_loc.setStyleSheet("color: #8B949E; border: none; background: transparent;")
+                    lbl_loc.setStyleSheet("color: #7D8B9E; border: none; background: transparent;")
                     info_col.addWidget(lbl_loc)
 
                 c_layout.addLayout(info_col, stretch=1)
@@ -1789,7 +1850,7 @@ class JarvisView(QWidget):
 
                 self.cal_layout.addWidget(item)
 
-        self.cal_layout.addStretch()
+            self.cal_layout.addStretch()
 
         # Update streak & desk stats
         gam = get_gamification_profile()
