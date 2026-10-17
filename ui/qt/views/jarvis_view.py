@@ -494,12 +494,11 @@ class JarvisMailReaderDialog(QDialog):
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            ok, msg = delete_email_by_id(mid)
-            if ok:
-                self.was_deleted = True
-                self.accept()
-            else:
-                QMessageBox.warning(self, "Löschen fehlgeschlagen", msg)
+            # Instant UI close without waiting for network I/O
+            self.was_deleted = True
+            self.accept()
+            # Perform IMAP network deletion in background thread
+            threading.Thread(target=delete_email_by_id, args=(mid,), daemon=True).start()
 
     def _toggle_maximize(self) -> None:
         if self.isMaximized():
@@ -2022,12 +2021,11 @@ class JarvisView(QWidget):
             QMessageBox.Yes | QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            ok, msg = delete_email_by_id(msg_id)
-            if ok:
-                self._all_mails = [m for m in self._all_mails if m.get("id") != msg_id]
-                self._render_mails_ui(self._all_mails)
-            else:
-                QMessageBox.warning(self, "Löschen fehlgeschlagen", msg)
+            # Optimistic UI update: instantly remove from list with 0ms delay
+            self._all_mails = [m for m in self._all_mails if m.get("id") != msg_id]
+            self._render_mails_ui(self._all_mails)
+            # Run network deletion in background thread
+            threading.Thread(target=delete_email_by_id, args=(msg_id,), daemon=True).start()
 
     def _open_mail_reader(self, mail_data: Dict[str, Any]) -> None:
         dlg = JarvisMailReaderDialog(self, mail_data=mail_data)

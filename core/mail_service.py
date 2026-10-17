@@ -45,6 +45,7 @@ import threading
 _CONN_LOCK = threading.RLock()
 _CONN: Optional[imaplib.IMAP4_SSL] = None
 _CONN_KEY: Optional[Tuple[str, int, str, str]] = None
+_CACHED_TRASH_FOLDER: Optional[str] = None
 
 
 def _drop_connection() -> None:
@@ -74,7 +75,7 @@ def _get_connection(settings: Dict[str, Any], readonly: bool = True) -> imaplib.
         _drop_connection()
 
     if _CONN is None:
-        conn = imaplib.IMAP4_SSL(settings["host"], settings["port"], timeout=15.0)
+        conn = imaplib.IMAP4_SSL(settings["host"], settings["port"], timeout=8.0)
         conn.login(user, pwd)
         _CONN, _CONN_KEY = conn, key
 
@@ -243,7 +244,7 @@ def fetch_single_email_body(msg_id: str) -> str:
 
 def delete_email_by_id(msg_id: str) -> Tuple[bool, str]:
     """Moves an email to Trash / deletes it by message ID."""
-    global _ACTIVE_DEMO_MAILS, _EMAIL_CONTENT_CACHE
+    global _ACTIVE_DEMO_MAILS, _EMAIL_CONTENT_CACHE, _CACHED_TRASH_FOLDER
     if not msg_id:
         return False, "Keine E-Mail-ID angegeben."
 
@@ -259,28 +260,34 @@ def delete_email_by_id(msg_id: str) -> Tuple[bool, str]:
         return False, "E-Mail-Server ist nicht eingerichtet."
 
     try:
-      with _CONN_LOCK:
-        mail = _get_connection(settings, readonly=False)
+        with _CONN_LOCK:
+            mail = _get_connection(settings, readonly=False)
 
-        # In Gmail: try copying to [Gmail]/Trash or [Gmail]/Papierkorb
-        try:
-            status, folders = mail.list()
-            if status == "OK":
-                for f in folders:
-                    f_name = f.decode("utf-8", errors="ignore")
-                    if any(w in f_name for w in ["\\Trash", "Papierkorb", "Trash", "Bin"]):
-                        parts = f_name.split(' "/" ')
-                        if len(parts) >= 2:
-                            trash_target = parts[-1].strip().strip('"')
-                            mail.copy(msg_id, f'"{trash_target}"')
-                            break
-        except Exception:
-            pass
+            # Resolve trash target once and cache to prevent repeated remote folder queries
+            if _CACHED_TRASH_FOLDER is None:
+                try:
+                    status, folders = mail.list()
+                    if status == "OK":
+                        for f in folders:
+                            f_name = f.decode("utf-8", errors="ignore")
+                            if any(w in f_name for w in ["\\Trash", "Papierkorb", "Trash", "Bin"]):
+                                parts = f_name.split(' "/" ')
+                                if len(parts) >= 2:
+                                    _CACHED_TRASH_FOLDER = parts[-1].strip().strip('"')
+                                    break
+                except Exception:
+                    pass
 
-        # Flag \Deleted and expunge from current folder
-        mail.store(msg_id, "+FLAGS", "\\Deleted")
-        mail.expunge()
-        return True, "E-Mail erfolgreich in den Papierkorb verschoben."
+            if _CACHED_TRASH_FOLDER:
+                try:
+                    mail.copy(msg_id, f'"{_CACHED_TRASH_FOLDER}"')
+                except Exception:
+                    pass
+
+            # Flag \Deleted and expunge from current folder
+            mail.store(msg_id, "+FLAGS", "\\Deleted")
+            mail.expunge()
+            return True, "E-Mail erfolgreich in den Papierkorb verschoben."
     except Exception as e:
         return False, f"Fehler beim Löschen der E-Mail: {e}"
 

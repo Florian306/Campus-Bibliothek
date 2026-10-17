@@ -27,11 +27,12 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QSplitter,
     QApplication,
+    QCheckBox,
 )
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
 from ui.qt.theme import NoFocusItemDelegate
-from core.config import get_inbox_directory, get_books_storage_dir
+from core.config import get_inbox_directory, get_books_storage_dir, load_config, save_config
 from core.library_db import (
     add_to_inbox_queue,
     get_inbox_queue,
@@ -431,6 +432,35 @@ class InboxView(QWidget):
         self.lbl_queue_sub.setStyleSheet("color: #8B949E; margin-left: 4px;")
         queue_header.addWidget(self.lbl_queue_sub)
         queue_header.addStretch()
+
+        cfg = load_config()
+        self.chk_subfolders = QCheckBox("Kategorie-Unterordner erstellen")
+        self.chk_subfolders.setFont(QFont("Segoe UI", 9))
+        self.chk_subfolders.setChecked(bool(cfg.get("inbox_create_subfolders", False)))
+        self.chk_subfolders.setToolTip("Falls deaktiviert, werden Bücher direkt ohne Unterordner im Hauptordner abgelegt.")
+        self.chk_subfolders.setStyleSheet("""
+            QCheckBox {
+                color: #C9D1D9;
+                spacing: 6px;
+                margin-right: 8px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid #304163;
+                background-color: #121826;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #58A6FF;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #1F6FEB;
+                border-color: #58A6FF;
+            }
+        """)
+        self.chk_subfolders.toggled.connect(self._on_subfolders_toggled)
+        queue_header.addWidget(self.chk_subfolders)
 
         self.btn_batch_file = QPushButton("  Alle Bereiten einsortieren")
         self.btn_batch_file.setIcon(create_vector_icon("check", "#FFFFFF", 14))
@@ -925,8 +955,13 @@ class InboxView(QWidget):
     def _on_all_analyzed(self) -> None:
         self._items = get_inbox_queue()
 
+    def _on_subfolders_toggled(self, checked: bool) -> None:
+        cfg = load_config()
+        cfg["inbox_create_subfolders"] = bool(checked)
+        save_config(cfg)
+
     def _file_single_book(self, item_id: int) -> bool:
-        """Moves the book into its chosen category folder and adds it to the SQLite catalog."""
+        """Moves the book into the target library directory and adds it to the SQLite catalog."""
         item = next((it for it in self._items if it["id"] == item_id), None)
         if not item:
             return False
@@ -943,12 +978,20 @@ class InboxView(QWidget):
         page_count = item.get("page_count", 0)
         file_size = item.get("file_size", 0)
 
-        # 1. Target directory: G:\Meine Ablage\Bücher\<Category>
-        target_dir = os.path.join(self.storage_dir, category)
-        try:
-            os.makedirs(target_dir, exist_ok=True)
-        except Exception:
+        # 1. Target directory: subfolder only if user explicitly enabled it
+        create_subfolders = getattr(self, "chk_subfolders", None) and self.chk_subfolders.isChecked()
+        if create_subfolders:
+            target_dir = os.path.join(self.storage_dir, category)
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+            except Exception:
+                target_dir = self.storage_dir
+        else:
             target_dir = self.storage_dir
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+            except Exception:
+                pass
 
         # 2. Build clean filename
         sanitized_title = "".join(c for c in title if c not in r'\/:*?"<>|').strip()[:80]
