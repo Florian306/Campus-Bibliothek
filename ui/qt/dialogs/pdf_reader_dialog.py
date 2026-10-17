@@ -1,8 +1,8 @@
 import os
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QEvent
-from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut, QPainter, QPen, QBrush
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QRectF, QEvent
+from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut, QPainter, QPen, QBrush, QPolygonF
 try:
     from PySide6.QtPdf import QPdfDocument, QPdfSearchModel
     from PySide6.QtPdfWidgets import QPdfView
@@ -54,7 +54,7 @@ from ui.qt.icons import create_vector_icon, create_vector_pixmap
 
 
 class PdfSelectionOverlay(QWidget):
-    """Transparent interactive overlay atop QPdfView viewport for authentic line-by-line text selection."""
+    """Transparent overlay atop QPdfView viewport using native QtPdf text-flow selection."""
 
     text_selected = Signal(str)
 
@@ -66,17 +66,17 @@ class PdfSelectionOverlay(QWidget):
         self.setMouseTracking(True)
         self.setCursor(Qt.IBeamCursor)
 
-        self._start_pos: Optional[QPoint] = None
-        self._current_pos: Optional[QPoint] = None
         self._is_selecting = False
-        self._highlight_rects: List[QRect] = []
+        self._sel_page = -1
+        self._start_pt: Optional[QPointF] = None
+        self._sel_polys: List[QPolygonF] = []
         self._selected_text = ""
 
     def clear_selection(self) -> None:
-        self._start_pos = None
-        self._current_pos = None
         self._is_selecting = False
-        self._highlight_rects.clear()
+        self._sel_page = -1
+        self._start_pt = None
+        self._sel_polys = []
         self._selected_text = ""
         self.update()
 
@@ -84,43 +84,54 @@ class PdfSelectionOverlay(QWidget):
         return self._selected_text
 
     def paintEvent(self, event) -> None:
-        if not self._highlight_rects:
+        if not self._sel_polys or self._sel_page < 0:
+            return
+        dlg = self.window()
+        if not hasattr(dlg, "_pdf_polys_to_viewport"):
+            return
+        mapped = dlg._pdf_polys_to_viewport(self._sel_page, self._sel_polys)
+        if not mapped:
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        # Elegant modern translucent selection highlight (Edge / Acrobat style)
-        sel_color = QColor(41, 128, 255, 90)
-        border_color = QColor(56, 139, 253, 160)
-        painter.setBrush(QBrush(sel_color))
-        painter.setPen(QPen(border_color, 1.0))
-        for r in self._highlight_rects:
-            painter.drawRoundedRect(r, 3.0, 3.0)
+        painter.setPen(Qt.NoPen)
+        # Clean modern selection highlight (standard OS blue with smooth opacity)
+        painter.setBrush(QBrush(QColor(41, 128, 255, 95)))
+        for rect in mapped:
+            painter.drawRoundedRect(rect.adjusted(-1.0, 0.0, 1.0, 0.0), 3.0, 3.0)
+
+    def _update_selection(self, pos: QPoint) -> None:
+        dlg = self.window()
+        if self._start_pt is None or not hasattr(dlg, "_viewport_to_pdf"):
+            return
+        hit = dlg._viewport_to_pdf(pos, force_page=self._sel_page)
+        if not hit:
+            return
+        _, end_pt = hit
+        try:
+            sel = dlg.doc.getSelection(self._sel_page, self._start_pt, end_pt)
+            self._sel_polys = list(sel.bounds()) if sel and sel.isValid() else []
+            self._selected_text = sel.text().strip() if sel and sel.isValid() else ""
+        except Exception:
+            self._sel_polys = []
+            self._selected_text = ""
+        self.update()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
-            self._start_pos = event.pos()
-            self._current_pos = event.pos()
-            self._is_selecting = True
-            self._highlight_rects.clear()
-            self._selected_text = ""
-            self.update()
+            self.clear_selection()
+            dlg = self.window()
+            hit = dlg._viewport_to_pdf(event.pos()) if hasattr(dlg, "_viewport_to_pdf") else None
+            if hit:
+                self._sel_page, self._start_pt = hit
+                self._is_selecting = True
             event.accept()
         else:
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        if self._is_selecting and self._start_pos:
-            self._current_pos = event.pos()
-            drag_rect = QRect(self._start_pos, self._current_pos).normalized()
-            if drag_rect.width() > 3 or drag_rect.height() > 3:
-                parent_dialog = self.window()
-                if hasattr(parent_dialog, "_calculate_line_highlights"):
-                    line_rects, txt = parent_dialog._calculate_line_highlights(drag_rect)
-                    self._highlight_rects = line_rects
-                    self._selected_text = txt
-                else:
-                    self._highlight_rects = [drag_rect]
-            self.update()
+        if self._is_selecting:
+            self._update_selection(event.pos())
             event.accept()
         else:
             super().mouseMoveEvent(event)
@@ -128,36 +139,26 @@ class PdfSelectionOverlay(QWidget):
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.LeftButton and self._is_selecting:
             self._is_selecting = False
-            self._current_pos = event.pos()
-            if self._start_pos:
-                drag_rect = QRect(self._start_pos, self._current_pos).normalized()
-                if drag_rect.width() > 5 or drag_rect.height() > 5:
-                    parent_dialog = self.window()
-                    if hasattr(parent_dialog, "_calculate_line_highlights"):
-                        line_rects, txt = parent_dialog._calculate_line_highlights(drag_rect)
-                        self._highlight_rects = line_rects
-                        self._selected_text = txt
-                        if txt:
-                            self.text_selected.emit(txt)
-                            if hasattr(parent_dialog, "_on_text_selection_finished"):
-                                parent_dialog._on_text_selection_finished(txt)
-                    elif hasattr(parent_dialog, "_resolve_text_for_rect"):
-                        txt = parent_dialog._resolve_text_for_rect(drag_rect)
-                        self._selected_text = txt
-                        if txt:
-                            self.text_selected.emit(txt)
-                else:
-                    self.clear_selection()
-            self.update()
+            self._update_selection(event.pos())
+            if self._selected_text:
+                self.text_selected.emit(self._selected_text)
+                dlg = self.window()
+                if hasattr(dlg, "_on_text_selection_finished"):
+                    dlg._on_text_selection_finished(self._selected_text)
+            else:
+                self.clear_selection()
             event.accept()
         elif event.button() == Qt.RightButton:
-            # Context menu for selected text
-            parent_dialog = self.window()
-            if hasattr(parent_dialog, "_show_selection_context_menu"):
-                parent_dialog._show_selection_context_menu(event.globalPosition().toPoint(), self._selected_text)
+            dlg = self.window()
+            if hasattr(dlg, "_show_selection_context_menu"):
+                dlg._show_selection_context_menu(event.globalPosition().toPoint(), self._selected_text)
             event.accept()
         else:
             super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event) -> None:
+        # Forward scrolling to the PDF view
+        event.ignore()
 
 
 class AiExplainerWorker(QThread):
@@ -1618,86 +1619,153 @@ class PdfReaderDialog(QDialog):
         if self.view and watched == self.view.viewport() and self._selection_overlay:
             if event.type() in (QEvent.Resize, QEvent.Move, QEvent.Paint):
                 self._selection_overlay.setGeometry(self.view.viewport().rect())
+                self._selection_overlay.update()
         return super().eventFilter(watched, event)
 
-    def _calculate_line_highlights(self, view_rect: QRect) -> Tuple[List[QRect], str]:
-        """Calculates authentic line-by-line highlight bounding rects for words within selection."""
-        if not self.file_path or not os.path.exists(self.file_path):
-            return [], ""
-        curr_p = self.view.pageNavigator().currentPage() + 1
+    def _page_layout(self) -> List[Tuple[int, QRectF]]:
+        """Mirror QPdfView's internal page layout in content coordinates."""
         vp = self.view.viewport()
-        if not vp:
-            return [], ""
+        m = self.view.documentMargins() if hasattr(self.view, "documentMargins") else None
+        ml, mt, mr, mb = (m.left(), m.top(), m.right(), m.bottom()) if m else (6, 6, 6, 6)
+        spacing = self.view.pageSpacing()
+        dpi_scale = self.view.logicalDpiX() / 72.0
+        mode = self.view.zoomMode()
+        count = self.doc.pageCount()
+        if count <= 0:
+            return []
+        if self.view.pageMode() == QPdfView.PageMode.MultiPage:
+            pages = range(count)
+        else:
+            pages = [max(0, self.view.pageNavigator().currentPage())]
 
-        line_view_rects: List[QRect] = []
-        selected_text = ""
+        sized: List[Tuple[int, float, float]] = []
+        for i in pages:
+            ps = self.doc.pagePointSize(i)
+            if ps.width() <= 0 or ps.height() <= 0:
+                sized.append((i, 0.0, 0.0))
+                continue
+            if mode == QPdfView.ZoomMode.FitToWidth:
+                s = (vp.width() - ml - mr) / ps.width()
+            elif mode == QPdfView.ZoomMode.FitInView:
+                s = min((vp.width() - ml - mr) / ps.width(), (vp.height() - mt - mb) / ps.height())
+            else:
+                s = self.view.zoomFactor() * dpi_scale
+            sized.append((i, float(int(ps.width() * s)), float(int(ps.height() * s))))
+
+        max_w = max((w for _, w, _ in sized), default=0.0)
+        content_w = max(float(vp.width()), max_w + ml + mr)
+        y = float(mt)
+        out: List[Tuple[int, QRectF]] = []
+        for i, w, h in sized:
+            out.append((i, QRectF((content_w - w) / 2.0, y, w, h)))
+            y += h + spacing
+        return out
+
+    def _viewport_to_pdf(self, pos: QPoint, force_page: int = -1) -> Optional[Tuple[int, QPointF]]:
+        """Map viewport pixel to (page_index, point in PDF points)."""
+        sx = self.view.horizontalScrollBar().value()
+        sy = self.view.verticalScrollBar().value()
+        cx, cy = pos.x() + sx, pos.y() + sy
+        layout = self._page_layout()
+        target = None
+        for idx, rect in layout:
+            if force_page >= 0:
+                if idx == force_page:
+                    target = (idx, rect)
+                    break
+            elif rect.top() <= cy <= rect.bottom() + self.view.pageSpacing():
+                target = (idx, rect)
+                break
+        if not target:
+            return None
+        idx, rect = target
+        ps = self.doc.pagePointSize(idx)
+        if rect.width() <= 0 or rect.height() <= 0:
+            return None
+        px = (cx - rect.left()) * ps.width() / rect.width()
+        py = (cy - rect.top()) * ps.height() / rect.height()
+        px = min(max(px, 0.0), ps.width())
+        py = min(max(py, 0.0), ps.height())
+        return idx, QPointF(px, py)
+
+    def _get_page_lines(self, page: int) -> List[Tuple[float, float, float, float]]:
+        """Cached line bounding boxes (x0, y0, x1, y1) for snapping selection height."""
+        if not hasattr(self, "_lines_cache"):
+            self._lines_cache = {}
+        if page in self._lines_cache:
+            return self._lines_cache[page]
+        lines = []
         try:
             import fitz
             doc = fitz.open(self.file_path)
-            if 0 <= (curr_p - 1) < len(doc):
-                page = doc[curr_p - 1]
-                p_rect = page.rect  # in points
-                vp_w = max(1, vp.width())
-                vp_h = max(1, vp.height())
-
-                # PDF viewers preserve aspect ratio uniformly.
-                # In QPdfView with FitToWidth or Custom, scale = rendered_width / point_width
-                scale = vp_w / max(1.0, p_rect.width)
-                inv_scale = 1.0 / scale if scale > 0 else 1.0
-
-                # Compute page horizontal offset if page is centered inside viewport
-                rendered_page_w = p_rect.width * scale
-                offset_x = max(0.0, (vp_w - rendered_page_w) / 2.0)
-
-                norm_rect = fitz.Rect(
-                    (view_rect.left() - offset_x) * inv_scale,
-                    view_rect.top() * inv_scale,
-                    (view_rect.right() - offset_x) * inv_scale,
-                    view_rect.bottom() * inv_scale,
-                )
-
-                # Extract words: (x0, y0, x1, y1, word, block_no, line_no, word_no)
-                words = page.get_text("words")
-                hit_words = [
-                    w for w in words
-                    if norm_rect.intersects(fitz.Rect(w[0], w[1], w[2], w[3]))
-                ]
-
-                if hit_words:
-                    # Group words by (block_no, line_no)
-                    lines_map: Dict[Tuple[int, int], List[Any]] = {}
-                    for w in hit_words:
-                        key = (w[5], w[6])
-                        if key not in lines_map:
-                            lines_map[key] = []
-                        lines_map[key].append(w)
-
-                    # Build pixel-accurate line highlight bounding boxes
-                    for key, l_words in lines_map.items():
-                        min_x = min(w[0] for w in l_words)
-                        max_x = max(w[2] for w in l_words)
-                        min_y = min(w[1] for w in l_words)
-                        max_y = max(w[3] for w in l_words)
-
-                        vx = int(offset_x + min_x * scale) - 1
-                        vy = int(min_y * scale) - 1
-                        vw = max(2, int((max_x - min_x) * scale) + 2)
-                        vh = max(2, int((max_y - min_y) * scale) + 2)
-
-                        line_view_rects.append(QRect(vx, vy, vw, vh))
-
-                    selected_text = " ".join(w[4] for w in hit_words).strip()
-                else:
-                    selected_text = page.get_textbox(norm_rect).strip()
-
+            if 0 <= page < len(doc):
+                td = doc[page].get_text("dict")
+                for block in td.get("blocks", []):
+                    for l in block.get("lines", []):
+                        lines.append(l["bbox"])
             doc.close()
         except Exception:
             pass
+        self._lines_cache[page] = lines
+        return lines
 
-        if not line_view_rects and selected_text:
-            line_view_rects = [view_rect]
+    def _pdf_polys_to_viewport(self, page: int, polys: List[QPolygonF]) -> List[QRectF]:
+        """Map selection polygons (PDF points) back to viewport pixels with accurate typographic height and line merging."""
+        rect = next((r for i, r in self._page_layout() if i == page), None)
+        if rect is None:
+            return []
+        ps = self.doc.pagePointSize(page)
+        if ps.width() <= 0 or ps.height() <= 0:
+            return []
+        sx_scale = rect.width() / ps.width()
+        sy_scale = rect.height() / ps.height()
+        ox = rect.left() - self.view.horizontalScrollBar().value()
+        oy = rect.top() - self.view.verticalScrollBar().value()
 
-        return line_view_rects, selected_text
+        lines = self._get_page_lines(page)
+        raw_rects: List[QRectF] = []
+        for poly in polys:
+            br = poly.boundingRect()
+            cy = (br.top() + br.bottom()) / 2.0
+
+            # Match to true line bounding box from PyMuPDF
+            matched = [l for l in lines if l[1] <= cy <= l[3]]
+            if not matched:
+                matched = [l for l in lines if not (l[3] < br.top() or l[1] > br.bottom())]
+
+            if matched:
+                best_l = min(matched, key=lambda l: abs((l[1] + l[3]) / 2.0 - cy))
+                top_pt, bottom_pt = best_l[1], best_l[3]
+            else:
+                h = br.height()
+                top_pt = br.top() - h * 0.35
+                bottom_pt = br.bottom() + h * 0.35
+
+            vx = ox + br.left() * sx_scale
+            vy = oy + top_pt * sy_scale
+            vw = br.width() * sx_scale
+            vh = (bottom_pt - top_pt) * sy_scale
+            raw_rects.append(QRectF(vx, vy, vw, vh))
+
+        # Sort rects by vertical position, then horizontal
+        raw_rects.sort(key=lambda r: (round(r.top() / 4.0), r.left()))
+
+        # Merge adjacent or overlapping segments belonging to the same text line
+        merged: List[QRectF] = []
+        for r in raw_rects:
+            if not merged:
+                merged.append(r)
+                continue
+            prev = merged[-1]
+            # Check if on same visual line and overlapping or close horizontally
+            same_line = abs(prev.top() - r.top()) <= 3.0 and abs(prev.bottom() - r.bottom()) <= 3.0
+            gap = r.left() - prev.right()
+            if same_line and gap <= 6.0 and prev.left() <= r.right():
+                merged[-1] = prev.united(r)
+            else:
+                merged.append(r)
+
+        return merged
 
     def _on_text_selection_finished(self, text: str) -> None:
         """Called when mouse release completes text selection."""
@@ -1706,11 +1774,6 @@ class PdfReaderDialog(QDialog):
         # Display selected snippet in AI assistant area without taking focus away
         if hasattr(self, "txt_ai_response"):
             self.txt_ai_response.setPlainText(f"📌 Markierter Text:\n\n\"{text}\"")
-
-    def _resolve_text_for_rect(self, view_rect: QRect) -> str:
-        """Translates view pixel selection to PDF points and extracts text from active page."""
-        rects, txt = self._calculate_line_highlights(view_rect)
-        return txt
 
     def _show_selection_context_menu(self, global_pos: QPoint, text: str) -> None:
         if not text:
