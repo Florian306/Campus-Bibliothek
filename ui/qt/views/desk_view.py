@@ -825,7 +825,7 @@ class DeskView(QWidget):
         btn_open.clicked.connect(self._open_active_pdf)
         bottom_bar.addWidget(btn_open)
 
-        btn_tutor = QPushButton("  🎯 KI-Tutor & Klausur-Studio")
+        btn_tutor = QPushButton("  🎯 KI-Tutor & Quiz-Studio")
         btn_tutor.setCursor(Qt.PointingHandCursor)
         btn_tutor.setFixedHeight(38)
         btn_tutor.setStyleSheet("""

@@ -87,7 +87,6 @@ hiddenimports += [
     'ui.qt.views.radar_view',
     'ui.qt.views.jarvis_view',
     'ui.qt.views.sync_view',
-    'ui.qt.views.exam_studio_view',
     'ai.textbook_search',
     'core.calendar_service',
     'core.rss_news_service',

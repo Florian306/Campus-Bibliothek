@@ -332,8 +332,7 @@ class RadarView(QWidget):
                 from ai.edition_checker import check_for_newer_edition
                 import time
                 books = get_all_books()
-                # Limit scan batch to 30 relevant books for fast responsive check
-                target_books = [b for b in books if b.get("title") and len(b.get("title", "")) > 4][:30]
+                target_books = [b for b in books if b.get("title") and len(b.get("title", "")) > 4][:100]
                 total = len(target_books)
                 found = 0
 
@@ -344,10 +343,10 @@ class RadarView(QWidget):
                 for idx, b in enumerate(target_books):
                     title_snippet = (b.get("title") or "")[:28]
                     self._signals.progress.emit(idx + 1, total, title_snippet)
-                    res = check_for_newer_edition(b, timeout=3.5)
+                    res = check_for_newer_edition(b, timeout=4.0)
                     if res:
                         found += 1
-                    time.sleep(0.15)  # gentle rate limit against Google Books API
+                    time.sleep(0.08)
 
                 self._signals.finished.emit(found)
             except Exception as e:

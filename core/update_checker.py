@@ -8,7 +8,7 @@ import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "1.3.7"
+CURRENT_VERSION = "1.3.8"
 
 
 def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:

@@ -30,7 +30,6 @@ from ui.qt.views.inbox_view import InboxView
 from ui.qt.views.research_view import ResearchView
 from ui.qt.views.textbook_search_view import TextbookSearchView
 from ui.qt.views.academic_web_view import AcademicWebView
-from ui.qt.views.exam_studio_view import ExamStudioView
 from ui.qt.dialogs.quick_look import QuickLookDialog
 from core.library_db import get_category_counts, get_all_research_papers, get_inbox_count
 
@@ -145,12 +144,11 @@ class CampusMainWindow(QMainWindow):
             ("catalog", "library", "Bibliothek & Katalog", 1),
             ("inbox", "inbox", "Posteingang", 2),
             ("desk", "desk", "Mein Schreibtisch", 3),
-            ("exam", "exam", "Klausur-Studio", 4),
-            ("research", "research", "Paper & Forschung", 5),
-            ("textbooks", "book", "Fachbuch-Suche", 6),
-            ("web", "globe", "Fach-Websuche", 7),
-            ("radar", "radar", "Auflagen-Radar", 8),
-            ("sync", "sync", "Scan & Sync", 9),
+            ("research", "research", "Paper & Forschung", 4),
+            ("textbooks", "book", "Fachbuch-Suche", 5),
+            ("web", "globe", "Fach-Websuche", 6),
+            ("radar", "radar", "Auflagen-Radar", 7),
+            ("sync", "sync", "Scan & Sync", 8),
         ]
 
         for key, icon_name, text, idx in nav_items:
@@ -210,7 +208,6 @@ class CampusMainWindow(QMainWindow):
         self.view_catalog = CatalogView(self)
         self.view_inbox = InboxView(self)
         self.view_desk = DeskView(self)
-        self.view_exam = ExamStudioView(self)
         self.view_research = ResearchView(self)
         self.view_textbooks = TextbookSearchView(self)
         self.view_academic_web = AcademicWebView(self)
@@ -221,7 +218,6 @@ class CampusMainWindow(QMainWindow):
         self.stack.addWidget(self.view_catalog)
         self.stack.addWidget(self.view_inbox)
         self.stack.addWidget(self.view_desk)
-        self.stack.addWidget(self.view_exam)
         self.stack.addWidget(self.view_research)
         self.stack.addWidget(self.view_textbooks)
         self.stack.addWidget(self.view_academic_web)
@@ -282,12 +278,10 @@ class CampusMainWindow(QMainWindow):
         elif idx == 3:
             self.view_desk.load_data()
         elif idx == 4:
-            self.view_exam.load_data()
-        elif idx == 5:
             self.view_research.load_data()
-        elif idx == 6:
+        elif idx == 5:
             self.view_textbooks.load_data()
-        elif idx == 8:
+        elif idx == 7:
             self.view_radar.load_data()
 
     def update_sidebar_stats(self) -> None:
