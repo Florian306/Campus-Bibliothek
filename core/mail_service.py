@@ -237,6 +237,37 @@ def fetch_single_email_content(msg_id: str) -> Dict[str, Any]:
         return {"text": f"Fehler beim Abrufen der E-Mail: {e}", "html": ""}
 
 
+def mark_email_as_read(msg_id: str) -> bool:
+    """Marks an email as read/seen on the IMAP server (or in demo inbox)."""
+    global _ACTIVE_DEMO_MAILS
+    if not msg_id:
+        return False
+
+    if msg_id.startswith("demo_"):
+        curr = _get_demo_inbox()
+        for m in curr:
+            if m.get("id") == msg_id:
+                m["is_unread"] = False
+        return True
+
+    settings = get_mail_settings()
+    if not (settings["enabled"] and settings["host"] and settings["user"] and settings["password"]):
+        return False
+
+    try:
+        with _CONN_LOCK:
+            try:
+                mail = _get_connection(settings, readonly=False)
+                mail.store(msg_id, "+FLAGS", "\\Seen")
+            except (imaplib.IMAP4.abort, OSError):
+                _drop_connection()
+                mail = _get_connection(settings, readonly=False)
+                mail.store(msg_id, "+FLAGS", "\\Seen")
+            return True
+    except Exception:
+        return False
+
+
 def fetch_single_email_body(msg_id: str) -> str:
     """Fetches full body of an email by IMAP message ID."""
     return fetch_single_email_content(msg_id).get("text", "")

@@ -2167,22 +2167,15 @@ class ResearchView(QWidget):
         if self._pdt_collapsed:
             self.set_pdt_collapsed(False)
         self.pdt_active_mode = mode
-        
-        # Check cache immediately for zero latency
-        from ai.daily_paper import _read_daily_cache
-        cache = _read_daily_cache()
-        cached_entry = cache.get(mode)
-        if cached_entry and cached_entry.get("paper"):
-            self._render_pdt_highlight(cached_entry["paper"], mode)
-        else:
-            # Show quick loading indicator and fetch in background thread so UI never freezes
-            self.lbl_pdt_title.setText("⏳ Lade Paper des Tages...")
-            import threading
-            from PySide6.QtCore import QTimer
-            def _bg_fetch():
-                hl = get_daily_paper_highlight(category_mode=mode, force_refresh=False)
-                QTimer.singleShot(0, lambda: self._render_pdt_highlight(hl, mode))
-            threading.Thread(target=_bg_fetch, daemon=True).start()
+
+        # Show quick loading indicator and fetch in background thread so UI never freezes
+        self.lbl_pdt_title.setText("⏳ Lade Paper des Tages...")
+        import threading
+        from PySide6.QtCore import QTimer
+        def _bg_fetch():
+            hl = get_daily_paper_highlight(category_mode=mode, force_refresh=False)
+            QTimer.singleShot(0, lambda: self._render_pdt_highlight(hl, mode))
+        threading.Thread(target=_bg_fetch, daemon=True).start()
 
     def _load_paper_of_the_day(self, category_mode: str = "german", force_refresh: bool = False) -> None:
         """Loads and updates the Paper des Tages card data."""
@@ -2277,7 +2270,11 @@ class ResearchView(QWidget):
             self.lbl_pdt_meta.setText(meta_str)
 
             reasoning = highlight.get("reasoning", "")
-            teaser = highlight.get("teaser", "")
+            if not reasoning:
+                p_cat = highlight.get("category") or highlight.get("faculty") or "Wissenschaft"
+                p_src = (highlight.get("paper") or {}).get("source") or highlight.get("source") or "Wissenschaftliche Datenbank"
+                reasoning = f"Zufallsimpuls aus {p_src} • Peer-Reviewed Fachbeitrag für {p_cat}."
+            teaser = highlight.get("teaser") or highlight.get("abstract") or ""
             intext = highlight.get("apa7_intext", "")
             doi_val = highlight.get("doi", "")
 

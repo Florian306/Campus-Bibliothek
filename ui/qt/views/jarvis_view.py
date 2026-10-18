@@ -55,6 +55,7 @@ from core.mail_service import (
     fetch_inbox_messages,
     fetch_single_email_body,
     fetch_single_email_content,
+    mark_email_as_read,
     delete_email_by_id,
     get_mail_settings,
     save_mail_settings,
@@ -2089,11 +2090,19 @@ class JarvisView(QWidget):
             threading.Thread(target=delete_email_by_id, args=(msg_id,), daemon=True).start()
 
     def _open_mail_reader(self, mail_data: Dict[str, Any]) -> None:
+        mid = mail_data.get("id", "")
+        # Mark as read locally and on server
+        if mid and mail_data.get("is_unread", False):
+            mail_data["is_unread"] = False
+            threading.Thread(target=mark_email_as_read, args=(mid,), daemon=True).start()
+
         dlg = JarvisMailReaderDialog(self, mail_data=mail_data)
         dlg.exec()
         if getattr(dlg, "was_deleted", False):
             deleted_id = mail_data.get("id")
             self._all_mails = [m for m in self._all_mails if m.get("id") != deleted_id]
+            self._render_mails_ui(self._all_mails)
+        else:
             self._render_mails_ui(self._all_mails)
 
     def _on_mail_search_changed(self, text: str) -> None:
