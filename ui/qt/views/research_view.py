@@ -61,11 +61,12 @@ from ui.qt.dialogs.quick_look import QuickLookDialog
 
 
 class PaperSearchSignals(QObject):
-    """Thread-safe signals for background academic search and downloading."""
+    """Thread-safe signals for background academic search, downloading, and paper highlights."""
     search_finished = Signal(list)
     search_error = Signal(str)
     download_finished = Signal(str, str)  # paper_id, local_path
     download_error = Signal(str)
+    pdt_ready = Signal(dict, str)  # highlight_dict, category_mode
 
 
 class InstitutionDialog(QDialog):
@@ -477,6 +478,7 @@ class ResearchView(QWidget):
         self._signals.search_error.connect(self._on_search_error)
         self._signals.download_finished.connect(self._on_download_finished)
         self._signals.download_error.connect(self._on_download_error)
+        self._signals.pdt_ready.connect(self._render_pdt_highlight)
 
         self._saved_papers: List[Dict[str, Any]] = []
         self._active_saved_paper: Optional[Dict[str, Any]] = None
@@ -2171,7 +2173,6 @@ class ResearchView(QWidget):
         # Show quick loading indicator and fetch in background thread so UI never freezes
         self.lbl_pdt_title.setText("⏳ Lade Paper des Tages...")
         import threading
-        from PySide6.QtCore import QTimer
         def _bg_fetch():
             try:
                 hl = get_daily_paper_highlight(category_mode=mode, force_refresh=False)
@@ -2195,7 +2196,7 @@ class ResearchView(QWidget):
                     "teaser": "Die Studie analysiert die Validität generativer Sprachmodelle in der Hochschulbildung.",
                     "related_books": []
                 }
-            QTimer.singleShot(0, lambda: self._render_pdt_highlight(hl, mode))
+            self._signals.pdt_ready.emit(hl, mode)
         threading.Thread(target=_bg_fetch, daemon=True).start()
 
     def _load_paper_of_the_day(self, category_mode: str = "german", force_refresh: bool = False) -> None:
@@ -2203,7 +2204,6 @@ class ResearchView(QWidget):
         if force_refresh:
             self.lbl_pdt_title.setText("⏳ Generiere neuen Forschungs-Impuls...")
             import threading
-            from PySide6.QtCore import QTimer
             def _bg_fetch():
                 try:
                     hl = get_daily_paper_highlight(category_mode=category_mode, force_refresh=True)
@@ -2224,7 +2224,7 @@ class ResearchView(QWidget):
                             "teaser": "Forschungs-Impuls aus dem lokalen Bestand.",
                             "related_books": []
                         }
-                QTimer.singleShot(0, lambda: self._render_pdt_highlight(hl, category_mode))
+                self._signals.pdt_ready.emit(hl, category_mode)
             threading.Thread(target=_bg_fetch, daemon=True).start()
         else:
             self._set_pdt_mode(category_mode)
