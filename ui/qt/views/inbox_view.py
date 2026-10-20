@@ -40,6 +40,8 @@ from core.library_db import (
     delete_inbox_item,
     check_inbox_duplicate,
     upsert_book,
+    get_category_counts,
+)
 from ai.pdf_extractor import (
     extract_pdf_preview_text,
     extract_visual_title_and_author,
