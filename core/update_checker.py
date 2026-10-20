@@ -8,7 +8,7 @@ import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "1.4.9"
+CURRENT_VERSION = "1.5.0"
 
 
 def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
@@ -36,7 +36,7 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[st
                 download_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases/latest")
                 assets = data.get("assets", [])
 
-                # 1. Bevorzuge vollen Setup-Installer für 100% konsistente Binaries
+                # 1. Bevorzuge schnelles Delta-Patch (<20 MB) statt vollständigem Installer (>300 MB)
                 patch_url = None
                 setup_url = None
                 fallback_url = None
@@ -44,15 +44,15 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[st
                 for asset in assets:
                     name = asset.get("name", "").lower()
                     url_candidate = asset.get("browser_download_url")
-                    if "setup" in name and name.endswith(".exe"):
-                        setup_url = url_candidate
-                    elif "patch" in name and name.endswith(".zip"):
+                    if "patch" in name and name.endswith(".zip"):
                         patch_url = url_candidate
+                    elif "setup" in name and name.endswith(".exe"):
+                        setup_url = url_candidate
                     elif name.endswith(".exe") or name.endswith(".zip"):
                         fallback_url = url_candidate
 
-                # Setup.exe führt /VERYSILENT aus und aktualisiert alle Binaries fehlerfrei
-                download_url = setup_url or patch_url or fallback_url or download_url
+                # Priorisiere Patch: lädt nur die geänderten Dateien (~18 MB) statt 330 MB
+                download_url = patch_url or setup_url or fallback_url or download_url
                 notes = data.get("body", "Keine Versionshinweise vorhanden.")
                 return True, tag_name, download_url, notes
             return False, tag_name, None, None

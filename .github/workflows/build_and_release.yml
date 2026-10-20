@@ -57,7 +57,9 @@ jobs:
       - name: Create Portable Zip Package and Delta Patch
         run: |
           7z a -tzip -mx=3 "dist/Campus-Bibliothek-Portable.zip" "./dist/Buchsortierer/*"
-          7z a -tzip -mx=3 "dist/Campus-Bibliothek-Patch.zip" "./dist/Buchsortierer/Buchsortierer.exe" "./dist/Buchsortierer/_internal/base_library.zip" "./dist/Buchsortierer/_internal/*.pyc" "./dist/Buchsortierer/_internal/ui*" "./dist/Buchsortierer/_internal/ai*" "./dist/Buchsortierer/_internal/core*"
+          cd dist/Buchsortierer
+          7z a -tzip -mx=3 "../Campus-Bibliothek-Patch.zip" "Buchsortierer.exe" "_internal/base_library.zip" "_internal/*.pyc" "_internal/ui*" "_internal/ai*" "_internal/core*"
+          cd ../..
 
       - name: Create Release and Upload Artifacts
         uses: softprops/action-gh-release@v2
