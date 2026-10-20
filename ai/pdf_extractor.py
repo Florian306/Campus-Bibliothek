@@ -32,10 +32,36 @@ SERIES_OR_GENRE_KEYWORDS = {
     "kompakt", "vorkurs", "masterclass", "springer-lehrbuch", "springer", "spektrum",
     "lehrbuch", "studienbuch", "studium", "basiswissen", "prüfungswissen", "prüfungs-repetitorium",
     "repetitorium", "leitfaden", "skript", "vorlesung", "kurs", "grundkurs", "aufbaukurs",
-    "einführung", "handbuch", "taschenbuch", "lehr- und übungsbuch", "übungsbuch",
+    "handbuch", "taschenbuch", "lehr- und übungsbuch", "übungsbuch",
     "arbeitsbuch", "fallstudien", "edition", "mitteilung", "reihe", "band", "teil",
-    "de gruyter", "pearson", "wiley", "oldenbourg", "vieweg", "hanser", "utb"
+    "gesamtausgabe", "de gruyter", "pearson", "wiley", "oldenbourg", "vieweg", "hanser", "utb"
 }
+
+GENERIC_SECTION_TITLES = {
+    "cover", "titelseite", "titelei", "vorsatz", "inhaltsverzeichnis", "inhalt", "contents",
+    "table of contents", "vorwort", "preface", "foreword", "geleitwort", "geleitwort des herausgebers",
+    "impressum", "gehe zu", "seite", "kapitel", "chapter", "abkürzungen", "abkürzungsverzeichnis",
+    "siglen", "siglenverzeichnis", "editorische hinweise", "anmerkungen", "danksagung",
+    "acknowledgments", "literatur", "literaturverzeichnis", "bibliografie", "register",
+    "sachregister", "personenregister", "namenregister", "index", "glossar"
+}
+
+
+def sanitize_author_string(author: str) -> str:
+    """Strips roles, brackets, and decorative symbols/emojis from author names."""
+    if not author:
+        return ""
+    # Strip roles
+    cleaned = re.sub(
+        r'\[?\s*(?:Illustrator(?:in)?|Grafik(?:er)?|Redaktion|Red\.|Hrsg\.|Herausgeber|Fotograf(?:in)?|Bearb\.|Bearbeiter|Mitarb\.|Mitarbeiter)\s*\]?',
+        '', author, flags=re.IGNORECASE
+    )
+    # Strip emojis and decorative symbols (hearts, stars, dingbats)
+    cleaned = re.sub(r'[\u2600-\u27bf\U0001f300-\U0001f9ff♥★✦◆■▲●]+', '', cleaned)
+    # Clean brackets and whitespace
+    cleaned = re.sub(r'[{}\[\]\(\)]', '', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip(" ,.-_/;:")
+    return cleaned
 
 
 def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
@@ -54,10 +80,7 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
 
         # Sanitize metadata author
         if raw_meta_author:
-            clean_m_auth = re.sub(
-                r'\[?\s*(?:Illustrator(?:in)?|Grafik(?:er)?|Redaktion|Red\.|Hrsg\.|Herausgeber|Fotograf(?:in)?|Bearb\.|Bearbeiter|Mitarb\.|Mitarbeiter)\s*\]?',
-                '', raw_meta_author, flags=re.IGNORECASE
-            ).strip()
+            clean_m_auth = sanitize_author_string(raw_meta_author)
             if clean_m_auth.lower() not in ('sjoerg', 'admin', 'user', 'author', 'scan', 'root', 'unknown', 'alin.cason', 'fk') and len(clean_m_auth) >= 3:
                 # Discard if it looks like software, filename or series
                 if not re.search(r'\.(?:indd|indb|qxd|doc|docx|pdf)$', clean_m_auth, re.I) and not any(kw in clean_m_auth.lower() for kw in SERIES_OR_GENRE_KEYWORDS):
@@ -75,11 +98,41 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
     except Exception:
         pass
 
-    # Step 2: Front-matter visual inspection (Page 0 and 1)
-    for p_no in range(min(2, total_pages)):
+    # Helper to check if a string is purely a generic section header
+    def is_generic_section(text_val: str) -> bool:
+        norm = re.sub(r'[^a-z0-9äöüß ]+', ' ', text_val.lower()).strip()
+        if norm in GENERIC_SECTION_TITLES:
+            return True
+        for sec in GENERIC_SECTION_TITLES:
+            if norm == sec or norm.startswith(sec + " ") or norm.endswith(" " + sec):
+                return True
+        return False
+
+    # Helper to check if a string is a series/course name rather than a person
+    def is_series_or_course(text_val: str) -> bool:
+        low = text_val.lower()
+        return any(kw in low for kw in SERIES_OR_GENRE_KEYWORDS)
+
+    # Helper to check if a string looks like a person's name
+    def is_person_name(text_val: str) -> bool:
+        if is_series_or_course(text_val) or is_generic_section(text_val):
+            return False
+        words = text_val.split()
+        if not (2 <= len(words) <= 5):
+            return False
+        # Every word must consist purely of alphabetic characters (including German umlauts)
+        for w in words:
+            if not re.match(r'^[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?$', w):
+                return False
+        return True
+
+    # Step 2: Front-matter visual inspection (Check up to first 6 pages for title page)
+    candidate_titles_by_size = []
+    candidate_authors = []
+
+    for p_no in range(min(6, total_pages)):
         try:
             page = doc[p_no]
-            # Use detailed dict layout to inspect font sizes
             page_dict = page.get_text("dict")
             text_lines = []
 
@@ -93,7 +146,6 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
                     line_text = "".join(s.get("text", "") for s in line_spans).strip()
                     if not line_text:
                         continue
-                    # Average or max font size for this line
                     max_size = max(s.get("size", 10.0) for s in line_spans)
                     text_lines.append((line_text, max_size, b.get("bbox", (0, 0, 0, 0))))
 
@@ -110,9 +162,10 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
                     "http", "doi:", "isbn", "copyright", "©", "urheberrecht",
                     "alle rechte", "gespeichert", "ip ", "download", "druck:",
                     "satz:", "verlag", "bibliografische", "open-access", "for personal use",
-                    "titelei", "vorsatz", "inhaltsverzeichnis", "inhalt", "impressum",
-                    "preface", "vorwort", "danksagung", "all rights reserved"
+                    "all rights reserved", "gesamtausgabe"
                 ]):
+                    continue
+                if is_generic_section(cand):
                     continue
                 if re.match(r'^\d+$', cand) or re.search(r'\.(?:indd|indb|qxd|doc|docx|pdf)$', cand, re.I):
                     continue
@@ -121,13 +174,12 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
             if not valid_lines:
                 continue
 
-            # Group adjacent lines with similar font sizes into candidate title/author blocks
+            # Group adjacent lines with similar font sizes
             grouped_candidates = []
             curr_text = valid_lines[0][0]
             curr_size = valid_lines[0][1]
 
             for next_txt, next_sz, _ in valid_lines[1:]:
-                # If font size is very close (within 15%) and length isn't too huge, join
                 if abs(curr_size - next_sz) <= max(curr_size, next_sz) * 0.15 and len(curr_text) + len(next_txt) < 110:
                     curr_text += " " + next_txt
                 else:
@@ -137,71 +189,64 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
             if curr_text:
                 grouped_candidates.append((curr_text.strip(), curr_size))
 
-            # Helper to check if a string is a series/course name rather than a person
-            def is_series_or_course(text_val: str) -> bool:
-                low = text_val.lower()
-                return any(kw in low for kw in SERIES_OR_GENRE_KEYWORDS)
-
-            # Helper to check if a string looks like a person's name
-            def is_person_name(text_val: str) -> bool:
-                if is_series_or_course(text_val):
-                    return False
-                words = text_val.split()
-                if not (2 <= len(words) <= 4):
-                    return False
-                alpha_words = [w for w in words if w.isalpha()]
-                if not alpha_words:
-                    return False
-                return all(w[0].isupper() for w in alpha_words)
-
-            # Sort grouped candidates by font size descending to find the prominent title
-            title_candidates = [
+            # Find title candidates on this page
+            page_title_cands = [
                 c for c in grouped_candidates
                 if not is_series_or_course(c[0])
+                and not is_generic_section(c[0])
                 and not any(c[0].lower().startswith(x) for x in ["prof.", "dr.", "von "])
+                and len(c[0]) >= 4
             ]
+            for cand_txt, sz in page_title_cands:
+                clean_cand = cand_txt.replace("●", "-").strip()
+                candidate_titles_by_size.append((clean_cand, sz, p_no))
 
-            if not found_title and title_candidates:
-                # Primary title candidate has highest font size
-                best_title_cand = max(title_candidates, key=lambda x: x[1])[0]
-                # Clean out bullet points like '●'
-                best_title_cand = best_title_cand.replace("●", "-").replace("  ", " ").strip()
-                if len(best_title_cand) >= 4:
-                    found_title = best_title_cand
+            # Find author candidates on this page
+            for cand_text, cand_sz in grouped_candidates:
+                if is_series_or_course(cand_text) or is_generic_section(cand_text):
+                    continue
+                cleaned_author_cand = re.sub(r'^(?:von|by|autor(?:en)?|author(?:s)?)\s*:\s*', '', cand_text, flags=re.I).strip()
+                cleaned_author_cand = sanitize_author_string(cleaned_author_cand)
+                if is_person_name(cleaned_author_cand):
+                    candidate_authors.append((cleaned_author_cand, cand_sz, p_no))
 
-            # Extract author if not already determined by metadata
-            if not found_author:
-                for cand_text, cand_sz in grouped_candidates:
-                    # If this candidate is the chosen title, skip
-                    if found_title and cand_text == found_title:
-                        continue
-                    if is_series_or_course(cand_text):
-                        continue
-
-                    # Clean prefixes like "Von ", "Author: "
-                    cleaned_author_cand = re.sub(r'^(?:von|by|autor(?:en)?|author(?:s)?)\s*:\s*', '', cand_text, flags=re.I).strip()
-                    if is_person_name(cleaned_author_cand):
-                        found_author = cleaned_author_cand
-                        break
-
-            # If title is found, we can finish page 0/1 inspection
-            if found_title and found_author:
-                break
         except Exception:
             pass
+
+    # Select best title from visual scan if not found via metadata
+    best_title_page = -1
+    if not found_title and candidate_titles_by_size:
+        # Prioritize largest font size, tie-breaker: earlier page
+        candidate_titles_by_size.sort(key=lambda x: (x[1], -x[2]), reverse=True)
+        found_title = candidate_titles_by_size[0][0]
+        best_title_page = candidate_titles_by_size[0][2]
+
+    # Select author from visual scan if not found via metadata
+    if not found_author and candidate_authors:
+        # Filter candidate authors that match title
+        valid_authors = [
+            a for a in candidate_authors
+            if not found_title or a[0].lower() not in found_title.lower()
+        ]
+        if valid_authors:
+            # Prefer author appearing on the same page as the detected title
+            same_page_authors = [a for a in valid_authors if a[2] == best_title_page]
+            if same_page_authors:
+                same_page_authors.sort(key=lambda x: x[1], reverse=True)
+                found_author = same_page_authors[0][0]
+            else:
+                valid_authors.sort(key=lambda x: x[1], reverse=True)
+                found_author = valid_authors[0][0]
 
     # Step 3: Bookmarks / TOC Fallback if title still not found
     if not found_title:
         try:
             toc = doc.get_toc()
             if toc:
-                for lvl, t, p in toc[:5]:
+                for lvl, t, p in toc[:8]:
                     clean_t = t.strip('\x00 \t\r\n')
-                    if clean_t and not any(j in clean_t.lower() for j in [
-                        "cover", "titelei", "vorsatz", "inhaltsverzeichnis", "inhalt",
-                        "vorwort", "impressum", "gehe zu", "seite", "kapitel", "chapter",
-                        "einleitung", "einführung", "abkürzungen", "literatur"
-                    ]):
+                    if clean_t and not is_generic_section(clean_t):
+                        # Reject plain standalone chapter headings or page markers
                         if 4 <= len(clean_t) <= 85 and not re.search(r'^\d+\.?\s*$', clean_t):
                             clean_t = re.sub(r'^\[.*?\]\s*;\s*', '', clean_t).strip()
                             found_title = clean_t
@@ -232,8 +277,7 @@ def _extract_with_fitz(file_path: str) -> Optional[str]:
             raw_title = str(meta.get("title") or "").replace('\x00', '').strip()
             raw_author = str(meta.get("author") or "").replace('\x00', '').strip()
             if raw_author:
-                raw_author = re.sub(r'\[?\s*(?:Illustrator(?:in)?|Grafik(?:er)?|Redaktion|Red\.|Hrsg\.|Herausgeber|Fotograf(?:in)?|Bearb\.|Bearbeiter|Mitarb\.|Mitarbeiter)\s*\]?', '', raw_author, flags=re.IGNORECASE)
-                raw_author = raw_author.replace('[', '').replace(']', '').strip()
+                raw_author = sanitize_author_string(raw_author)
                 if raw_author.lower() in ('sjoerg', 'admin', 'user', 'author', 'scan', 'root', 'unknown', 'alin.cason', 'fk'):
                     raw_author = ""
 

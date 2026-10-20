@@ -40,9 +40,12 @@ from core.library_db import (
     delete_inbox_item,
     check_inbox_duplicate,
     upsert_book,
-    get_category_counts,
+from ai.pdf_extractor import (
+    extract_pdf_preview_text,
+    extract_visual_title_and_author,
+    sanitize_author_string,
 )
-from ai.pdf_extractor import extract_pdf_preview_text, extract_visual_title_and_author
+from ai.isbn_lookup import extract_isbns, resolve_isbn_catalog
 from ai.classifier import classify_textbook
 from ai.categories import STANDARD_CATEGORIES
 
@@ -80,6 +83,7 @@ class InboxAnalysisWorker(QThread):
             extracted_title = ""
             extracted_author = ""
             page_count = 0
+            front_text = ""
 
             # 1. Extract cover, title, author via PyMuPDF
             if fitz:
@@ -89,13 +93,14 @@ class InboxAnalysisWorker(QThread):
                     vt, va = extract_visual_title_and_author(doc)
                     extracted_title = vt or ""
                     extracted_author = va or ""
+                    # Grab first 6 pages text for ISBN and catalog identification
+                    front_chunks = []
+                    for p in range(min(6, page_count)):
+                        front_chunks.append(doc[p].get_text("text"))
+                    front_text = "\n".join(front_chunks)
                     doc.close()
                 except Exception:
                     pass
-
-            if not extracted_title:
-                clean_name = os.path.splitext(fn)[0]
-                extracted_title = clean_name.replace("_", " ").replace("-", " ").strip()
 
             # 2. Extract preview text for faculty AI classification
             text_snippet = ""
@@ -104,14 +109,49 @@ class InboxAnalysisWorker(QThread):
             except Exception:
                 pass
 
-            suggested_cat, confidence, reason = classify_textbook(
-                filename=fn,
-                text=text_snippet,
-                existing_folders=self.existing_categories,
-                title=extracted_title
-            )
+            combined_lookup_text = f"{fn}\n{front_text}\n{text_snippet}"
 
-            # 3. Check for duplicates
+            # 3. Check bibliographic catalog via ISBN
+            catalog_match = None
+            try:
+                catalog_match = resolve_isbn_catalog(combined_lookup_text, self.existing_categories)
+            except Exception:
+                pass
+
+            suggested_cat = None
+            confidence = 0.5
+            reason = ""
+
+            if catalog_match:
+                cat_cat, cat_auth, cat_title, cat_reason = catalog_match
+                if cat_title and (not extracted_title or len(extracted_title) < 5 or "merged" in fn.lower()):
+                    extracted_title = cat_title
+                if cat_auth and (not extracted_author or extracted_author == "Unbekannt"):
+                    extracted_author = cat_auth
+                if cat_cat:
+                    suggested_cat = cat_cat
+                    confidence = 0.98
+                    reason = cat_reason
+
+            # Fallback to filename if still empty
+            if not extracted_title:
+                clean_name = os.path.splitext(fn)[0]
+                extracted_title = clean_name.replace("_", " ").replace("-", " ").strip()
+
+            # Sanitize author string (remove emojis, hearts, brackets)
+            if extracted_author:
+                extracted_author = sanitize_author_string(extracted_author)
+
+            # 4. Classify textbook category if not already resolved by catalog
+            if not suggested_cat:
+                suggested_cat, confidence, reason = classify_textbook(
+                    filename=fn,
+                    text=text_snippet or front_text,
+                    existing_folders=self.existing_categories,
+                    title=extracted_title
+                )
+
+            # 5. Check for duplicates
             dup_warning = check_inbox_duplicate(extracted_title, fn)
 
             analysis_result = {
