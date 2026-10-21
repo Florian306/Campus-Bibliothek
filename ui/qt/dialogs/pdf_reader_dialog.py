@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QPlainTextEdit,
+    QTextEdit,
     QLineEdit,
     QSpinBox,
     QSplitter,
@@ -236,48 +237,68 @@ class AcademicDictionaryWorker(QThread):
         try:
             clean_text = self.text
             words = clean_text.split()
-            # If 1-3 words or mode is dictionary, perform rich dictionary lookup
             if self.mode == "dictionary" or (len(words) <= 3 and self.mode != "translate"):
                 res = lookup_dictionary(clean_text)
                 term = res.get("term", clean_text)
                 translations = res.get("translations", [])
                 definitions = res.get("definitions", [])
 
-                lines = [f"📖 **Wörterbuch: '{term}'**\n"]
+                html_parts = [
+                    f"<div style='margin-bottom: 12px;'>"
+                    f"<div style='font-size: 14px; font-weight: bold; color: #58A6FF; margin-bottom: 8px;'>📖 Wörterbuch: &laquo;{term}&raquo;</div>"
+                ]
+
                 if translations:
-                    lines.append("### 🇩🇪 Übersetzungen (Dict.cc):")
+                    html_parts.append("<div style='font-size: 11px; font-weight: bold; color: #8B949E; text-transform: uppercase; margin-bottom: 4px;'>Übersetzungen (Dict.cc)</div>")
+                    html_parts.append("<div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;'>")
                     for en, de in translations:
-                        lines.append(f"• **{en}**  ➔  {de}")
-                    lines.append("")
+                        html_parts.append(f"<div style='margin-bottom: 4px;'><b style='color: #F0F6FC;'>{en}</b> <span style='color: #388BFD;'>➔</span> <span style='color: #7EE787;'>{de}</span></div>")
+                    html_parts.append("</div>")
 
                 if definitions:
-                    lines.append("### 📚 Definitionen & Wortarten:")
+                    html_parts.append("<div style='font-size: 11px; font-weight: bold; color: #8B949E; text-transform: uppercase; margin-bottom: 4px;'>Definitionen & Wortarten</div>")
+                    html_parts.append("<div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;'>")
                     for item in definitions:
                         pos = item[0]
                         d = item[1]
                         ex = item[2] if len(item) > 2 else ""
-                        lines.append(f"• *[{pos}]* {d}")
+                        html_parts.append(f"<div style='margin-bottom: 6px;'><span style='background-color: #1F2E4D; color: #A5D6FF; padding: 1px 6px; border-radius: 4px; font-size: 10px;'>{pos}</span> <span style='color: #C9D1D9;'>{d}</span>")
                         if ex:
-                            lines.append(f"   ↳ _Beispiel:_ \"{ex}\"")
-                    lines.append("")
+                            html_parts.append(f"<div style='color: #8B949E; font-style: italic; margin-left: 12px; font-size: 11px; margin-top: 2px;'>Beispiel: &bdquo;{ex}&ldquo;</div>")
+                        html_parts.append("</div>")
+                    html_parts.append("</div>")
 
                 if not translations and not definitions:
-                    # Fallback to direct translation if no dictionary entry exists
                     tr, engine = translate_text(clean_text)
-                    lines.append(f"### 🇩🇪 Übersetzung ({engine}):")
-                    lines.append(tr)
+                    html_parts.append(f"<div style='font-size: 11px; font-weight: bold; color: #8B949E; text-transform: uppercase; margin-bottom: 4px;'>Übersetzung ({engine})</div>")
+                    html_parts.append(f"<div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 8px 12px; color: #7EE787; font-weight: 500;'>{tr}</div>")
 
-                formatted = "\n".join(lines).strip()
+                html_parts.append("</div>")
+                formatted = "".join(html_parts)
                 self.finished_result.emit("Wörterbuch", formatted)
             else:
                 # Multi-word sentence or paragraph translation
                 tr, engine = translate_text(clean_text)
-                lines = [
-                    f"🌐 **Fachübersetzung ({engine})**\n",
-                    f"**Original:**\n_{clean_text}_\n",
-                    f"**Deutsch:**\n{tr}"
-                ]
-                formatted = "\n".join(lines)
+                formatted = (
+                    f"<div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;'>"
+                    f"  <div style='display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #233554;'>"
+                    f"    <span style='font-size: 12px; font-weight: bold; color: #58A6FF;'>🌐 Fachübersetzung</span>"
+                    f"    <span style='font-size: 10px; color: #8B949E; background-color: #162035; border: 1px solid #233554; padding: 2px 6px; border-radius: 4px;'>{engine}</span>"
+                    f"  </div>"
+                    f"  <div style='margin-bottom: 10px;'>"
+                    f"    <div style='font-size: 10px; font-weight: bold; color: #8B949E; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px;'>Original</div>"
+                    f"    <div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 8px 10px; color: #8B949E; font-style: italic; font-size: 11px; line-height: 1.4;'>"
+                    f"      {clean_text}"
+                    f"    </div>"
+                    f"  </div>"
+                    f"  <div>"
+                    f"    <div style='font-size: 10px; font-weight: bold; color: #58A6FF; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px;'>Deutsch</div>"
+                    f"    <div style='background-color: #0E2238; border: 1px solid #1D4A7A; border-radius: 6px; padding: 10px 12px; color: #F0F6FC; font-size: 12px; line-height: 1.5; font-weight: 500;'>"
+                    f"      {tr}"
+                    f"    </div>"
+                    f"  </div>"
+                    f"</div>"
+                )
                 self.finished_result.emit("Übersetzung", formatted)
         except Exception as e:
             self.error_occurred.emit(str(e))
@@ -1220,17 +1241,18 @@ class PdfReaderDialog(QDialog):
         layout.addLayout(ai_btn_row)
 
         # AI Response Area
-        self.txt_ai_response = QPlainTextEdit()
+        self.txt_ai_response = QTextEdit()
+        self.txt_ai_response.setReadOnly(True)
         self.txt_ai_response.setPlaceholderText("Markiere einen Text oder klicke auf 'Begriff erklären' / 'Seite fassen' für eine KI-Zusammenfassung.")
         self.txt_ai_response.setStyleSheet("""
-            QPlainTextEdit {
+            QTextEdit {
                 background-color: #121826;
                 color: #F0F6FC;
                 border: 1px solid #232F48;
                 border-radius: 6px;
-                padding: 8px;
+                padding: 10px;
                 font-size: 12px;
-                line-height: 1.4;
+                line-height: 1.5;
             }
         """)
         layout.addWidget(self.txt_ai_response, stretch=1)
@@ -2101,7 +2123,16 @@ class PdfReaderDialog(QDialog):
             return
         # Display selected snippet in AI assistant area without taking focus away
         if hasattr(self, "txt_ai_response"):
-            self.txt_ai_response.setPlainText(f"📌 Markierter Text:\n\n\"{text}\"")
+            import html
+            escaped_text = html.escape(text)
+            self.txt_ai_response.setHtml(
+                f"<div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto; font-size: 12px;'>"
+                f"  <div style='color: #8B949E; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;'>📌 Markierter Text</div>"
+                f"  <div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 10px; color: #F0F6FC; line-height: 1.4;'>"
+                f"    &bdquo;{escaped_text}&ldquo;"
+                f"  </div>"
+                f"</div>"
+            )
 
     def _show_selection_context_menu(self, global_pos: QPoint, text: str) -> None:
         if not text:
@@ -2200,19 +2231,31 @@ class PdfReaderDialog(QDialog):
         self.notes_panel.setVisible(True)
         self.btn_toggle_notes.setChecked(True)
         lbl = "Wörterbuch-Eintrag" if mode == "dictionary" else "Fachübersetzung"
-        self.txt_ai_response.setPlainText(f"⏳ Lade {lbl} für:\n\"{text[:80]}...\"")
+        clean_snippet = text[:80] + ("..." if len(text) > 80 else "")
+        self.txt_ai_response.setHtml(
+            f"<div style='color: #8B949E; font-size: 12px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto;'>"
+            f"  <div style='color: #58A6FF; font-weight: bold; margin-bottom: 6px;'>⏳ Lade {lbl}...</div>"
+            f"  <div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 6px 10px; font-style: italic; color: #8B949E;'>&bdquo;{clean_snippet}&ldquo;</div>"
+            f"</div>"
+        )
         self._dict_thread = AcademicDictionaryWorker(text, mode=mode, parent=self)
-        self._dict_thread.finished_result.connect(lambda hdr, resp: self.txt_ai_response.setPlainText(resp))
-        self._dict_thread.error_occurred.connect(lambda err: self.txt_ai_response.setPlainText(f"Fehler bei Nachschlagen:\n{err}"))
+        self._dict_thread.finished_result.connect(lambda hdr, resp: self.txt_ai_response.setHtml(resp))
+        self._dict_thread.error_occurred.connect(lambda err: self.txt_ai_response.setHtml(f"<div style='color: #F85149;'><b>Fehler beim Nachschlagen:</b><br>{err}</div>"))
         self._dict_thread.start()
 
     def _ask_ai_on_text(self, text: str, mode: str = "explain") -> None:
         self.notes_panel.setVisible(True)
         self.btn_toggle_notes.setChecked(True)
-        self.txt_ai_response.setPlainText(f"⏳ KI analysiert Auszug:\n\"{text[:100]}...\"")
+        clean_snippet = text[:100] + ("..." if len(text) > 100 else "")
+        self.txt_ai_response.setHtml(
+            f"<div style='color: #8B949E; font-size: 12px; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto;'>"
+            f"  <div style='color: #E3B341; font-weight: bold; margin-bottom: 6px;'>⏳ KI analysiert Auszug...</div>"
+            f"  <div style='background-color: #162035; border: 1px solid #233554; border-radius: 6px; padding: 6px 10px; font-style: italic; color: #8B949E;'>&bdquo;{clean_snippet}&ldquo;</div>"
+            f"</div>"
+        )
         self._explainer_thread = AiExplainerWorker(self.book_title, text, prompt_mode=mode, parent=self)
-        self._explainer_thread.finished_explanation.connect(lambda resp: self.txt_ai_response.setPlainText(resp))
-        self._explainer_thread.error_occurred.connect(lambda err: self.txt_ai_response.setPlainText(f"Fehler bei KI-Analyse:\n{err}"))
+        self._explainer_thread.finished_explanation.connect(lambda resp: self.txt_ai_response.setMarkdown(resp))
+        self._explainer_thread.error_occurred.connect(lambda err: self.txt_ai_response.setHtml(f"<div style='color: #F85149;'><b>Fehler bei KI-Analyse:</b><br>{err}</div>"))
         self._explainer_thread.start()
 
     def _create_note_from_text(self, text: str) -> None:
