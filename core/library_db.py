@@ -385,6 +385,17 @@ def init_library_schema() -> None:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox_queue(status);")
 
+        for col, col_type in [
+            ("isbn", "TEXT"),
+            ("edition", "INTEGER DEFAULT 1"),
+            ("edition_str", "TEXT"),
+            ("year", "INTEGER"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE inbox_queue ADD COLUMN {col} {col_type};")
+            except Exception:
+                pass
+
         conn.commit()
     finally:
         conn.close()
@@ -2723,7 +2734,13 @@ def update_inbox_item(
     suggested_title: Optional[str] = None,
     suggested_author: Optional[str] = None,
     suggested_category: Optional[str] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    isbn: Optional[str] = None,
+    edition: Optional[int] = None,
+    edition_str: Optional[str] = None,
+    year: Optional[int] = None,
+    page_count: Optional[int] = None,
+    confidence: Optional[int] = None,
 ) -> bool:
     """Updates metadata or state of an item in the Inbox queue."""
     conn = get_db_connection()
@@ -2743,6 +2760,24 @@ def update_inbox_item(
             if status is not None:
                 updates.append("status = ?")
                 params.append(status)
+            if isbn is not None:
+                updates.append("isbn = ?")
+                params.append(isbn)
+            if edition is not None:
+                updates.append("edition = ?")
+                params.append(edition)
+            if edition_str is not None:
+                updates.append("edition_str = ?")
+                params.append(edition_str)
+            if year is not None:
+                updates.append("year = ?")
+                params.append(year)
+            if page_count is not None:
+                updates.append("page_count = ?")
+                params.append(page_count)
+            if confidence is not None:
+                updates.append("confidence = ?")
+                params.append(confidence)
 
             if not updates:
                 return True

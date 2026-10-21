@@ -49,7 +49,7 @@ from core.library_db import (
 )
 from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ai.tutor_engine import _resolve_model
-from core.academic_dictionary import translate_text, lookup_dictionary
+from core.academic_dictionary import translate_text, lookup_dictionary, normalize_academic_text
 from ui.qt.theme import NoFocusItemDelegate
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
 
@@ -229,16 +229,17 @@ class AcademicDictionaryWorker(QThread):
 
     def __init__(self, text: str, mode: str = "auto", parent=None):
         super().__init__(parent)
-        self.text = text.strip()
+        self.text = normalize_academic_text(text)
         self.mode = mode
 
     def run(self):
         try:
-            words = self.text.split()
+            clean_text = self.text
+            words = clean_text.split()
             # If 1-3 words or mode is dictionary, perform rich dictionary lookup
             if self.mode == "dictionary" or (len(words) <= 3 and self.mode != "translate"):
-                res = lookup_dictionary(self.text)
-                term = res.get("term", self.text)
+                res = lookup_dictionary(clean_text)
+                term = res.get("term", clean_text)
                 translations = res.get("translations", [])
                 definitions = res.get("definitions", [])
 
@@ -262,7 +263,7 @@ class AcademicDictionaryWorker(QThread):
 
                 if not translations and not definitions:
                     # Fallback to direct translation if no dictionary entry exists
-                    tr, engine = translate_text(self.text)
+                    tr, engine = translate_text(clean_text)
                     lines.append(f"### 🇩🇪 Übersetzung ({engine}):")
                     lines.append(tr)
 
@@ -270,10 +271,10 @@ class AcademicDictionaryWorker(QThread):
                 self.finished_result.emit("Wörterbuch", formatted)
             else:
                 # Multi-word sentence or paragraph translation
-                tr, engine = translate_text(self.text)
+                tr, engine = translate_text(clean_text)
                 lines = [
                     f"🌐 **Fachübersetzung ({engine})**\n",
-                    f"**Original:**\n_{self.text}_\n",
+                    f"**Original:**\n_{clean_text}_\n",
                     f"**Deutsch:**\n{tr}"
                 ]
                 formatted = "\n".join(lines)
@@ -2020,7 +2021,7 @@ class PdfReaderDialog(QDialog):
         return lines
 
     def _pdf_polys_to_viewport(self, page: int, polys: List[QPolygonF]) -> List[QRectF]:
-        """Map selection polygons (PDF points) back to viewport pixels with accurate typographic height and line merging."""
+        """Map selection polygons (PDF points) back to viewport pixels with typographic line-clustering and clean visual bounding."""
         rect = next((r for i, r in self._page_layout() if i == page), None)
         if rect is None:
             return []
@@ -2032,50 +2033,67 @@ class PdfReaderDialog(QDialog):
         ox = rect.left() - self.view.horizontalScrollBar().value()
         oy = rect.top() - self.view.verticalScrollBar().value()
 
-        lines = self._get_page_lines(page)
-        raw_rects: List[QRectF] = []
+        # Step 1: Collect valid glyph bounding boxes in PDF points
+        valid_boxes: List[QRectF] = []
         for poly in polys:
             br = poly.boundingRect()
+            if br.width() > 0.3 and br.height() > 0.3:
+                valid_boxes.append(br)
+
+        if not valid_boxes:
+            return []
+
+        # Step 2: Cluster adjacent character bounding boxes into visual text lines
+        line_clusters: List[Dict[str, Any]] = []
+        for br in valid_boxes:
             cy = (br.top() + br.bottom()) / 2.0
-
-            # Match to true line bounding box from PyMuPDF
-            matched = [l for l in lines if l[1] <= cy <= l[3]]
+            matched = False
+            for cl in line_clusters:
+                cl_cy = (cl["top"] + cl["bottom"]) / 2.0
+                # If vertical midpoint is within typical line height threshold (4.5 pt)
+                if abs(cy - cl_cy) <= 4.5:
+                    cl["rects"].append(br)
+                    cl["top"] = min(cl["top"], br.top())
+                    cl["bottom"] = max(cl["bottom"], br.bottom())
+                    matched = True
+                    break
             if not matched:
-                matched = [l for l in lines if not (l[3] < br.top() or l[1] > br.bottom())]
+                line_clusters.append({"top": br.top(), "bottom": br.bottom(), "rects": [br]})
 
-            if matched:
-                best_l = min(matched, key=lambda l: abs((l[1] + l[3]) / 2.0 - cy))
-                top_pt, bottom_pt = best_l[1], best_l[3]
-            else:
-                h = br.height()
-                top_pt = br.top() - h * 0.35
-                bottom_pt = br.bottom() + h * 0.35
+        # Step 3: Within each line, sort boxes horizontally and merge contiguous segments
+        mapped_segments: List[QRectF] = []
+        for cl in line_clusters:
+            cl["rects"].sort(key=lambda r: r.left())
+            cl_top = cl["top"]
+            cl_bottom = cl["bottom"]
+            # Ensure a balanced typographic ascender/descender visual height
+            cl_h = max(cl_bottom - cl_top, 8.0)
+            pad_v = cl_h * 0.12
+            cl_top_padded = cl_top - pad_v
+            cl_bottom_padded = cl_bottom + pad_v
 
-            vx = ox + br.left() * sx_scale
-            vy = oy + top_pt * sy_scale
-            vw = br.width() * sx_scale
-            vh = (bottom_pt - top_pt) * sy_scale
-            raw_rects.append(QRectF(vx, vy, vw, vh))
+            merged_line_boxes: List[QRectF] = []
+            for r in cl["rects"]:
+                norm_r = QRectF(r.left(), cl_top_padded, r.width(), cl_bottom_padded - cl_top_padded)
+                if not merged_line_boxes:
+                    merged_line_boxes.append(norm_r)
+                else:
+                    prev = merged_line_boxes[-1]
+                    # Merge if adjacent with small inter-word gap (< 5.0 pt)
+                    if norm_r.left() <= prev.right() + 5.0:
+                        merged_line_boxes[-1] = prev.united(norm_r)
+                    else:
+                        merged_line_boxes.append(norm_r)
 
-        # Sort rects by vertical position, then horizontal
-        raw_rects.sort(key=lambda r: (round(r.top() / 4.0), r.left()))
+            # Map from PDF point space to current viewport pixel coordinates
+            for mb in merged_line_boxes:
+                vx = ox + mb.left() * sx_scale
+                vy = oy + mb.top() * sy_scale
+                vw = mb.width() * sx_scale
+                vh = mb.height() * sy_scale
+                mapped_segments.append(QRectF(vx, vy, vw, vh))
 
-        # Merge adjacent or overlapping segments belonging to the same text line
-        merged: List[QRectF] = []
-        for r in raw_rects:
-            if not merged:
-                merged.append(r)
-                continue
-            prev = merged[-1]
-            # Check if on same visual line and overlapping or close horizontally
-            same_line = abs(prev.top() - r.top()) <= 3.0 and abs(prev.bottom() - r.bottom()) <= 3.0
-            gap = r.left() - prev.right()
-            if same_line and gap <= 6.0 and prev.left() <= r.right():
-                merged[-1] = prev.united(r)
-            else:
-                merged.append(r)
-
-        return merged
+        return mapped_segments
 
     def _on_text_selection_finished(self, text: str) -> None:
         """Called when mouse release completes text selection."""

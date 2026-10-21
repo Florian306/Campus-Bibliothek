@@ -46,10 +46,13 @@ from ai.pdf_extractor import (
     extract_pdf_preview_text,
     extract_visual_title_and_author,
     sanitize_author_string,
+    extract_publication_year,
 )
 from ai.isbn_lookup import extract_isbns, resolve_isbn_catalog
 from ai.classifier import classify_textbook
 from ai.categories import STANDARD_CATEGORIES
+from core.delta_scanner import extract_edition_number
+from core.cover_manager import extract_and_cache_cover
 
 
 class InboxAnalysisWorker(QThread):
@@ -87,7 +90,12 @@ class InboxAnalysisWorker(QThread):
             page_count = 0
             front_text = ""
 
-            # 1. Extract cover, title, author via PyMuPDF
+            # 1. Extract cover, title, author, edition, year, and ISBNs via PyMuPDF
+            ed_num = 1
+            ed_str = "1. Auflage"
+            pub_year = None
+            found_isbns = []
+
             if fitz:
                 try:
                     doc = fitz.open(file_path)
@@ -95,11 +103,15 @@ class InboxAnalysisWorker(QThread):
                     vt, va = extract_visual_title_and_author(doc)
                     extracted_title = vt or ""
                     extracted_author = va or ""
-                    # Grab first 6 pages text for ISBN and catalog identification
+                    # Grab first 8 pages text for ISBN, edition, year, and catalog identification
                     front_chunks = []
-                    for p in range(min(6, page_count)):
+                    for p in range(min(8, page_count)):
                         front_chunks.append(doc[p].get_text("text"))
                     front_text = "\n".join(front_chunks)
+                    
+                    ed_num, ed_str = extract_edition_number(f"{fn}\n{front_text}")
+                    found_isbns = extract_isbns(f"ISBN {fn.replace('_', ' ')}\n{front_text}")
+                    pub_year = extract_publication_year(front_text, doc.metadata, fn)
                     doc.close()
                 except Exception:
                     pass
@@ -112,6 +124,11 @@ class InboxAnalysisWorker(QThread):
                 pass
 
             combined_lookup_text = f"{fn}\n{front_text}\n{text_snippet}"
+
+            # If ISBN not found yet, try from preview snippet
+            if not found_isbns:
+                found_isbns = extract_isbns(combined_lookup_text)
+            isbn_str = found_isbns[0] if found_isbns else None
 
             # 3. Check bibliographic catalog via ISBN
             catalog_match = None
@@ -162,6 +179,10 @@ class InboxAnalysisWorker(QThread):
                 "suggested_category": suggested_cat or "Sonstiges",
                 "confidence": confidence,
                 "page_count": page_count,
+                "isbn": isbn_str,
+                "edition": ed_num,
+                "edition_str": ed_str,
+                "year": pub_year,
                 "duplicate_warning": dup_warning,
                 "status": "ready"
             }
@@ -172,7 +193,13 @@ class InboxAnalysisWorker(QThread):
                 suggested_title=extracted_title,
                 suggested_author=extracted_author or "Unbekannt",
                 suggested_category=suggested_cat,
-                status="ready"
+                status="ready",
+                isbn=isbn_str,
+                edition=ed_num,
+                edition_str=ed_str,
+                year=pub_year,
+                page_count=page_count,
+                confidence=int(confidence * 100) if confidence <= 1.0 else int(confidence),
             )
 
             self.item_analyzed.emit(item_id, analysis_result)
@@ -1019,6 +1046,10 @@ class InboxView(QWidget):
         category = item.get("suggested_category") or "Sonstiges"
         page_count = item.get("page_count", 0)
         file_size = item.get("file_size", 0)
+        isbn = item.get("isbn")
+        edition = item.get("edition", 1) or 1
+        edition_str = item.get("edition_str")
+        year = item.get("year")
 
         # 1. Target directory: subfolder only if user explicitly enabled it
         create_subfolders = getattr(self, "chk_subfolders", None) and self.chk_subfolders.isChecked()
@@ -1059,21 +1090,64 @@ class InboxView(QWidget):
             QMessageBox.critical(self, "Fehler beim Verschieben", f"Konnte Datei nicht verschieben:\n{e}")
             return False
 
+        # Fallback inspection if page_count or metadata are still missing
+        if page_count <= 0 or not isbn or not year:
+            try:
+                import fitz
+                doc = fitz.open(target_path)
+                if page_count <= 0:
+                    page_count = len(doc)
+                if not isbn or not year or edition <= 1:
+                    snippet = ""
+                    for p in range(min(8, len(doc))):
+                        snippet += doc[p].get_text("text") + "\n"
+                    if not isbn:
+                        f_isbns = extract_isbns(f"ISBN {target_filename.replace('_', ' ')}\n{snippet}")
+                        if f_isbns:
+                            isbn = f_isbns[0]
+                    if edition <= 1:
+                        ed_num, ed_s = extract_edition_number(f"{target_filename}\n{snippet}")
+                        if ed_num > 1:
+                            edition = ed_num
+                            edition_str = ed_s
+                    if not year:
+                        year = extract_publication_year(snippet, doc.metadata, target_filename)
+                doc.close()
+            except Exception:
+                pass
+
         # 4. Insert into main library database
-        upsert_book(
+        book_id = upsert_book(
             file_path=target_path,
             filename=target_filename,
             title=title,
             author=author,
             categories=[category],
+            isbn=isbn,
+            edition=edition,
+            edition_str=edition_str,
+            year=year,
             page_count=page_count,
-            file_size=file_size,
+            file_size=os.path.getsize(target_path) if os.path.exists(target_path) else file_size,
             file_mtime=os.path.getmtime(target_path) if os.path.exists(target_path) else 0.0,
             confidence=item.get("confidence", 90),
             audit_trail="Importiert via Campus-Inbox"
         )
 
-        # 5. Remove from inbox queue
+        # 5. Pre-generate and cache book cover thumbnail
+        try:
+            extract_and_cache_cover(
+                book_id=book_id,
+                file_path=target_path,
+                title=title,
+                author=author,
+                category=category,
+                isbn=isbn
+            )
+        except Exception:
+            pass
+
+        # 6. Remove from inbox queue
         delete_inbox_item(item_id)
         self._reload_table_data()
         self.book_filed.emit()

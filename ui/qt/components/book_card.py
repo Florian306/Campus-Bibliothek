@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
 )
-from core.cover_manager import get_cached_cover, generate_fallback_cover, FACULTY_COLORS
+from core.cover_manager import get_cached_cover, generate_fallback_cover, extract_and_cache_cover, FACULTY_COLORS
 from ui.qt.icons import create_vector_pixmap
 
 
@@ -211,6 +211,17 @@ class BookCard(QFrame):
 
     def _load_cover_image(self, category: str) -> None:
         cached_pil = get_cached_cover(self.book_id)
+        if not cached_pil:
+            path = self.book.get("file_path", "")
+            if path and os.path.exists(path):
+                cached_pil = extract_and_cache_cover(
+                    book_id=self.book_id,
+                    file_path=path,
+                    title=self.book.get("title", ""),
+                    author=self.book.get("author", ""),
+                    category=category,
+                    isbn=self.book.get("isbn")
+                )
         if not cached_pil:
             cached_pil = generate_fallback_cover(
                 self.book.get("title", ""),

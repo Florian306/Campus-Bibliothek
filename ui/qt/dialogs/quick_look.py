@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 import subprocess
 
-from core.cover_manager import get_cached_cover, generate_fallback_cover
+from core.cover_manager import get_cached_cover, generate_fallback_cover, extract_and_cache_cover
 from core.library_db import (
     open_pdf_in_edge,
     toggle_desk_item,
@@ -476,6 +476,19 @@ class QuickLookDialog(QDialog):
     def _load_cover(self) -> None:
         bid = str(self.book.get("id", ""))
         cached = get_cached_cover(bid)
+        if not cached:
+            path = self.book.get("file_path", "")
+            if path and os.path.exists(path):
+                cats = (self.book.get("categories_str") or "Sonstiges").split("|")
+                primary_cat = self.book.get("primary_category") or (cats[0].strip() if cats else "Sonstiges")
+                cached = extract_and_cache_cover(
+                    book_id=bid,
+                    file_path=path,
+                    title=self.book.get("title", ""),
+                    author=self.book.get("author", ""),
+                    category=primary_cat,
+                    isbn=self.book.get("isbn")
+                )
         if not cached:
             cached = generate_fallback_cover(
                 self.book.get("title", ""),

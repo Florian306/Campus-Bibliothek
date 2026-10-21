@@ -58,6 +58,8 @@ from ai.curated_papers import seed_all_faculty_papers
 from ai.daily_paper import get_daily_paper_highlight
 from ai.categories import STANDARD_CATEGORIES
 from ui.qt.dialogs.quick_look import QuickLookDialog
+from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
+from core.config import load_config
 
 
 class PaperSearchSignals(QObject):
@@ -2815,7 +2817,7 @@ class ResearchView(QWidget):
         # Primary Action Buttons: Clear, non-redundant hierarchy
         if has_pdf:
             # 1. Local PDF is saved on disk: Clean primary read button + delete option
-            self.btn_open_pdf.setText("  📖 Lokale PDF öffnen (Edge)")
+            self.btn_open_pdf.setText("  📖 In Campus-Reader öffnen")
             self.btn_open_pdf.setIcon(create_vector_icon("book", "#FFFFFF", 15))
             self.btn_open_pdf.setStyleSheet("""
                 QPushButton {
@@ -3091,14 +3093,7 @@ class ResearchView(QWidget):
     def _on_download_finished(self, paper_id: str, local_path: str) -> None:
         if local_path and os.path.exists(local_path):
             filename = os.path.basename(local_path)
-            self.lbl_search_status.setText(f"✓ PDF «{filename[:35]}...» erfolgreich heruntergeladen & im Archiv gesichert!")
-            try:
-                open_pdf_in_edge(local_path)
-            except Exception:
-                try:
-                    os.startfile(local_path)
-                except Exception:
-                    pass
+            self._open_active_in_edge()
         else:
             self.lbl_search_status.setText("⚠️ Kein direkter PDF-Download verfügbar (Verlags-Login/Paywall nötig). Paper wird in Microsoft Edge geöffnet...")
             if self._active_saved_paper:
@@ -3431,8 +3426,21 @@ class ResearchView(QWidget):
                 is_valid = False
 
             if is_valid:
-                open_pdf_in_edge(local_path)
-                self.lbl_search_status.setText(f"✓ Lokales PDF in Microsoft Edge geöffnet: {os.path.basename(local_path)}")
+                cfg = load_config()
+                if cfg.get("use_internal_reader", True):
+                    book_dict = {
+                        "id": p.get("id", f"paper_{hash(local_path)}"),
+                        "file_path": local_path,
+                        "title": p.get("title", os.path.basename(local_path)),
+                        "author": p.get("authors", ""),
+                        "category": p.get("category", "Forschung"),
+                    }
+                    dlg = PdfReaderDialog(book_dict, initial_page=1, parent=self.window())
+                    dlg.exec()
+                    self.lbl_search_status.setText(f"✓ PDF im Campus-Reader geöffnet: {os.path.basename(local_path)}")
+                else:
+                    open_pdf_in_edge(local_path)
+                    self.lbl_search_status.setText(f"✓ Lokales PDF in Microsoft Edge geöffnet: {os.path.basename(local_path)}")
                 return
             else:
                 try:

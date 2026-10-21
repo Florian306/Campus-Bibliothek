@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import threading
+import unicodedata
 import urllib.parse
 import urllib.request
 from typing import Dict, List, Optional, Tuple
@@ -17,6 +18,31 @@ from core.config import get_user_data_dir, load_config
 
 _DICT_CACHE_DB = os.path.join(get_user_data_dir(), "dictionary_cache.db")
 _lock = threading.Lock()
+
+
+def normalize_academic_text(raw: str) -> str:
+    """Preprocesses text extracted from PDFs for high-quality translation and dictionary lookup:
+    1. Unicode NFKC normalization (fixes ligatures like fi, fl, ff).
+    2. Merges hyphenated words broken across linebreaks (e.g. 'Techno-\\nlogical' -> 'Technological').
+    3. Normalizes whitespace and unifies paragraphs while preserving paragraph structure.
+    """
+    if not raw:
+        return ""
+    # Unicode NFKC (fi, fl, em-dash, etc.)
+    text = unicodedata.normalize("NFKC", raw)
+    # Fix broken hyphenated words at end of line (e.g. "pre-\ncondition" -> "precondition")
+    text = re.sub(r'(\b\w+)[-\u2010\u2013]\s*\r?\n\s*(\w+\b)', r'\1\2', text)
+    # Replace soft hyphens
+    text = text.replace("\xad", "")
+    # Split by double newline to preserve paragraph separation
+    paragraphs = re.split(r'(?:\r?\n\s*){2,}', text)
+    cleaned_paras = []
+    for p in paragraphs:
+        # Collapse internal single newlines and multiple spaces into single space
+        collapsed = re.sub(r'\s+', ' ', p).strip()
+        if collapsed:
+            cleaned_paras.append(collapsed)
+    return "\n\n".join(cleaned_paras).strip()
 
 
 def _get_cache_conn() -> sqlite3.Connection:
@@ -53,11 +79,15 @@ def translate_text(
     target_lang: str = "DE",
     deepl_key: Optional[str] = None
 ) -> Tuple[str, str]:
-    """Translates text from English to German using DeepL (if key configured)
-    or MyMemory as free, reliable fallback.
+    """Translates text from English to German using highest available quality:
+    1. DeepL Free API (if key configured)
+    2. Google Gemini Flash (if configured in app settings)
+    3. Google Neural MML Engine (multi-client fallback: dict-chrome-ex / gtx)
+    4. Local Ollama (if running)
+    5. MyMemory Translation Memory Fallback
     Returns: (translated_text, engine_name)
     """
-    clean_text = text.strip()
+    clean_text = normalize_academic_text(text)
     if not clean_text:
         return "", ""
 
@@ -75,11 +105,12 @@ def translate_text(
     except Exception:
         pass
 
+    cfg = load_config()
+
     if not deepl_key:
-        cfg = load_config()
         deepl_key = cfg.get("deepl_api_key", "").strip()
 
-    # 1. DeepL Translation (if key configured and quota available)
+    # 1. DeepL Translation (if key configured)
     if deepl_key:
         try:
             host = "api-free.deepl.com" if deepl_key.endswith(":fx") else "api.deepl.com"
@@ -99,34 +130,63 @@ def translate_text(
         except Exception:
             pass
 
-    # 2. Google Neural Machine Learning Engine (GTX - unlimited, high accuracy)
-    try:
-        url = (
-            f"https://translate.googleapis.com/translate_a/single?client=gtx"
-            f"&sl={source_lang.lower()}&tl={target_lang.lower()}&dt=t&q={urllib.parse.quote(clean_text)}"
-        )
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        with urllib.request.urlopen(req, timeout=6) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            if isinstance(data, list) and data and isinstance(data[0], list):
-                translated_parts = [seg[0] for seg in data[0] if seg and seg[0]]
-                if translated_parts:
-                    trans_text = "".join(translated_parts).strip()
-                    _save_translation_cache(clean_text, trans_text, "Google Neural MML", source_lang, target_lang)
-                    return trans_text, "Google Neural MML"
-    except Exception:
-        pass
+    # 2. Google Gemini (if user has Gemini configured)
+    gemini_key = cfg.get("api_key", "").strip()
+    provider = cfg.get("provider", "")
+    if provider == "gemini" and gemini_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=gemini_key)
+            prompt = (
+                f"You are a professional academic translator specializing in scientific literature.\n"
+                f"Translate the following text accurately from {source_lang} to {target_lang}.\n"
+                f"Preserve standard academic nomenclature, tone, and formatting.\n"
+                f"Do NOT include any preamble, notes, explanation, or conversational framing. Output ONLY the translation:\n\n"
+                f"{clean_text}"
+            )
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            trans_text = (resp.text or "").strip()
+            if trans_text:
+                _save_translation_cache(clean_text, trans_text, "Google Gemini", source_lang, target_lang)
+                return trans_text, "Google Gemini"
+        except Exception:
+            pass
 
-    # 3. Local Ollama Translation (if running locally)
+    # 3. Google Neural Machine Learning Engine (dict-chrome-ex / gtx)
+    for g_client in ("dict-chrome-ex", "gtx"):
+        try:
+            url = (
+                f"https://translate.googleapis.com/translate_a/single?client={g_client}"
+                f"&sl={source_lang.lower()}&tl={target_lang.lower()}&dt=t&q={urllib.parse.quote(clean_text)}"
+            )
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+            )
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if isinstance(data, list) and data and isinstance(data[0], list):
+                    translated_parts = [seg[0] for seg in data[0] if seg and seg[0]]
+                    if translated_parts:
+                        trans_text = "".join(translated_parts).strip()
+                        _save_translation_cache(clean_text, trans_text, "Google Neural MML", source_lang, target_lang)
+                        return trans_text, "Google Neural MML"
+        except Exception:
+            continue
+
+    # 4. Local Ollama Translation (if running locally)
     try:
         url_ol = "http://localhost:11434/api/generate"
         prompt_txt = (
-            f"Translate the following scientific/academic text from English to German.\n"
+            f"Translate the following scientific/academic text from {source_lang} to {target_lang}.\n"
             f"Preserve standard academic terminology. Do NOT add notes or conversational preamble. Return ONLY the translation:\n\n"
             f"{clean_text}"
         )
         payload = {
-            "model": "qwen2.5vl:latest",
+            "model": cfg.get("ollama_model", "qwen2.5vl:latest"),
             "prompt": prompt_txt,
             "stream": False,
             "options": {"temperature": 0.2, "num_ctx": 2048}
@@ -145,7 +205,7 @@ def translate_text(
     except Exception:
         pass
 
-    # 4. MyMemory Translation Fallback (free translation memory)
+    # 5. MyMemory Translation Fallback (free translation memory)
     try:
         q_enc = urllib.parse.quote(clean_text[:500])
         pair = f"{source_lang.lower()}|{target_lang.lower()}"
