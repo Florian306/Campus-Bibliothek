@@ -178,6 +178,7 @@ class CatalogView(QWidget):
         self.shelf_grid = QGridLayout(self.shelf_container)
         self.shelf_grid.setContentsMargins(4, 8, 4, 16)
         self.shelf_grid.setSpacing(16)
+        self.shelf_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.shelf_scroll.setWidget(self.shelf_container)
 
         self.stacked_views.addWidget(self.shelf_scroll)
@@ -342,7 +343,11 @@ class CatalogView(QWidget):
         """Starts batch rendering for the shelf grid without freezing the UI."""
         self._shelf_batch_timer.stop()
 
-        # Clear existing layout items
+        # Hide all existing cards in cache so off-grid cards never remain visible or misplaced
+        for card in self.cards_dict.values():
+            card.hide()
+
+        # Clear existing layout items completely
         while self.shelf_grid.count():
             item = self.shelf_grid.takeAt(0)
             widget = item.widget()
@@ -374,12 +379,11 @@ class CatalogView(QWidget):
             else:
                 card = self.cards_dict[bid]
                 card.book = b
-                card.setParent(self.shelf_container)
-                card.show()
 
             card.set_selected(bid == self.selected_book_id)
             r, c = divmod(idx, cols)
             self.shelf_grid.addWidget(card, r, c)
+            card.show()
 
         self._shelf_render_idx = end
         if self._shelf_render_idx < len(self.filtered_books):

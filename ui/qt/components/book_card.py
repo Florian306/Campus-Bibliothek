@@ -2,6 +2,7 @@
 Features dynamic faculty glow badges, smooth hover animations, book spine accents, and reading progress.
 """
 
+import os
 from typing import Any, Dict, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QImage, QColor, QFont
