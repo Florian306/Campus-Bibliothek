@@ -105,6 +105,7 @@ hiddenimports += [
     'PySide6.QtPdf',
     'PySide6.QtPdfWidgets',
     'core.config',
+    'core.academic_dictionary',
     'core.github_sync',
     'core.update_checker',
     'core.library_db',

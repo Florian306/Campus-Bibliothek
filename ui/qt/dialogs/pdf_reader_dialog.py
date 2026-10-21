@@ -49,6 +49,7 @@ from core.library_db import (
 )
 from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ai.tutor_engine import _resolve_model
+from core.academic_dictionary import translate_text, lookup_dictionary
 from ui.qt.theme import NoFocusItemDelegate
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
 
@@ -218,6 +219,65 @@ class AiExplainerWorker(QThread):
                 data = json.loads(resp.read().decode("utf-8"))
                 self.finished_explanation.emit(data.get("response", "").strip())
 
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
+
+class AcademicDictionaryWorker(QThread):
+    finished_result = Signal(str, str)  # header, formatted_result_text
+    error_occurred = Signal(str)
+
+    def __init__(self, text: str, mode: str = "auto", parent=None):
+        super().__init__(parent)
+        self.text = text.strip()
+        self.mode = mode
+
+    def run(self):
+        try:
+            words = self.text.split()
+            # If 1-3 words or mode is dictionary, perform rich dictionary lookup
+            if self.mode == "dictionary" or (len(words) <= 3 and self.mode != "translate"):
+                res = lookup_dictionary(self.text)
+                term = res.get("term", self.text)
+                translations = res.get("translations", [])
+                definitions = res.get("definitions", [])
+
+                lines = [f"📖 **Wörterbuch: '{term}'**\n"]
+                if translations:
+                    lines.append("### 🇩🇪 Übersetzungen (Dict.cc):")
+                    for en, de in translations:
+                        lines.append(f"• **{en}**  ➔  {de}")
+                    lines.append("")
+
+                if definitions:
+                    lines.append("### 📚 Definitionen & Wortarten:")
+                    for item in definitions:
+                        pos = item[0]
+                        d = item[1]
+                        ex = item[2] if len(item) > 2 else ""
+                        lines.append(f"• *[{pos}]* {d}")
+                        if ex:
+                            lines.append(f"   ↳ _Beispiel:_ \"{ex}\"")
+                    lines.append("")
+
+                if not translations and not definitions:
+                    # Fallback to direct translation if no dictionary entry exists
+                    tr, engine = translate_text(self.text)
+                    lines.append(f"### 🇩🇪 Übersetzung ({engine}):")
+                    lines.append(tr)
+
+                formatted = "\n".join(lines).strip()
+                self.finished_result.emit("Wörterbuch", formatted)
+            else:
+                # Multi-word sentence or paragraph translation
+                tr, engine = translate_text(self.text)
+                lines = [
+                    f"🌐 **Fachübersetzung ({engine})**\n",
+                    f"**Original:**\n_{self.text}_\n",
+                    f"**Deutsch:**\n{tr}"
+                ]
+                formatted = "\n".join(lines)
+                self.finished_result.emit("Übersetzung", formatted)
         except Exception as e:
             self.error_occurred.emit(str(e))
 
@@ -1058,13 +1118,60 @@ class PdfReaderDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        # Header with AI tools
-        lbl_hdr = QLabel("KI-ASSISTENT & NOTIZEN")
+        # Header with Assistant & Notes tools
+        lbl_hdr = QLabel("WÖRTERBUCH, ÜBERSETZER & NOTIZEN")
         lbl_hdr.setFont(QFont("Segoe UI", 8, QFont.Bold))
-        lbl_hdr.setStyleSheet("color: #A371F7; letter-spacing: 0.5px; border: none; background: transparent;")
+        lbl_hdr.setStyleSheet("color: #58A6FF; letter-spacing: 0.5px; border: none; background: transparent;")
         layout.addWidget(lbl_hdr)
 
-        # Quick AI Action Buttons
+        # Quick Assistant Action Buttons Row 1: Dictionary & Translator
+        trans_btn_row = QHBoxLayout()
+        btn_trans = QPushButton("🌐 Übersetzen")
+        btn_trans.setAutoDefault(False)
+        btn_trans.setDefault(False)
+        btn_trans.setCursor(Qt.PointingHandCursor)
+        btn_trans.setStyleSheet("""
+            QPushButton {
+                background-color: #11223A;
+                color: #58A6FF;
+                border: 1px solid #1F4275;
+                border-radius: 4px;
+                padding: 5px 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #173258;
+                border-color: #58A6FF;
+            }
+        """)
+        btn_trans.clicked.connect(lambda: self._trigger_dictionary_or_translate("translate"))
+        trans_btn_row.addWidget(btn_trans)
+
+        btn_dict = QPushButton("📖 Wörterbuch")
+        btn_dict.setAutoDefault(False)
+        btn_dict.setDefault(False)
+        btn_dict.setCursor(Qt.PointingHandCursor)
+        btn_dict.setStyleSheet("""
+            QPushButton {
+                background-color: #1A2822;
+                color: #56D364;
+                border: 1px solid #234E35;
+                border-radius: 4px;
+                padding: 5px 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #223B2F;
+                border-color: #56D364;
+            }
+        """)
+        btn_dict.clicked.connect(lambda: self._trigger_dictionary_or_translate("dictionary"))
+        trans_btn_row.addWidget(btn_dict)
+        layout.addLayout(trans_btn_row)
+
+        # Quick Action Buttons Row 2: AI Explainer
         ai_btn_row = QHBoxLayout()
         btn_explain = QPushButton("💡 Begriff erklären")
         btn_explain.setAutoDefault(False)
@@ -2026,10 +2133,18 @@ class PdfReaderDialog(QDialog):
         act_copy = menu.addAction("📋 Markierten Text kopieren")
         act_copy.triggered.connect(lambda: self._copy_specific_text(text))
 
+        menu.addSeparator()
+        act_trans = menu.addAction("🌐 Auf Deutsch übersetzen (DeepL / Neural MML)")
+        act_trans.triggered.connect(lambda: self._lookup_on_text(text, mode="translate"))
+
+        act_dict = menu.addAction("📖 Im Fachwörterbuch nachschlagen (Dict.cc)")
+        act_dict.triggered.connect(lambda: self._lookup_on_text(text, mode="dictionary"))
+
+        menu.addSeparator()
         act_explain = menu.addAction("💡 Begriff durch KI erklären")
         act_explain.triggered.connect(lambda: self._ask_ai_on_text(text, mode="explain"))
 
-        act_summarize = menu.addAction("📑 Auszug zusammenfassen")
+        act_summarize = menu.addAction("📑 Auszug durch KI zusammenfassen")
         act_summarize.triggered.connect(lambda: self._ask_ai_on_text(text, mode="summarize"))
 
         menu.addSeparator()
@@ -2045,6 +2160,33 @@ class PdfReaderDialog(QDialog):
             self.btn_copy_text.setText("✓")
             from PySide6.QtCore import QTimer
             QTimer.singleShot(2000, lambda: self.btn_copy_text.setText("📋"))
+
+    def _trigger_dictionary_or_translate(self, mode: str = "auto") -> None:
+        text = ""
+        if hasattr(self, "_selection_overlay") and self._selection_overlay._selected_text:
+            text = self._selection_overlay._selected_text.strip()
+        if not text:
+            # Fallback: prompt or use clipboard if contains text
+            clipboard = QApplication.clipboard()
+            clip_text = clipboard.text().strip() if clipboard else ""
+            if clip_text and len(clip_text) < 1500:
+                text = clip_text
+        if not text:
+            self.notes_panel.setVisible(True)
+            self.btn_toggle_notes.setChecked(True)
+            self.txt_ai_response.setPlainText("ℹ️ Bitte markiere zuerst einen Text im PDF, den du übersetzen oder im Wörterbuch nachschlagen möchtest.")
+            return
+        self._lookup_on_text(text, mode=mode)
+
+    def _lookup_on_text(self, text: str, mode: str = "auto") -> None:
+        self.notes_panel.setVisible(True)
+        self.btn_toggle_notes.setChecked(True)
+        lbl = "Wörterbuch-Eintrag" if mode == "dictionary" else "Fachübersetzung"
+        self.txt_ai_response.setPlainText(f"⏳ Lade {lbl} für:\n\"{text[:80]}...\"")
+        self._dict_thread = AcademicDictionaryWorker(text, mode=mode, parent=self)
+        self._dict_thread.finished_result.connect(lambda hdr, resp: self.txt_ai_response.setPlainText(resp))
+        self._dict_thread.error_occurred.connect(lambda err: self.txt_ai_response.setPlainText(f"Fehler bei Nachschlagen:\n{err}"))
+        self._dict_thread.start()
 
     def _ask_ai_on_text(self, text: str, mode: str = "explain") -> None:
         self.notes_panel.setVisible(True)

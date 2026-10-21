@@ -42,6 +42,7 @@ class AppConfig:
     mail_folder: str = "INBOX"
     cal_url: str = ""
     inbox_create_subfolders: bool = False
+    deepl_api_key: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts dataclass to dictionary."""
