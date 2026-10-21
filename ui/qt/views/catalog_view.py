@@ -357,12 +357,28 @@ class CatalogView(QWidget):
         self._shelf_render_idx = 0
         self._render_next_shelf_batch(batch_size=24)
 
+    def _calculate_shelf_geometry(self) -> tuple[int, int, int]:
+        """Calculates optimal column count, horizontal gap, and side margin to fill width evenly."""
+        avail_w = max(400, self.shelf_scroll.viewport().width() - 24)
+        card_w = BookCard.CARD_WIDTH  # 176px
+        min_gap = 14
+        cols = max(2, min(14, (avail_w + min_gap) // (card_w + min_gap)))
+        rem = avail_w - (cols * card_w)
+        gap = max(min_gap, rem // max(1, cols - 1)) if cols > 1 else min_gap
+        leftover = rem - (gap * (cols - 1))
+        side_margin = max(8, (leftover + 24) // 2)
+        return cols, gap, side_margin
+
     def _render_next_shelf_batch(self, batch_size: int = 28) -> None:
         if not self.filtered_books:
             return
 
-        cols = max(2, min(7, self.shelf_scroll.width() // (BookCard.CARD_WIDTH + 18)))
+        cols, gap, side_margin = self._calculate_shelf_geometry()
         self._current_cols = cols
+        self.shelf_grid.setHorizontalSpacing(gap)
+        self.shelf_grid.setVerticalSpacing(18)
+        self.shelf_grid.setContentsMargins(side_margin, 10, side_margin, 20)
+
         start = self._shelf_render_idx
         end = min(start + batch_size, len(self.filtered_books))
 
@@ -665,7 +681,7 @@ class CatalogView(QWidget):
     def _handle_debounced_resize(self) -> None:
         if self.stacked_views.currentIndex() != 0 or not self.filtered_books:
             return
-        new_cols = max(2, min(7, self.shelf_scroll.width() // (BookCard.CARD_WIDTH + 18)))
+        new_cols, _, _ = self._calculate_shelf_geometry()
         if new_cols != self._current_cols:
             self._render_shelf_grid()
 
