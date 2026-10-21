@@ -149,6 +149,7 @@ class RadarView(QWidget):
             }
         """)
         status_layout.addWidget(self.progress_bar)
+        main_layout.addWidget(self.status_bar_container)
 
         # Filter Chips Bar for Duplicates (All, Identical, Multi-volume, Chapters)
         self.filter_bar_container = QWidget()

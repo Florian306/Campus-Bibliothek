@@ -80,21 +80,6 @@ def run_qt_app() -> None:
     if app_icon:
         splash.setWindowIcon(app_icon)
     splash.show()
-    
-    # Apply WS_EX_TRANSPARENT + WS_EX_LAYERED so Windows passes all mouse clicks straight through to desktop
-    try:
-        hwnd = int(splash.winId())
-        if icon_file:
-            force_windows_icon(hwnd, icon_file)
-        user32 = ctypes.windll.user32
-        GWL_EXSTYLE = -20
-        WS_EX_TRANSPARENT = 0x00000020
-        WS_EX_LAYERED = 0x00080000
-        current_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        user32.SetWindowLongW(hwnd, GWL_EXSTYLE, current_style | WS_EX_TRANSPARENT | WS_EX_LAYERED)
-    except Exception:
-        pass
-        
     app.processEvents()
 
     # Step 1: Initialize Database
