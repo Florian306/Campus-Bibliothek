@@ -190,13 +190,27 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
                 grouped_candidates.append((curr_text.strip(), curr_size))
 
             # Find title candidates on this page
-            page_title_cands = [
-                c for c in grouped_candidates
-                if not is_series_or_course(c[0])
-                and not is_generic_section(c[0])
-                and not any(c[0].lower().startswith(x) for x in ["prof.", "dr.", "von "])
-                and len(c[0]) >= 4
-            ]
+            page_title_cands = []
+            for c in grouped_candidates:
+                cand_text = c[0]
+                if is_series_or_course(cand_text) or is_generic_section(cand_text):
+                    continue
+                if any(cand_text.lower().startswith(x) for x in ["prof.", "dr.", "von "]):
+                    continue
+                # Reject candidate if it contains edition/editor indicators (e.g. "Hrsg.", "3. Auflage")
+                if re.search(r'\b(?:hrsg\.?|herausgeber|auflage|edition|bearb\.?|mitarb\.?)\b', cand_text, re.I):
+                    continue
+                # Reject if candidate is just person names (e.g. "Rolf Arnold Antonius Lipsmeier Matthias Rohs")
+                if is_person_name(cand_text):
+                    continue
+                words = cand_text.split()
+                if 2 <= len(words) <= 6 and all(is_person_name(w) or re.match(r'^[A-ZÄÖÜ][a-zäöüß]+$', w) for w in words):
+                    # Likely a list of full author names without commas
+                    if len(words) >= 4 and len(words) % 2 == 0:
+                        continue
+                if len(cand_text) >= 4:
+                    page_title_cands.append(c)
+
             for cand_txt, sz in page_title_cands:
                 clean_cand = cand_txt.replace("●", "-").strip()
                 candidate_titles_by_size.append((clean_cand, sz, p_no))

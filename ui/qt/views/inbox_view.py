@@ -143,9 +143,10 @@ class InboxAnalysisWorker(QThread):
 
             if catalog_match:
                 cat_cat, cat_auth, cat_title, cat_reason = catalog_match
-                if cat_title and (not extracted_title or len(extracted_title) < 5 or "merged" in fn.lower()):
+                # Official catalog title is the authoritative bibliographic title
+                if cat_title and len(cat_title) >= 3:
                     extracted_title = cat_title
-                if cat_auth and (not extracted_author or extracted_author == "Unbekannt"):
+                if cat_auth and (not extracted_author or extracted_author == "Unbekannt" or (cat_title and cat_auth.lower() in extracted_title.lower())):
                     extracted_author = cat_auth
                 if cat_cat:
                     suggested_cat = cat_cat
@@ -410,7 +411,7 @@ class InboxView(QWidget):
                 color: #FFFFFF;
             }
         """)
-        btn_refresh.clicked.connect(self.sync_filesystem_with_db)
+        btn_refresh.clicked.connect(lambda: self.sync_filesystem_with_db(force_reanalyze=True))
         top_row.addWidget(btn_refresh)
 
         root.addLayout(top_row)
@@ -658,7 +659,7 @@ class InboxView(QWidget):
         if imported_count > 0:
             self.sync_filesystem_with_db()
 
-    def sync_filesystem_with_db(self) -> None:
+    def sync_filesystem_with_db(self, force_reanalyze: bool = False) -> None:
         """Scans the physical _Inbox directory on disk and reconciles with SQLite queue."""
         if not os.path.exists(self.inbox_dir):
             return
@@ -674,10 +675,10 @@ class InboxView(QWidget):
         # 2. Reload queue
         self._reload_table_data()
 
-        # 3. Start background AI classification for items still marked 'pending'
-        pending_items = [it for it in self._items if it.get("status") == "pending"]
-        if pending_items:
-            self._start_analysis_worker(pending_items)
+        # 3. Start background AI classification for items still marked 'pending' or forced
+        items_to_analyze = [it for it in self._items if force_reanalyze or it.get("status") == "pending"]
+        if items_to_analyze:
+            self._start_analysis_worker(items_to_analyze)
 
         # 4. Generate small cover previews in background
         self._start_cover_worker(self._items)
