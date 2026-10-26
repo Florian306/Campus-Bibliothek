@@ -24,9 +24,30 @@ def enforce_single_instance() -> bool:
         return False
     return True
 
-from ui.qt_app import run_qt_app as main
+def _handle_fatal_startup(err_text: str):
+    try:
+        from core.update_checker import CURRENT_VERSION
+        from core.recovery_dialog import show_recovery_dialog
+        show_recovery_dialog(err_text, CURRENT_VERSION)
+    except Exception:
+        pass
+    sys.exit(1)
+
 
 if __name__ == "__main__":
     if not enforce_single_instance():
         sys.exit(0)
-    main()
+
+    try:
+        from core.update_checker import CURRENT_VERSION
+        from core.crash_guard import mark_boot_started
+        mark_boot_started(CURRENT_VERSION)
+    except Exception:
+        pass
+
+    try:
+        from ui.qt_app import run_qt_app as main
+        main()
+    except Exception:
+        import traceback
+        _handle_fatal_startup(traceback.format_exc())

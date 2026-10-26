@@ -120,6 +120,11 @@ def run_qt_app() -> None:
     def launch_main():
         splash.close()
         window.showMaximized()
+        try:
+            from core.crash_guard import mark_boot_success
+            mark_boot_success()
+        except Exception:
+            pass
         QTimer.singleShot(1500, _prewarm_webengine)
 
     def _prewarm_webengine():
