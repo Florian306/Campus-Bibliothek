@@ -46,8 +46,6 @@ if __name__ == "__main__":
         pass
 
     try:
-        # Deliberate test crash to verify crash recovery and rollback behavior
-        raise RuntimeError("SIMULIERTER TEST-CRASH: Initialisierungsfehler beim Booten der Anwendung!")
         from ui.qt_app import run_qt_app as main
         main()
     except Exception:

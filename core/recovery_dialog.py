@@ -35,21 +35,24 @@ def show_recovery_dialog(error_details: str, current_version: str) -> None:
 
         root = tk.Tk()
         root.title("Campus-Bibliothek – Startfehler & Wiederherstellung")
-        root.geometry("640x480")
-        root.minsize(580, 420)
+        root.geometry("680x520")
+        root.minsize(620, 460)
         root.configure(bg="#0D1117")
 
         # Center on screen
         root.update_idletasks()
-        w = root.winfo_width()
-        h = root.winfo_height()
-        x = (root.winfo_screenwidth() // 2) - (w // 2)
-        y = (root.winfo_screenheight() // 2) - (h // 2)
-        root.geometry(f"{w}x{h}+{x}+{y}")
+        x = (root.winfo_screenwidth() // 2) - 340
+        y = (root.winfo_screenheight() // 2) - 260
+        root.geometry(f"680x520+{x}+{y}")
         root.attributes("-topmost", True)
 
-        header_frame = tk.Frame(root, bg="#161B22", padx=20, pady=16)
-        header_frame.pack(fill="x")
+        # Header bar
+        header_frame = tk.Frame(root, bg="#161B22", padx=20, pady=14)
+        header_frame.pack(side="top", fill="x")
+
+        # Bottom action bar (packed BEFORE expanding content frame so buttons are ALWAYS visible!)
+        btn_frame = tk.Frame(root, bg="#161B22", padx=16, pady=12)
+        btn_frame.pack(side="bottom", fill="x")
 
         title_lbl = tk.Label(
             header_frame,
@@ -67,10 +70,10 @@ def show_recovery_dialog(error_details: str, current_version: str) -> None:
             fg="#8B949E",
             bg="#161B22",
         )
-        sub_lbl.pack(anchor="w", pady=(4, 0))
+        sub_lbl.pack(anchor="w", pady=(2, 0))
 
-        content_frame = tk.Frame(root, bg="#0D1117", padx=20, pady=12)
-        content_frame.pack(fill="both", expand=True)
+        content_frame = tk.Frame(root, bg="#0D1117", padx=20, pady=10)
+        content_frame.pack(side="top", fill="both", expand=True)
 
         err_label = tk.Label(
             content_frame,
@@ -89,6 +92,7 @@ def show_recovery_dialog(error_details: str, current_version: str) -> None:
             font=("Consolas", 8),
             wrap="word",
             relief="flat",
+            height=10,
             highlightthickness=1,
             highlightbackground="#30363D",
         )
@@ -103,10 +107,7 @@ def show_recovery_dialog(error_details: str, current_version: str) -> None:
             fg="#7EE787",
             bg="#0D1117",
         )
-        status_lbl.pack(anchor="w", pady=(4, 8))
-
-        btn_frame = tk.Frame(root, bg="#161B22", padx=16, pady=12)
-        btn_frame.pack(fill="x", side="bottom")
+        status_lbl.pack(anchor="w", pady=(2, 4))
 
         def on_rollback():
             if not download_url:
