@@ -79,16 +79,27 @@ def run_qt_app() -> None:
     splash = CampusSplashScreen()
     if app_icon:
         splash.setWindowIcon(app_icon)
+
+    # Center splash screen on the active monitor
+    try:
+        screen_geo = app.primaryScreen().availableGeometry()
+        splash.move(
+            screen_geo.center().x() - splash.width() // 2,
+            screen_geo.center().y() - splash.height() // 2,
+        )
+    except Exception:
+        pass
+
     splash.show()
     app.processEvents()
 
     # Step 1: Initialize Database
-    splash.set_progress(25, "Initialisiere SQLite Data-Lake...")
+    splash.step_smooth(25, "Initialisiere SQLite Data-Lake...", duration_ms=100)
     init_library_schema()
     app.processEvents()
 
     # Step 2: Build Main Window UI
-    splash.set_progress(55, "Baue Benutzeroberfläche & Views...")
+    splash.step_smooth(55, "Baue Benutzeroberfläche & Views...", duration_ms=120)
     window = CampusMainWindow()
     if app_icon:
         window.setWindowIcon(app_icon)
@@ -97,13 +108,13 @@ def run_qt_app() -> None:
     app.processEvents()
 
     # Step 3: Hydrate Library Catalog
-    splash.set_progress(85, "Lade Fachbuch-Register & Cover-Cache...")
+    splash.step_smooth(85, "Lade Fachbuch-Register & Cover-Cache...", duration_ms=120)
     window.update_sidebar_stats()
     window.view_catalog.load_data()
     app.processEvents()
 
     # Step 4: Finalize & Reveal Main Window
-    splash.set_progress(100, "Bereit!")
+    splash.step_smooth(100, "Bereit!", duration_ms=150)
     app.processEvents()
 
     def launch_main():

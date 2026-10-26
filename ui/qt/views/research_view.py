@@ -3428,18 +3428,24 @@ class ResearchView(QWidget):
             if is_valid:
                 cfg = load_config()
                 if cfg.get("use_internal_reader", True):
+                    paper_id = p.get("id") or f"paper_{abs(hash(local_path))}"
+                    if not str(paper_id).startswith("paper_"):
+                        paper_id = f"paper_{paper_id}"
                     book_dict = {
-                        "id": p.get("id", f"paper_{hash(local_path)}"),
+                        "id": paper_id,
                         "file_path": local_path,
                         "title": p.get("title", os.path.basename(local_path)),
                         "author": p.get("authors", ""),
                         "category": p.get("category", "Forschung"),
+                        "current_page": p.get("current_page", 1),
                     }
-                    dlg = PdfReaderDialog(book_dict, initial_page=1, parent=self.window())
+                    initial_p = max(1, int(p.get("current_page") or 1))
+                    dlg = PdfReaderDialog(book_dict, initial_page=initial_p, parent=self.window())
                     dlg.exec()
                     self.lbl_search_status.setText(f"✓ PDF im Campus-Reader geöffnet: {os.path.basename(local_path)}")
                 else:
-                    open_pdf_in_edge(local_path)
+                    initial_p = max(1, int(p.get("current_page") or 1))
+                    open_pdf_in_edge(local_path, page=initial_p)
                     self.lbl_search_status.setText(f"✓ Lokales PDF in Microsoft Edge geöffnet: {os.path.basename(local_path)}")
                 return
             else:

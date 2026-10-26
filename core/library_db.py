@@ -213,6 +213,11 @@ def init_library_schema() -> None:
         except Exception:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE research_papers ADD COLUMN current_page INTEGER DEFAULT 1;")
+        except Exception:
+            pass
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS study_plans (
@@ -757,6 +762,15 @@ def update_reading_progress(book_id: Any, current_page: int) -> None:
                 conn.execute(
                     """
                     UPDATE book_extracts
+                    SET current_page = ?
+                    WHERE id = ?;
+                    """,
+                    (curr_p, bid)
+                )
+            elif bid.startswith("paper_"):
+                conn.execute(
+                    """
+                    UPDATE research_papers
                     SET current_page = ?
                     WHERE id = ?;
                     """,

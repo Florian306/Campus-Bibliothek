@@ -1350,6 +1350,7 @@ class PdfReaderDialog(QDialog):
         target_idx = max(0, min(self.initial_page - 1, p_count - 1))
         self.view.pageNavigator().jump(target_idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
         self.view.setFocus()
+        self._record_progress(target_idx + 1)
 
         # Load TOC tree
         self._populate_toc()

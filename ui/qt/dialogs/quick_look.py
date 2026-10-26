@@ -513,6 +513,7 @@ class QuickLookDialog(QDialog):
             parent_win = self.parentWidget()
             book_data = self.book
             cached_toc = self._cached_toc
+            self.was_data_modified = True
             self.accept()
             if cfg.get("use_internal_reader", True):
                 dlg = PdfReaderDialog(book_data, initial_page=page, toc_items=cached_toc, parent=parent_win)
