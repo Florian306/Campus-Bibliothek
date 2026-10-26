@@ -7,12 +7,16 @@ import re
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
+_HAS_CURL_CFFI = False
+cffi_requests = None
 try:
-    from curl_cffi import requests as cffi_requests
+    from curl_cffi import requests as _cffi_req
+    cffi_requests = _cffi_req
     _HAS_CURL_CFFI = True
-except ImportError:
+except Exception:
     _HAS_CURL_CFFI = False
-    import urllib.request
+
+import urllib.request
 
 from core.library_db import get_search_cache, set_search_cache
 

@@ -34,11 +34,6 @@ try:
 except Exception:
     pass
 
-try:
-    tmp_ret = collect_all('curl_cffi')
-    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-except Exception:
-    pass
 
 try:
     tmp_ret = collect_all('matplotlib')
@@ -183,6 +178,7 @@ excludes = [
     # Heavy scientific packages not required
     'scipy',
     'pandas',
+    'curl_cffi',
     
     # Test suites & development modules (removes hundreds of useless files)
     'google.genai.tests',
