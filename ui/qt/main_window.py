@@ -21,21 +21,12 @@ from PySide6.QtWidgets import (
 
 from ui.qt.theme import DARK_STYLESHEET
 from ui.qt.icons import create_vector_icon
-from ui.qt.views.jarvis_view import JarvisView
-from ui.qt.views.catalog_view import CatalogView
-from ui.qt.views.desk_view import DeskView
-from ui.qt.views.radar_view import RadarView
-from ui.qt.views.sync_view import SyncView
-from ui.qt.views.inbox_view import InboxView
-from ui.qt.views.research_view import ResearchView
-from ui.qt.views.textbook_search_view import TextbookSearchView
-from ui.qt.views.academic_web_view import AcademicWebView
 from ui.qt.dialogs.quick_look import QuickLookDialog
 from core.library_db import get_category_counts, get_all_research_papers, get_inbox_count
 
 
 class CampusMainWindow(QMainWindow):
-    """Flagship Main Application Window."""
+    """Flagship Main Application Window with high-performance Lazy-View loading."""
 
     def __init__(self):
         super().__init__()
@@ -52,16 +43,10 @@ class CampusMainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self._nav_buttons = {}
+        self._views_cache = {}
         self._build_ui()
         self._setup_shortcuts()
-
-        # Connect inter-view signals
-        self.view_catalog.data_changed.connect(self._on_data_modified)
-        self.view_desk.data_changed.connect(self._on_data_modified)
-        self.view_sync.scan_finished.connect(self._on_data_modified)
-        self.view_inbox.book_filed.connect(self._on_data_modified)
-        self.view_inbox.queue_updated.connect(self._update_inbox_badge)
-        self.view_catalog.quick_look_requested.connect(self._open_quick_look_for_id)
+        self._setup_tray()
 
     def _build_ui(self) -> None:
         central_widget = QWidget(self)
@@ -199,42 +184,184 @@ class CampusMainWindow(QMainWindow):
         root_layout.addWidget(self.sidebar)
 
         # -------------------------------------------------------------
-        # 2. Central Content Area (Stacked Views)
+        # 2. Central Content Area (Stacked Views with Lazy Instantiation)
         # -------------------------------------------------------------
         self.stack = QStackedWidget()
         self.stack.setStyleSheet("background-color: #0B0F19;")
 
-        self.view_jarvis = JarvisView(self)
-        self.view_catalog = CatalogView(self)
-        self.view_inbox = InboxView(self)
-        self.view_desk = DeskView(self)
-        self.view_research = ResearchView(self)
-        self.view_textbooks = TextbookSearchView(self)
-        self.view_academic_web = AcademicWebView(self)
-        self.view_radar = RadarView(self)
-        self.view_sync = SyncView(self)
-
-        self.stack.addWidget(self.view_jarvis)
-        self.stack.addWidget(self.view_catalog)
-        self.stack.addWidget(self.view_inbox)
-        self.stack.addWidget(self.view_desk)
-        self.stack.addWidget(self.view_research)
-        self.stack.addWidget(self.view_textbooks)
-        self.stack.addWidget(self.view_academic_web)
-        self.stack.addWidget(self.view_radar)
-        self.stack.addWidget(self.view_sync)
+        # Create lightweight placeholder widgets for all 9 tabs
+        for _ in range(9):
+            placeholder = QWidget()
+            placeholder.setStyleSheet("background-color: #0B0F19;")
+            self.stack.addWidget(placeholder)
 
         root_layout.addWidget(self.stack, stretch=1)
 
-        # Select first tab: JARVIS
+        # Select initial view (JARVIS Briefing)
         self._switch_tab("jarvis", 0)
+
+    def _setup_tray(self) -> None:
+        """Configures Windows System Tray icon for instant background reopen."""
+        from PySide6.QtWidgets import QSystemTrayIcon, QMenu
+        from PySide6.QtGui import QAction
+
+        self.tray_icon = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+
+        icon = self.windowIcon()
+        if icon.isNull():
+            return
+
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        tray_menu = QMenu()
+        tray_menu.setStyleSheet("""
+            QMenu {
+                background-color: #161B22;
+                color: #F0F6FC;
+                border: 1px solid #30363D;
+                padding: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #1F6FEB;
+            }
+        """)
+
+        act_show = QAction("Campus-Bibliothek öffnen", self)
+        act_show.triggered.connect(self._restore_from_tray)
+        tray_menu.addAction(act_show)
+
+        tray_menu.addSeparator()
+
+        act_quit = QAction("Beenden", self)
+        act_quit.triggered.connect(self._force_quit)
+        tray_menu.addAction(act_quit)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _on_tray_activated(self, reason) -> None:
+        from PySide6.QtWidgets import QSystemTrayIcon
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self._restore_from_tray()
+
+    def _restore_from_tray(self) -> None:
+        self.showNormal()
+        self.showMaximized()
+        self.activateWindow()
+        self.raise_()
+
+    def _force_quit(self) -> None:
+        if self.tray_icon:
+            self.tray_icon.hide()
+        try:
+            from core.config import load_app_config
+            from core.github_sync import GitHubSyncService
+            cfg = load_app_config()
+            if cfg.github_auto_sync and cfg.github_token.strip():
+                GitHubSyncService.push_to_gist()
+        except Exception:
+            pass
+        os._exit(0)
+
+    def _get_or_create_view(self, key: str, idx: int) -> QWidget:
+        """Lazily creates and attaches a view only when activated."""
+        if key in self._views_cache:
+            return self._views_cache[key]
+
+        view = None
+        if key == "jarvis":
+            from ui.qt.views.jarvis_view import JarvisView
+            view = JarvisView(self)
+        elif key == "catalog":
+            from ui.qt.views.catalog_view import CatalogView
+            view = CatalogView(self)
+            view.data_changed.connect(self._on_data_modified)
+            view.quick_look_requested.connect(self._open_quick_look_for_id)
+        elif key == "inbox":
+            from ui.qt.views.inbox_view import InboxView
+            view = InboxView(self)
+            view.book_filed.connect(self._on_data_modified)
+            view.queue_updated.connect(self._update_inbox_badge)
+        elif key == "desk":
+            from ui.qt.views.desk_view import DeskView
+            view = DeskView(self)
+            view.data_changed.connect(self._on_data_modified)
+        elif key == "research":
+            from ui.qt.views.research_view import ResearchView
+            view = ResearchView(self)
+        elif key == "textbooks":
+            from ui.qt.views.textbook_search_view import TextbookSearchView
+            view = TextbookSearchView(self)
+        elif key == "web":
+            from ui.qt.views.academic_web_view import AcademicWebView
+            view = AcademicWebView(self)
+        elif key == "radar":
+            from ui.qt.views.radar_view import RadarView
+            view = RadarView(self)
+        elif key == "sync":
+            from ui.qt.views.sync_view import SyncView
+            view = SyncView(self)
+            view.scan_finished.connect(self._on_data_modified)
+
+        if view:
+            self._views_cache[key] = view
+            # Swap placeholder in stack
+            old_widget = self.stack.widget(idx)
+            self.stack.removeWidget(old_widget)
+            self.stack.insertWidget(idx, view)
+            if old_widget:
+                old_widget.deleteLater()
+
+        return view
+
+    # Backward-compatible property proxies for direct attribute access
+    @property
+    def view_jarvis(self):
+        return self._get_or_create_view("jarvis", 0)
+
+    @property
+    def view_catalog(self):
+        return self._get_or_create_view("catalog", 1)
+
+    @property
+    def view_inbox(self):
+        return self._get_or_create_view("inbox", 2)
+
+    @property
+    def view_desk(self):
+        return self._get_or_create_view("desk", 3)
+
+    @property
+    def view_research(self):
+        return self._get_or_create_view("research", 4)
+
+    @property
+    def view_textbooks(self):
+        return self._get_or_create_view("textbooks", 5)
+
+    @property
+    def view_academic_web(self):
+        return self._get_or_create_view("web", 6)
+
+    @property
+    def view_radar(self):
+        return self._get_or_create_view("radar", 7)
+
+    @property
+    def view_sync(self):
+        return self._get_or_create_view("sync", 8)
 
     def _setup_shortcuts(self) -> None:
         shortcut_space = QShortcut(QKeySequence(Qt.Key_Space), self)
         shortcut_space.activated.connect(self._on_space_pressed)
 
     def _switch_tab(self, key: str, idx: int) -> None:
+        # 1. Lazily ensure view is created
+        view = self._get_or_create_view(key, idx)
         self.stack.setCurrentIndex(idx)
+
         for k, btn in self._nav_buttons.items():
             if k == key:
                 btn.setStyleSheet("""
@@ -271,18 +398,23 @@ class CampusMainWindow(QMainWindow):
 
         # Trigger data refresh on tab activate
         if idx == 1:
-            if not self.view_catalog.master_books:
-                self.view_catalog.load_data()
+            if hasattr(view, "master_books") and not view.master_books:
+                view.load_data()
         elif idx == 2:
-            self.view_inbox.sync_filesystem_with_db()
+            if hasattr(view, "sync_filesystem_with_db"):
+                view.sync_filesystem_with_db()
         elif idx == 3:
-            self.view_desk.load_data()
+            if hasattr(view, "load_data"):
+                view.load_data()
         elif idx == 4:
-            self.view_research.load_data()
+            if hasattr(view, "load_data"):
+                view.load_data()
         elif idx == 5:
-            self.view_textbooks.load_data()
+            if hasattr(view, "load_data"):
+                view.load_data()
         elif idx == 7:
-            self.view_radar.load_data()
+            if hasattr(view, "load_data"):
+                view.load_data()
 
     def update_sidebar_stats(self) -> None:
         cats = get_category_counts()
@@ -333,7 +465,12 @@ class CampusMainWindow(QMainWindow):
                 self.view_catalog._refresh_single_book(book_id)
 
     def closeEvent(self, event) -> None:
-        """Saves cloud state if auto_sync enabled, then performs clean exit."""
+        """Minimizes to tray if available for instantaneous reopening, else exits cleanly."""
+        if hasattr(self, "tray_icon") and self.tray_icon and self.tray_icon.isVisible():
+            event.ignore()
+            self.hide()
+            return
+
         try:
             self.hide()
             from core.config import load_app_config

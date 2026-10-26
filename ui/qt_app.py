@@ -93,26 +93,35 @@ def run_qt_app() -> None:
     splash.show()
     app.processEvents()
 
-    # Step 1: Initialize Database
-    splash.step_smooth(25, "Initialisiere SQLite Data-Lake...", duration_ms=100)
-    init_library_schema()
-    app.processEvents()
+    # Determine Warmstart (database file already exists and was previously opened)
+    from core.config import get_database_path
+    db_file = get_database_path()
+    is_warmstart = os.path.isfile(db_file) and os.path.getsize(db_file) > 1024
 
-    # Step 2: Build Main Window UI
-    splash.step_smooth(55, "Baue Benutzeroberfläche & Views...", duration_ms=120)
+    # Step 1: Fast SQLite Data-Lake check
+    if not is_warmstart:
+        splash.step_smooth(25, "Initialisiere SQLite Data-Lake...", duration_ms=80)
+        init_library_schema()
+        app.processEvents()
+    else:
+        splash.set_progress(35, "Lade System-Komponenten...")
+
+    # Step 2: Build Main Window UI (with Lazy View architecture)
+    if not is_warmstart:
+        splash.step_smooth(65, "Baue Benutzeroberfläche & Views...", duration_ms=90)
     window = CampusMainWindow()
     if app_icon:
         window.setWindowIcon(app_icon)
     app.processEvents()
 
-    # Step 3: Hydrate Library Catalog
-    splash.step_smooth(85, "Lade Fachbuch-Register & Cover-Cache...", duration_ms=120)
+    # Step 3: Sidebar Stats
+    if not is_warmstart:
+        splash.step_smooth(85, "Lade Fachbuch-Register...", duration_ms=80)
     window.update_sidebar_stats()
-    window.view_catalog.load_data()
     app.processEvents()
 
     # Step 4: Finalize & Reveal Main Window
-    splash.step_smooth(100, "Bereit!", duration_ms=150)
+    splash.set_progress(100, "Bereit!")
     app.processEvents()
 
     def launch_main():
@@ -126,8 +135,9 @@ def run_qt_app() -> None:
         except Exception:
             pass
 
-    # Smooth transition after 250ms
-    QTimer.singleShot(250, launch_main)
+    # Instant transition: 60ms for warmstart, 180ms for cold start
+    delay_ms = 60 if is_warmstart else 180
+    QTimer.singleShot(delay_ms, launch_main)
 
     sys.exit(app.exec())
 
