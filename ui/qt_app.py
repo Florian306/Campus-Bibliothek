@@ -103,8 +103,6 @@ def run_qt_app() -> None:
     window = CampusMainWindow()
     if app_icon:
         window.setWindowIcon(app_icon)
-    if icon_file:
-        force_windows_icon(int(window.winId()), icon_file)
     app.processEvents()
 
     # Step 3: Hydrate Library Catalog
@@ -120,20 +118,11 @@ def run_qt_app() -> None:
     def launch_main():
         splash.close()
         window.showMaximized()
+        if icon_file:
+            force_windows_icon(int(window.winId()), icon_file)
         try:
             from core.crash_guard import mark_boot_success
             mark_boot_success()
-        except Exception:
-            pass
-        QTimer.singleShot(1500, _prewarm_webengine)
-
-    def _prewarm_webengine():
-        # Spin up Chromium process once -> mail reader opens without cold start
-        try:
-            from PySide6.QtWebEngineWidgets import QWebEngineView
-            view = QWebEngineView()
-            view.setHtml("<html></html>")
-            app._webengine_warm = view
         except Exception:
             pass
 
