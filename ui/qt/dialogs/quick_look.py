@@ -70,6 +70,9 @@ class QuickLookDialog(QDialog):
         self.setWindowTitle(f"Quick-Look: {book.get('title', 'Buchdetails')}")
         self.resize(960, 640)
         self.setMinimumSize(920, 600)
+        self.setWindowFlags(
+            Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint
+        )
         self.setStyleSheet("""
             QDialog {
                 background-color: #161B22;

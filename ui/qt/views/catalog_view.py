@@ -179,11 +179,11 @@ class CatalogView(QWidget):
         self.stacked_views = QStackedWidget(self)
 
         # View 0: Virtual Shelf ScrollArea
-        self.shelf_scroll = QScrollArea()
+        self.shelf_scroll = QScrollArea(self)
         self.shelf_scroll.setWidgetResizable(True)
         self.shelf_scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
 
-        self.shelf_container = QWidget()
+        self.shelf_container = QWidget(self.shelf_scroll)
         self.shelf_container.setStyleSheet("background-color: transparent;")
         self.shelf_grid = QGridLayout(self.shelf_container)
         self.shelf_grid.setContentsMargins(4, 8, 4, 16)
@@ -194,7 +194,7 @@ class CatalogView(QWidget):
         self.stacked_views.addWidget(self.shelf_scroll)
 
         # View 1: Catalog Table
-        self.table_books = QTableWidget()
+        self.table_books = QTableWidget(self)
         self.table_books.setItemDelegate(NoFocusItemDelegate(self.table_books))
         self.table_books.setColumnCount(7)
         self.table_books.setHorizontalHeaderLabels(["Pult", "Buchtitel", "Autor", "Auflage", "Seiten", "Kapitel", "Fachbereiche"])

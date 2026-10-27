@@ -187,14 +187,8 @@ class CampusMainWindow(QMainWindow):
         # -------------------------------------------------------------
         # 2. Central Content Area (Stacked Views with Lazy Instantiation)
         # -------------------------------------------------------------
-        self.stack = QStackedWidget()
+        self.stack = QStackedWidget(central_widget)
         self.stack.setStyleSheet("background-color: #0B0F19;")
-
-        # Create lightweight placeholder widgets for all 10 tabs
-        for _ in range(10):
-            placeholder = QWidget()
-            placeholder.setStyleSheet("background-color: #0B0F19;")
-            self.stack.addWidget(placeholder)
 
         root_layout.addWidget(self.stack, stretch=1)
 
@@ -273,53 +267,47 @@ class CampusMainWindow(QMainWindow):
         view = None
         if key == "jarvis":
             from ui.qt.views.jarvis_view import JarvisView
-            view = JarvisView(self)
+            view = JarvisView(self.stack)
         elif key == "catalog":
             from ui.qt.views.catalog_view import CatalogView
-            view = CatalogView(mode="books", parent=self)
+            view = CatalogView(mode="books", parent=self.stack)
             view.data_changed.connect(self._on_data_modified)
             view.quick_look_requested.connect(self._open_quick_look_for_id)
         elif key == "scripts":
             from ui.qt.views.catalog_view import CatalogView
-            view = CatalogView(mode="study_scripts", parent=self)
+            view = CatalogView(mode="study_scripts", parent=self.stack)
             view.data_changed.connect(self._on_data_modified)
             view.quick_look_requested.connect(self._open_quick_look_for_id)
         elif key == "inbox":
             from ui.qt.views.inbox_view import InboxView
-            view = InboxView(self)
+            view = InboxView(self.stack)
             view.book_filed.connect(self._on_data_modified)
             view.queue_updated.connect(self._update_inbox_badge)
         elif key == "desk":
             from ui.qt.views.desk_view import DeskView
-            view = DeskView(self)
+            view = DeskView(self.stack)
             view.data_changed.connect(self._on_data_modified)
         elif key == "research":
             from ui.qt.views.research_view import ResearchView
-            view = ResearchView(self)
+            view = ResearchView(self.stack)
         elif key == "textbooks":
             from ui.qt.views.textbook_search_view import TextbookSearchView
-            view = TextbookSearchView(self)
+            view = TextbookSearchView(self.stack)
         elif key == "web":
             from ui.qt.views.academic_web_view import AcademicWebView
-            view = AcademicWebView(self)
+            view = AcademicWebView(self.stack)
         elif key == "radar":
             from ui.qt.views.radar_view import RadarView
-            view = RadarView(self)
+            view = RadarView(self.stack)
         elif key == "sync":
             from ui.qt.views.sync_view import SyncView
-            view = SyncView(self)
+            view = SyncView(self.stack)
             view.scan_finished.connect(self._on_data_modified)
 
         if view:
             self._views_cache[key] = view
-            # Swap placeholder in stack safely without triggering a detached top-level window
-            old_widget = self.stack.widget(idx)
-            if old_widget:
-                old_widget.hide()
-                self.stack.removeWidget(old_widget)
-                old_widget.setParent(None)
-                old_widget.deleteLater()
-            self.stack.insertWidget(idx, view)
+            if self.stack.indexOf(view) == -1:
+                self.stack.addWidget(view)
 
         return view
 
@@ -371,7 +359,8 @@ class CampusMainWindow(QMainWindow):
     def _switch_tab(self, key: str, idx: int) -> None:
         # 1. Lazily ensure view is created
         view = self._get_or_create_view(key, idx)
-        self.stack.setCurrentIndex(idx)
+        if view:
+            self.stack.setCurrentWidget(view)
 
         for k, btn in self._nav_buttons.items():
             if k == key:
@@ -446,16 +435,17 @@ class CampusMainWindow(QMainWindow):
             self.view_scripts.load_data()
 
     def _on_space_pressed(self) -> None:
-        # Space shortcut is for Catalog (tab 1) and Studienbriefe (tab 2)
-        curr_idx = self.stack.currentIndex()
-        if curr_idx not in (1, 2):
+        # Space shortcut is for Catalog and Studienbriefe
+        curr_widget = self.stack.currentWidget()
+        cat_view = self._views_cache.get("catalog")
+        scripts_view = self._views_cache.get("scripts")
+        if curr_widget not in (cat_view, scripts_view) or not curr_widget:
             return
         focus = QApplication.focusWidget()
         from PySide6.QtWidgets import QLineEdit, QPlainTextEdit, QPushButton
         if isinstance(focus, (QLineEdit, QPlainTextEdit, QPushButton)):
             return
-        active_view = self.view_catalog if curr_idx == 1 else self.view_scripts
-        bid = active_view._get_active_book_id()
+        bid = curr_widget._get_active_book_id()
         if bid:
             self._open_quick_look_for_id(bid)
 
