@@ -401,6 +401,56 @@ def init_library_schema() -> None:
             except Exception:
                 pass
 
+        # Migration: Add doc_type to books
+        try:
+            cursor.execute("ALTER TABLE books ADD COLUMN doc_type TEXT DEFAULT 'book';")
+        except Exception:
+            pass
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_doc_type ON books(doc_type);")
+
+        # Auto-classify study guides / scripts based on filename, path or category
+        try:
+            cursor.execute(
+                """
+                UPDATE books 
+                SET doc_type = 'study_script'
+                WHERE (doc_type IS NULL OR doc_type = 'book' OR doc_type = '')
+                  AND (
+                    LOWER(filename) LIKE '%studienbrief%'
+                    OR LOWER(filename) LIKE '%kurseinheit%'
+                    OR LOWER(filename) LIKE '%skript%'
+                    OR LOWER(filename) LIKE '%vorlesung%'
+                    OR LOWER(filename) LIKE '%uebung%'
+                    OR LOWER(filename) LIKE '%übungs%'
+                    OR LOWER(filename) LIKE '%klausur%'
+                    OR LOWER(filename) LIKE '%einsendeaufgabe%'
+                    OR LOWER(file_path) LIKE '%studienbrief%'
+                    OR LOWER(file_path) LIKE '%kurseinheit%'
+                    OR LOWER(file_path) LIKE '%skripte%'
+                    OR LOWER(file_path) LIKE '%vorlesung%'
+                    OR LOWER(file_path) LIKE '%fernuni%'
+                    OR LOWER(file_path) LIKE '%hochschule%'
+                    OR LOWER(file_path) LIKE '%studium%'
+                    OR LOWER(title) LIKE '%studienbrief%'
+                    OR LOWER(title) LIKE '%kurseinheit%'
+                    OR LOWER(filename) GLOB '*[kK][eE][0-9]*'
+                    OR LOWER(filename) GLOB '*[sS][bB][0-9]*'
+                    OR EXISTS (
+                        SELECT 1 FROM book_categories bc 
+                        WHERE bc.book_id = books.id 
+                          AND (
+                            LOWER(bc.category) LIKE '%studienbrief%'
+                            OR LOWER(bc.category) LIKE '%skript%'
+                            OR LOWER(bc.category) LIKE '%vorlesung%'
+                          )
+                    )
+                  );
+                """
+            )
+        except Exception:
+            pass
+
         conn.commit()
     finally:
         conn.close()
@@ -531,6 +581,29 @@ def compute_file_id(file_path: str, size: int) -> str:
     return h[:16]
 
 
+def detect_document_type(file_path: str, filename: str, title: str, categories: List[str]) -> str:
+    """Classifies document as 'study_script' or 'book' based on path, filename, and category patterns."""
+    text_corpus = f"{file_path} {filename} {title} {' '.join(categories)}".lower()
+    script_keywords = (
+        "studienbrief",
+        "kurseinheit",
+        "skript",
+        "vorlesung",
+        "uebung",
+        "übungs",
+        "klausur",
+        "einsendeaufgabe",
+        "fernuni",
+        "hochschule",
+        "studium",
+    )
+    if any(kw in text_corpus for kw in script_keywords):
+        return "study_script"
+    if re.search(r"(?i)\b(ke|sb)[0-9]+\b", filename):
+        return "study_script"
+    return "book"
+
+
 def upsert_book(
     file_path: str,
     filename: str,
@@ -548,10 +621,14 @@ def upsert_book(
     confidence: int = 100,
     audit_trail: str = "",
     tags: Optional[List[str]] = None,
+    doc_type: Optional[str] = None,
 ) -> str:
     """Inserts or updates a book and its multi-category assignments in the library database."""
     book_id = compute_file_id(file_path, file_size)
     now = time.time()
+
+    if not doc_type:
+        doc_type = detect_document_type(file_path, filename, title, categories)
 
     with _db_write_lock:
         conn = get_db_connection()
@@ -561,8 +638,8 @@ def upsert_book(
                 INSERT INTO books (
                     id, file_path, filename, title, author, isbn, doi,
                     edition, edition_str, year, page_count, file_size, file_mtime,
-                    confidence, audit_trail, date_added
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, audit_trail, date_added, doc_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(file_path) DO UPDATE SET
                     filename = excluded.filename,
                     title = excluded.title,
@@ -576,12 +653,13 @@ def upsert_book(
                     file_size = excluded.file_size,
                     file_mtime = excluded.file_mtime,
                     confidence = excluded.confidence,
-                    audit_trail = excluded.audit_trail;
+                    audit_trail = excluded.audit_trail,
+                    doc_type = COALESCE(books.doc_type, excluded.doc_type);
                 """,
                 (
                     book_id, file_path, filename, title, author, isbn, doi,
                     edition, edition_str, year, page_count, file_size, file_mtime,
-                    confidence, audit_trail, now
+                    confidence, audit_trail, now, doc_type
                 ),
             )
 
@@ -616,9 +694,10 @@ def get_all_books(
     category_filter: str = "",
     tag_filter: str = "",
     sort_by: str = "title",
-    ascending: bool = True
+    ascending: bool = True,
+    doc_type: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Fetches books with category list, desk status, and edition alert flag."""
+    """Fetches books with category list, desk status, edition alert flag, and optional doc_type filter."""
     conn = get_db_connection()
     sql = """
         SELECT 
@@ -635,6 +714,10 @@ def get_all_books(
         WHERE 1=1
     """
     params: List[Any] = []
+
+    if doc_type:
+        sql += " AND COALESCE(b.doc_type, 'book') = ?"
+        params.append(doc_type)
 
     if search_query.strip():
         q = f"%{search_query.strip()}%"
@@ -663,6 +746,14 @@ def get_all_books(
     cursor = conn.execute(sql, params)
     rows = cursor.fetchall()
     return [dict(r) for r in rows]
+
+
+def set_book_doc_type(book_id: str, doc_type: str) -> None:
+    """Updates the document classification type ('book' or 'study_script')."""
+    with _db_write_lock:
+        conn = get_db_connection()
+        with conn:
+            conn.execute("UPDATE books SET doc_type = ? WHERE id = ?", (doc_type, str(book_id)))
 
 
 def get_book_by_id(book_id: str) -> Optional[Dict[str, Any]]:
@@ -978,18 +1069,31 @@ def get_desk_extracts() -> List[Dict[str, Any]]:
     return [dict(r) for r in cur.fetchall()]
 
 
-def get_category_counts() -> List[Tuple[str, int]]:
-    """Returns sorted categories with active book counts."""
+def get_category_counts(doc_type: Optional[str] = None) -> List[Tuple[str, int]]:
+    """Returns sorted categories with active book counts, optionally filtered by doc_type."""
     conn = get_db_connection()
-    cur = conn.execute(
-        """
-        SELECT bc.category, COUNT(DISTINCT bc.book_id) AS cnt
-        FROM book_categories bc
-        JOIN books b ON b.id = bc.book_id
-        GROUP BY bc.category
-        ORDER BY cnt DESC;
-        """
-    )
+    if doc_type:
+        cur = conn.execute(
+            """
+            SELECT bc.category, COUNT(DISTINCT bc.book_id) AS cnt
+            FROM book_categories bc
+            JOIN books b ON b.id = bc.book_id
+            WHERE COALESCE(b.doc_type, 'book') = ?
+            GROUP BY bc.category
+            ORDER BY cnt DESC;
+            """,
+            (doc_type,)
+        )
+    else:
+        cur = conn.execute(
+            """
+            SELECT bc.category, COUNT(DISTINCT bc.book_id) AS cnt
+            FROM book_categories bc
+            JOIN books b ON b.id = bc.book_id
+            GROUP BY bc.category
+            ORDER BY cnt DESC;
+            """
+        )
     return [(r["category"], r["cnt"]) for r in cur.fetchall()]
 
 

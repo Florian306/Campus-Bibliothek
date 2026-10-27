@@ -127,13 +127,14 @@ class CampusMainWindow(QMainWindow):
         nav_items = [
             ("jarvis", "jarvis", "JARVIS Briefing", 0),
             ("catalog", "library", "Bibliothek & Katalog", 1),
-            ("inbox", "inbox", "Posteingang", 2),
-            ("desk", "desk", "Mein Schreibtisch", 3),
-            ("research", "research", "Paper & Forschung", 4),
-            ("textbooks", "book", "Fachbuch-Suche", 5),
-            ("web", "globe", "Fach-Websuche", 6),
-            ("radar", "radar", "Auflagen-Radar", 7),
-            ("sync", "sync", "Scan & Sync", 8),
+            ("scripts", "notes", "Studienbriefe & Skripte", 2),
+            ("inbox", "inbox", "Posteingang", 3),
+            ("desk", "desk", "Mein Schreibtisch", 4),
+            ("research", "research", "Paper & Forschung", 5),
+            ("textbooks", "book", "Fachbuch-Suche", 6),
+            ("web", "globe", "Fach-Websuche", 7),
+            ("radar", "radar", "Auflagen-Radar", 8),
+            ("sync", "sync", "Scan & Sync", 9),
         ]
 
         for key, icon_name, text, idx in nav_items:
@@ -189,8 +190,8 @@ class CampusMainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setStyleSheet("background-color: #0B0F19;")
 
-        # Create lightweight placeholder widgets for all 9 tabs
-        for _ in range(9):
+        # Create lightweight placeholder widgets for all 10 tabs
+        for _ in range(10):
             placeholder = QWidget()
             placeholder.setStyleSheet("background-color: #0B0F19;")
             self.stack.addWidget(placeholder)
@@ -276,7 +277,12 @@ class CampusMainWindow(QMainWindow):
             view = JarvisView(self)
         elif key == "catalog":
             from ui.qt.views.catalog_view import CatalogView
-            view = CatalogView(self)
+            view = CatalogView(mode="books", parent=self)
+            view.data_changed.connect(self._on_data_modified)
+            view.quick_look_requested.connect(self._open_quick_look_for_id)
+        elif key == "scripts":
+            from ui.qt.views.catalog_view import CatalogView
+            view = CatalogView(mode="study_scripts", parent=self)
             view.data_changed.connect(self._on_data_modified)
             view.quick_look_requested.connect(self._open_quick_look_for_id)
         elif key == "inbox":
@@ -326,32 +332,36 @@ class CampusMainWindow(QMainWindow):
         return self._get_or_create_view("catalog", 1)
 
     @property
+    def view_scripts(self):
+        return self._get_or_create_view("scripts", 2)
+
+    @property
     def view_inbox(self):
-        return self._get_or_create_view("inbox", 2)
+        return self._get_or_create_view("inbox", 3)
 
     @property
     def view_desk(self):
-        return self._get_or_create_view("desk", 3)
+        return self._get_or_create_view("desk", 4)
 
     @property
     def view_research(self):
-        return self._get_or_create_view("research", 4)
+        return self._get_or_create_view("research", 5)
 
     @property
     def view_textbooks(self):
-        return self._get_or_create_view("textbooks", 5)
+        return self._get_or_create_view("textbooks", 6)
 
     @property
     def view_academic_web(self):
-        return self._get_or_create_view("web", 6)
+        return self._get_or_create_view("web", 7)
 
     @property
     def view_radar(self):
-        return self._get_or_create_view("radar", 7)
+        return self._get_or_create_view("radar", 8)
 
     @property
     def view_sync(self):
-        return self._get_or_create_view("sync", 8)
+        return self._get_or_create_view("sync", 9)
 
     def _setup_shortcuts(self) -> None:
         shortcut_space = QShortcut(QKeySequence(Qt.Key_Space), self)
@@ -397,22 +407,13 @@ class CampusMainWindow(QMainWindow):
                 """)
 
         # Trigger data refresh on tab activate
-        if idx == 1:
+        if idx in (1, 2):
             if hasattr(view, "master_books") and not view.master_books:
                 view.load_data()
-        elif idx == 2:
+        elif idx == 3:
             if hasattr(view, "sync_filesystem_with_db"):
                 view.sync_filesystem_with_db()
-        elif idx == 3:
-            if hasattr(view, "load_data"):
-                view.load_data()
-        elif idx == 4:
-            if hasattr(view, "load_data"):
-                view.load_data()
-        elif idx == 5:
-            if hasattr(view, "load_data"):
-                view.load_data()
-        elif idx == 7:
+        elif idx in (4, 5, 6, 8):
             if hasattr(view, "load_data"):
                 view.load_data()
 
@@ -422,9 +423,9 @@ class CampusMainWindow(QMainWindow):
         papers = get_all_research_papers()
         total_p = len(papers)
         if total_p > 0:
-            self.lbl_stats.setText(f"{total_b} Bücher · {total_p} Paper")
+            self.lbl_stats.setText(f"{total_b} Dokumente · {total_p} Paper")
         else:
-            self.lbl_stats.setText(f"{total_b} Fachbücher indiziert")
+            self.lbl_stats.setText(f"{total_b} Dokumente indiziert")
 
         self._update_inbox_badge(get_inbox_count())
 
@@ -438,31 +439,38 @@ class CampusMainWindow(QMainWindow):
 
     def _on_data_modified(self) -> None:
         self.update_sidebar_stats()
-        self.view_catalog.load_data()
-        self.view_exam.load_data()
+        if "catalog" in self._views_cache:
+            self.view_catalog.load_data()
+        if "scripts" in self._views_cache:
+            self.view_scripts.load_data()
 
     def _on_space_pressed(self) -> None:
-        # Space shortcut is only for the Catalog view (tab 1)
-        if self.stack.currentIndex() != 1:
+        # Space shortcut is for Catalog (tab 1) and Studienbriefe (tab 2)
+        curr_idx = self.stack.currentIndex()
+        if curr_idx not in (1, 2):
             return
         focus = QApplication.focusWidget()
         from PySide6.QtWidgets import QLineEdit, QPlainTextEdit, QPushButton
         if isinstance(focus, (QLineEdit, QPlainTextEdit, QPushButton)):
             return
-        bid = self.view_catalog._get_active_book_id()
+        active_view = self.view_catalog if curr_idx == 1 else self.view_scripts
+        bid = active_view._get_active_book_id()
         if bid:
             self._open_quick_look_for_id(bid)
 
     def _open_quick_look_for_id(self, book_id: str) -> None:
-        books = self.view_catalog.master_books
-        book = next((b for b in books if str(b["id"]) == str(book_id)), None)
+        from core.library_db import get_book_by_id
+        book = get_book_by_id(book_id)
         if book:
             dlg = QuickLookDialog(book, self)
             dlg.exec()
             if getattr(dlg, "was_data_modified", False):
                 self._on_data_modified()
             else:
-                self.view_catalog._refresh_single_book(book_id)
+                if "catalog" in self._views_cache:
+                    self.view_catalog._refresh_single_book(book_id)
+                if "scripts" in self._views_cache:
+                    self.view_scripts._refresh_single_book(book_id)
 
     def closeEvent(self, event) -> None:
         """Minimizes to tray if available for instantaneous reopening, else exits cleanly."""

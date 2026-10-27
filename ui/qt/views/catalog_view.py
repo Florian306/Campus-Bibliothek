@@ -39,6 +39,7 @@ from core.library_db import (
     open_pdf_in_edge,
     get_book_categories,
     delete_book,
+    set_book_doc_type,
 )
 from core.config import load_config
 from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
@@ -52,8 +53,10 @@ class CatalogView(QWidget):
     desk_toggled = Signal(str)        # book_id
     data_changed = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, mode: str = "books", parent=None):
         super().__init__(parent)
+        self.mode = mode  # "books" or "study_scripts"
+        self.doc_type_filter = "study_script" if mode == "study_scripts" else "book"
         self.master_books: List[Dict[str, Any]] = []
         self.filtered_books: List[Dict[str, Any]] = []
         self.selected_book_id: Optional[str] = None
@@ -89,12 +92,14 @@ class CatalogView(QWidget):
         title_box.setSpacing(2)
 
         title_row = QHBoxLayout()
-        lbl_title = QLabel("Katalog & Literaturverzeichnis")
+        title_text = "Studienbriefe & Vorlesungsskripte" if self.mode == "study_scripts" else "Katalog & Literaturverzeichnis"
+        lbl_title = QLabel(title_text)
         lbl_title.setFont(QFont("Segoe UI", 16, QFont.Bold))
         lbl_title.setStyleSheet("color: #F0F6FC;")
         title_row.addWidget(lbl_title)
 
-        self.lbl_badge_total = QLabel("0 Bücher")
+        init_badge = "0 Studienbriefe" if self.mode == "study_scripts" else "0 Bücher"
+        self.lbl_badge_total = QLabel(init_badge)
         self.lbl_badge_total.setFont(QFont("Segoe UI", 9, QFont.Bold))
         self.lbl_badge_total.setStyleSheet("""
             QLabel {
@@ -109,7 +114,12 @@ class CatalogView(QWidget):
         title_row.addStretch()
         title_box.addLayout(title_row)
 
-        lbl_desc = QLabel("Zentrales Register aller archivierten Fach- und Lehrbücher mit Volltext-Index")
+        desc_text = (
+            "Zentrales Register aller archivierten Kurseinheiten, Module und Skripte"
+            if self.mode == "study_scripts"
+            else "Zentrales Register aller archivierten Fach- und Lehrbücher mit Volltext-Index"
+        )
+        lbl_desc = QLabel(desc_text)
         lbl_desc.setFont(QFont("Segoe UI", 9))
         lbl_desc.setStyleSheet("color: #8B949E;")
         title_box.addWidget(lbl_desc)
@@ -278,9 +288,9 @@ class CatalogView(QWidget):
         main_layout.addLayout(footer)
 
     def load_data(self) -> None:
-        """Loads all books from SQLite and triggers filter application."""
-        self.master_books = get_all_books()
-        cat_counts = get_category_counts()
+        """Loads books from SQLite filtered by doc_type and triggers filter application."""
+        self.master_books = get_all_books(doc_type=self.doc_type_filter)
+        cat_counts = get_category_counts(doc_type=self.doc_type_filter)
         self.chips_bar.populate(cat_counts)
 
         # Prune cached cards that no longer exist in master_books
@@ -292,7 +302,8 @@ class CatalogView(QWidget):
             card.deleteLater()
 
         total_cnt = len(self.master_books)
-        self.lbl_badge_total.setText(f"{total_cnt} Bücher")
+        unit = "Studienbriefe" if self.mode == "study_scripts" else "Bücher"
+        self.lbl_badge_total.setText(f"{total_cnt} {unit}")
         self.apply_filter()
 
     def _set_view_mode(self, mode: str) -> None:
@@ -332,7 +343,8 @@ class CatalogView(QWidget):
             ]
 
         self.filtered_books = books
-        self.lbl_table_count.setText(f"{len(books)} von {len(self.master_books)} Büchern")
+        unit = "Studienbriefen" if self.mode == "study_scripts" else "Büchern"
+        self.lbl_table_count.setText(f"{len(books)} von {len(self.master_books)} {unit}")
 
         if self.stacked_views.currentIndex() == 0:
             self._render_shelf_grid()
@@ -574,6 +586,17 @@ class CatalogView(QWidget):
 
         menu.addSeparator()
 
+        # Classification Switcher
+        current_dtype = book.get("doc_type") or "book"
+        if current_dtype == "study_script":
+            act_reclass = menu.addAction(create_vector_icon("library", "#58A6FF", 14), "Als Fachbuch einordnen")
+            act_reclass.triggered.connect(lambda: self._reclassify_doc(book_id, "book"))
+        else:
+            act_reclass = menu.addAction(create_vector_icon("notes", "#58A6FF", 14), "Als Studienbrief / Skript einordnen")
+            act_reclass.triggered.connect(lambda: self._reclassify_doc(book_id, "study_script"))
+
+        menu.addSeparator()
+
         # Delete Book Action
         act_del = menu.addAction(create_vector_icon("trash", "#FF7B72", 14), "Buch aus Katalog entfernen...")
         act_del.triggered.connect(lambda: self._delete_book_prompt(book_id))
@@ -603,6 +626,15 @@ class CatalogView(QWidget):
 
     def _toggle_desk_action(self, book_id: str) -> None:
         toggle_desk_item(book_id)
+        self.data_changed.emit()
+        self.load_data()
+
+    def _reclassify_doc(self, book_id: str, new_doc_type: str) -> None:
+        set_book_doc_type(book_id, new_doc_type)
+        if str(book_id) in self.cards_dict:
+            card = self.cards_dict.pop(str(book_id))
+            card.hide()
+            card.deleteLater()
         self.data_changed.emit()
         self.load_data()
 
