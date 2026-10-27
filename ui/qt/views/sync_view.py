@@ -28,6 +28,7 @@ from ui.qt.icons import create_vector_icon
 from core.config import load_config, save_config, load_app_config, save_app_config
 from core.github_sync import GitHubSyncService
 from core.update_checker import check_for_updates, CURRENT_VERSION
+from core.error_handler import humanize_error
 
 
 class ScanSignals(QObject):
@@ -718,13 +719,15 @@ class SyncView(QWidget):
             if success:
                 QMessageBox.information(self, "Cloud-Sicherung erfolgreich", msg)
             else:
-                QMessageBox.critical(self, "Cloud-Sicherung fehlgeschlagen", msg)
+                friendly = humanize_error(msg, "Cloud-Sicherung fehlgeschlagen")
+                QMessageBox.critical(self, "Cloud-Sicherung fehlgeschlagen", friendly)
         else:
             if success:
                 self.scan_finished.emit()
                 QMessageBox.information(self, "Synchronisation abgeschlossen", msg)
             else:
-                QMessageBox.critical(self, "Download fehlgeschlagen", msg)
+                friendly = humanize_error(msg, "Download fehlgeschlagen")
+                QMessageBox.critical(self, "Download fehlgeschlagen", friendly)
 
     def _check_github_updates(self) -> None:
         self._append_log(f"Updater: Prüfe Releases auf Florian306/Campus-Bibliothek...")
@@ -754,6 +757,10 @@ class SyncView(QWidget):
             self._append_log(f"Updater: Du verwendest bereits die neueste Version (v{CURRENT_VERSION}).")
             QMessageBox.information(self, "Aktuell", f"Du verwendest bereits die neueste Version (v{CURRENT_VERSION}).")
         else:
-            msg = notes or "Kein Release gefunden."
-            self._append_log(f"Updater: Keine neuen Releases gefunden ({msg}).")
-            QMessageBox.information(self, "Updates", f"Aktuelle Version: v{CURRENT_VERSION}\n\nEs wurden keine neueren Versionen gefunden.")
+            if notes and ("http" in notes.lower() or "error" in notes.lower() or "failed" in notes.lower()):
+                friendly = humanize_error(notes, "Update-Prüfung")
+                self._append_log(f"Updater: {friendly.replace(chr(10), ' ')}")
+                QMessageBox.warning(self, "Verbindungsfehler beim Update-Check", friendly)
+            else:
+                self._append_log("Updater: Keine neueren Versionen gefunden.")
+                QMessageBox.information(self, "Updates", f"Aktuelle Version: v{CURRENT_VERSION}\n\nEs wurden keine neueren Versionen gefunden.")

@@ -6,6 +6,7 @@ import json
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Tuple
+from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
 CURRENT_VERSION = "1.8.0"
@@ -60,9 +61,11 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[st
         if e.code == 404:
             # Repository or release not published yet
             return False, None, None, None
-        return False, None, None, f"HTTP Fehler {e.code}"
+        friendly = humanize_error(e, "GitHub-Verbindung fehlgeschlagen")
+        return False, None, None, friendly
     except Exception as e:
-        return False, None, None, str(e)
+        friendly = humanize_error(e, "Update-Prüfung fehlgeschlagen")
+        return False, None, None, friendly
 
 
 def _is_version_greater(remote: str, current: str) -> bool:

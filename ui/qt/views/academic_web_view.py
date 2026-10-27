@@ -65,6 +65,7 @@ from ui.qt.dialogs.quick_look import QuickLookDialog
 from core.library_db import save_web_research_article
 from core.config import get_books_storage_dir
 from core.delta_scanner import index_single_book_file
+from core.error_handler import humanize_error
 
 
 
@@ -1150,7 +1151,8 @@ class AcademicWebView(QWidget):
     def _on_search_error(self, err_msg: str) -> None:
         self._is_searching = False
         self.btn_search.setEnabled(True)
-        self.lbl_status.setText(f"Suchfehler: {err_msg}")
+        friendly = humanize_error(err_msg, "Suche fehlgeschlagen")
+        self.lbl_status.setText(friendly.replace("\n", " — "))
         self.lbl_results_count.setText("Fehler")
 
     def _create_result_card(self, r: Dict[str, Any]) -> QFrame:
@@ -1663,8 +1665,9 @@ class AcademicWebView(QWidget):
                 f"Das Skript / Buch wurde heruntergeladen und einsortiert:\n\n{message}"
             )
         else:
+            friendly = humanize_error(message, "Download oder Einsortierung fehlgeschlagen")
             QMessageBox.warning(
                 self,
                 "Import-Fehler",
-                f"Download oder Einsortierung fehlgeschlagen:\n{message}"
+                friendly
             )

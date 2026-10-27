@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from ui.qt.icons import create_vector_icon
 from ui.qt.theme import NoFocusItemDelegate
 from core.library_db import get_all_books, get_edition_alerts, open_pdf_in_edge
+from core.error_handler import humanize_error
 
 
 class EditionScanSignals(QObject):
@@ -374,7 +375,8 @@ class RadarView(QWidget):
     def _on_check_error(self, err_msg: str) -> None:
         self.btn_action.setEnabled(True)
         self.btn_action.setText("  Auflagen online abgleichen")
-        self.lbl_status.setText(f"Hinweis: Online-Katalog temporär nicht erreichbar ({err_msg[:40]})")
+        friendly = humanize_error(err_msg, "Online-Katalog nicht erreichbar")
+        self.lbl_status.setText(f"Hinweis: {friendly.replace(chr(10), ' — ')}")
 
     def _on_row_double_clicked(self, row: int, col: int) -> None:
         if self.mode == "editions" and 0 <= row < len(self._alerts):

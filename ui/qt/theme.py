@@ -265,16 +265,23 @@ QProgressBar::chunk {
 
 /* Context Menu */
 QMenu {
-    background-color: #141C2E;
+    background-color: #121929;
     color: #F0F6FC;
-    border: 1px solid #324468;
+    border: 1px solid #233454;
     border-radius: 8px;
-    padding: 6px 0px;
+    padding: 6px 4px;
 }
 
 QMenu::item {
-    padding: 8px 24px;
+    padding: 7px 18px 7px 10px;
     font-size: 13px;
+    border-radius: 5px;
+    margin: 1px 2px;
+}
+
+QMenu::icon {
+    padding-left: 6px;
+    margin-right: 6px;
 }
 
 QMenu::item:selected {
@@ -282,10 +289,15 @@ QMenu::item:selected {
     color: #FFFFFF;
 }
 
+QMenu::item:disabled {
+    color: #48546A;
+    background: transparent;
+}
+
 QMenu::separator {
     height: 1px;
-    background: #232F48;
-    margin: 5px 10px;
+    background: #1C273C;
+    margin: 5px 8px;
 }
 
 /* Tooltip */

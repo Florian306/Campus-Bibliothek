@@ -46,6 +46,7 @@ from ai.textbook_search import (
     BOOK_FACULTY_KEYWORDS,
 )
 from ai.categories import STANDARD_CATEGORIES
+from core.error_handler import humanize_error
 
 
 def launch_in_browser(target_url: str) -> bool:
@@ -1131,7 +1132,8 @@ class TextbookSearchView(QWidget):
     def _on_search_error(self, err_msg: str) -> None:
         self.btn_search.setEnabled(True)
         self.btn_search.setText(" Fachbücher suchen")
-        self.lbl_status.setText(f"Fehler bei der Suche: {err_msg}")
+        friendly = humanize_error(err_msg, "Suche fehlgeschlagen")
+        self.lbl_status.setText(friendly.replace("\n", " — "))
 
     def _clear_results(self) -> None:
         self.active_cards.clear()

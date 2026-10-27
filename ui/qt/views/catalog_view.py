@@ -564,24 +564,27 @@ class CatalogView(QWidget):
             return
 
         menu = QMenu(self)
-        act_ql = menu.addAction("Quick-Look & Details (Leertaste)")
+        act_ql = menu.addAction(create_vector_icon("search", "#58A6FF", 14), "Quick-Look & Details (Leertaste)")
         act_ql.triggered.connect(lambda: self.quick_look_requested.emit(book_id))
 
-        act_open = menu.addAction("PDF direkt in Edge öffnen")
+        act_open = menu.addAction(create_vector_icon("desk", "#58A6FF", 14), "PDF direkt in Edge öffnen")
         act_open.triggered.connect(lambda: self._launch_book(book_id))
 
-        act_exp = menu.addAction("Im Explorer anzeigen")
+        act_exp = menu.addAction(create_vector_icon("export", "#8B949E", 14), "Im Windows Explorer anzeigen")
         act_exp.triggered.connect(lambda: self._show_in_explorer(book.get("file_path", "")))
 
-        act_extract = menu.addAction("✂ Seiten / Kapitel extrahieren...")
+        act_extract = menu.addAction(create_vector_icon("notes", "#E3B341", 14), "Seiten / Kapitel extrahieren...")
         act_extract.triggered.connect(lambda: self._extract_book_pages(book))
 
         ext_cnt = int(book.get("extract_count") or 0)
         if ext_cnt > 0:
-            act_show_ext = menu.addAction(f"📎 Angeheftete Kapitel ({ext_cnt}) anzeigen...")
+            act_show_ext = menu.addAction(create_vector_icon("bookmark", "#D2A8FF", 14), f"Angeheftete Kapitel ({ext_cnt}) anzeigen...")
             act_show_ext.triggered.connect(lambda: self.quick_look_requested.emit(book_id))
 
-        act_desk = menu.addAction("Auf Schreibtisch / entfernen")
+        is_on_desk = bool(book.get("is_on_desk"))
+        desk_text = "Vom Schreibtisch entfernen" if is_on_desk else "Auf den Schreibtisch legen"
+        desk_icon = create_vector_icon("trash", "#FF7B72", 14) if is_on_desk else create_vector_icon("check", "#3FB950", 14)
+        act_desk = menu.addAction(desk_icon, desk_text)
         act_desk.triggered.connect(lambda: self._toggle_desk_action(book_id))
 
         menu.addSeparator()
@@ -595,22 +598,20 @@ class CatalogView(QWidget):
             act_reclass = menu.addAction(create_vector_icon("notes", "#58A6FF", 14), "Als Studienbrief / Skript einordnen")
             act_reclass.triggered.connect(lambda: self._reclassify_doc(book_id, "study_script"))
 
+        # Citations Submenu
+        cite_menu = menu.addMenu(create_vector_icon("copy", "#58A6FF", 14), "Zitat kopieren")
+        act_bib = cite_menu.addAction(create_vector_icon("copy", "#8B949E", 13), "Als BibTeX kopieren (LaTeX)")
+        act_bib.triggered.connect(lambda: self._copy_citation(book, "bibtex"))
+        act_apa = cite_menu.addAction(create_vector_icon("copy", "#8B949E", 13), "Als APA 7 kopieren")
+        act_apa.triggered.connect(lambda: self._copy_citation(book, "apa"))
+        act_md = cite_menu.addAction(create_vector_icon("copy", "#8B949E", 13), "Als Markdown-Link kopieren")
+        act_md.triggered.connect(lambda: self._copy_citation(book, "md"))
+
         menu.addSeparator()
 
         # Delete Book Action
-        act_del = menu.addAction(create_vector_icon("trash", "#FF7B72", 14), "Buch aus Katalog entfernen...")
+        act_del = menu.addAction(create_vector_icon("trash", "#FF7B72", 14), "Aus Katalog entfernen...")
         act_del.triggered.connect(lambda: self._delete_book_prompt(book_id))
-
-        menu.addSeparator()
-
-        # Citations Submenu
-        cite_menu = menu.addMenu("Zitat kopieren")
-        act_bib = cite_menu.addAction("Als BibTeX kopieren (LaTeX)")
-        act_bib.triggered.connect(lambda: self._copy_citation(book, "bibtex"))
-        act_apa = cite_menu.addAction("Als APA 7 kopieren")
-        act_apa.triggered.connect(lambda: self._copy_citation(book, "apa"))
-        act_md = cite_menu.addAction("Als Markdown-Link kopieren")
-        act_md.triggered.connect(lambda: self._copy_citation(book, "md"))
 
         menu.exec(global_pos)
 

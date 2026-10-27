@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.config import get_database_path, load_app_config, save_app_config
+from core.error_handler import humanize_error
 
 GIST_FILENAME = "campus_library_sync.json.gz"
 GIST_DESCRIPTION = "Campus-Bibliothek • Encrypted & Compressed Private Cloud Backup"
@@ -155,9 +156,11 @@ class GitHubSyncService:
                     save_app_config(cfg)
                 return True, f"Erfolgreich synchronisiert! {len(data['books'])} Bücher und {len(data['desk_items'])} Lesestände gesichert."
         except urllib.error.HTTPError as e:
-            return False, f"GitHub Fehler {e.code}: {e.read().decode('utf-8', errors='ignore')[:100]}"
+            friendly = humanize_error(e, "GitHub-Verbindung fehlgeschlagen")
+            return False, friendly
         except Exception as e:
-            return False, f"Fehler bei Synchronisation: {str(e)}"
+            friendly = humanize_error(e, "Fehler bei der Synchronisation")
+            return False, friendly
 
     @staticmethod
     def pull_from_gist() -> Tuple[bool, str]:
@@ -188,8 +191,12 @@ class GitHubSyncService:
                 raw_bytes = bytes.fromhex(compressed_hex)
                 decompressed = gzip.decompress(raw_bytes).decode("utf-8")
                 payload = json.loads(decompressed)
+        except urllib.error.HTTPError as e:
+            friendly = humanize_error(e, "GitHub-Verbindung fehlgeschlagen")
+            return False, friendly
         except Exception as e:
-            return False, f"Download fehlgeschlagen: {str(e)}"
+            friendly = humanize_error(e, "Download fehlgeschlagen")
+            return False, friendly
 
         # Restore / merge into SQLite
         return GitHubSyncService._restore_payload(payload)

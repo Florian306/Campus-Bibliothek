@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QFont
 
 from ui.qt.icons import create_vector_icon
+from core.error_handler import humanize_error
 
 
 class UpdateDownloadThread(QThread):
@@ -217,11 +218,13 @@ class UpdateProgressDialog(QDialog):
                 subprocess.Popen(cmd)
                 sys.exit(0)
         except Exception as e:
-            QMessageBox.critical(self, "Fehler beim Ausführen des Updates", f"Konnte {target_path} nicht installieren:\n{e}")
+            friendly = humanize_error(e, "Konnte das Update nicht ausführen")
+            QMessageBox.critical(self, "Fehler beim Ausführen des Updates", friendly)
             self.reject()
 
     def _on_error(self, err_msg: str):
-        QMessageBox.critical(self, "Download-Fehler", f"Das Update konnte nicht geladen werden:\n{err_msg}")
+        friendly = humanize_error(err_msg, "Das Update konnte nicht heruntergeladen werden")
+        QMessageBox.critical(self, "Download-Fehler", friendly)
         self.reject()
 
     def _on_cancel(self):

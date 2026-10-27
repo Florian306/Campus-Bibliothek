@@ -58,6 +58,7 @@ from ai.curated_papers import seed_all_faculty_papers
 from ai.daily_paper import get_daily_paper_highlight
 from ai.categories import STANDARD_CATEGORIES
 from ui.qt.dialogs.quick_look import QuickLookDialog
+from core.error_handler import humanize_error
 from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
 from core.config import load_config
 
@@ -2742,7 +2743,8 @@ class ResearchView(QWidget):
     def _on_search_error(self, err_msg: str) -> None:
         self.btn_search.setEnabled(True)
         self.btn_search.setText("  Paper suchen")
-        self.lbl_search_status.setText(f"Suchfehler: {err_msg[:60]}")
+        friendly = humanize_error(err_msg, "Suche fehlgeschlagen")
+        self.lbl_search_status.setText(friendly.replace("\n", " — "))
 
     def inspect_paper(self, paper: Dict[str, Any]) -> None:
         """Instantly inspects a paper in the right panel without requiring it to be saved."""
@@ -3106,7 +3108,8 @@ class ResearchView(QWidget):
                 self.inspect_paper(saved)
 
     def _on_download_error(self, err: str) -> None:
-        self.lbl_search_status.setText(f"Download-Hinweis: {err}")
+        friendly = humanize_error(err, "Download fehlgeschlagen")
+        self.lbl_search_status.setText(f"Hinweis: {friendly.replace(chr(10), ' — ')}")
 
     def _open_direct_paper(self, paper: Dict[str, Any]) -> None:
         """Opens the paper directly via DOI or web URL without university proxy."""
