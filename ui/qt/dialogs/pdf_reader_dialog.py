@@ -386,6 +386,7 @@ class PdfReaderDialog(QDialog):
         self.setWindowFlags(
             Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
         )
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0B0F19;
@@ -1337,12 +1338,11 @@ class PdfReaderDialog(QDialog):
         self.view.pageNavigator().jump(target_idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
         self.view.setFocus()
 
-        # Defer auxiliary tasks to background events so window pops open with zero delay
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(20, lambda: self._record_progress(target_idx + 1))
-        QTimer.singleShot(40, self._populate_toc)
-        QTimer.singleShot(60, self._refresh_bookmarks_list)
-        QTimer.singleShot(60, lambda: self._update_bookmark_button_state(self.initial_page))
+        # Run initial setups safely
+        self._record_progress(target_idx + 1)
+        self._populate_toc()
+        self._refresh_bookmarks_list()
+        self._update_bookmark_button_state(self.initial_page)
 
     def _on_sidebar_tab_changed(self, index: int) -> None:
         # Tab 2 is "🖼️ Vorschau" (Thumbnails)
@@ -2316,17 +2316,41 @@ class PdfReaderDialog(QDialog):
             curr_p = self.view.pageNavigator().currentPage() + 1
             self._record_progress(curr_p)
 
+    def _cleanup_resources(self) -> None:
+        """Terminates all active worker threads and releases QtPdf resources cleanly."""
+        try:
+            if hasattr(self, "_thumb_thread") and self._thumb_thread and self._thumb_thread.isRunning():
+                self._thumb_thread.cancel()
+                self._thumb_thread.wait(300)
+            if hasattr(self, "_toc_thread") and self._toc_thread and self._toc_thread.isRunning():
+                self._toc_thread.quit()
+                self._toc_thread.wait(200)
+            if hasattr(self, "_explainer_thread") and self._explainer_thread and self._explainer_thread.isRunning():
+                self._explainer_thread.quit()
+                self._explainer_thread.wait(200)
+            if hasattr(self, "_dict_thread") and self._dict_thread and self._dict_thread.isRunning():
+                self._dict_thread.quit()
+                self._dict_thread.wait(200)
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "doc") and self.doc:
+                self.doc.close()
+        except Exception:
+            pass
+
     def accept(self) -> None:
         self._save_current_position()
+        self._cleanup_resources()
         super().accept()
 
     def reject(self) -> None:
         self._save_current_position()
+        self._cleanup_resources()
         super().reject()
 
     def closeEvent(self, event) -> None:
         self._save_current_position()
-        if self._thumb_thread and self._thumb_thread.isRunning():
-            self._thumb_thread.cancel()
-            self._thumb_thread.wait(200)
+        self._cleanup_resources()
         super().closeEvent(event)
