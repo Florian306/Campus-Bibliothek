@@ -248,7 +248,6 @@ class CampusMainWindow(QMainWindow):
             self._restore_from_tray()
 
     def _restore_from_tray(self) -> None:
-        self.showNormal()
         self.showMaximized()
         self.activateWindow()
         self.raise_()
@@ -313,12 +312,14 @@ class CampusMainWindow(QMainWindow):
 
         if view:
             self._views_cache[key] = view
-            # Swap placeholder in stack
+            # Swap placeholder in stack safely without triggering a detached top-level window
             old_widget = self.stack.widget(idx)
-            self.stack.removeWidget(old_widget)
-            self.stack.insertWidget(idx, view)
             if old_widget:
+                old_widget.hide()
+                self.stack.removeWidget(old_widget)
+                old_widget.setParent(None)
                 old_widget.deleteLater()
+            self.stack.insertWidget(idx, view)
 
         return view
 
