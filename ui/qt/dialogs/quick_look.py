@@ -270,7 +270,7 @@ class QuickLookDialog(QDialog):
         """)
 
         # 1. Tab: Inhaltsverzeichnis (TOC)
-        self.toc_tab = QWidget()
+        self.toc_tab = QWidget(self.tabs)
         self.toc_layout = QVBoxLayout(self.toc_tab)
         self.toc_layout.setContentsMargins(10, 10, 10, 10)
         self.toc_layout.setSpacing(8)
@@ -296,12 +296,12 @@ class QuickLookDialog(QDialog):
             self.lbl_toc_status.setText("Keine Datei verknüpft oder Datei existiert nicht mehr.")
 
         # 2. Tab: Extrahierte Kapitel & Anhänge (Parent-Child)
-        self.extracts_tab = QWidget()
+        self.extracts_tab = QWidget(self.tabs)
         self._build_extracts_tab()
         self.tabs.addTab(self.extracts_tab, create_vector_icon("download", "#58A6FF", 14), "Kapitel / Anhänge")
 
         # 3. Tab: Zusammenfassung & Notizen
-        notes_tab = QWidget()
+        notes_tab = QWidget(self.tabs)
         notes_layout = QVBoxLayout(notes_tab)
         notes_layout.setContentsMargins(12, 12, 12, 12)
         notes_layout.setSpacing(8)
@@ -652,7 +652,7 @@ class QuickLookDialog(QDialog):
         tab_layout.addLayout(top_bar)
 
         # Scrollable container for extract cards
-        self.scroll_extracts = QScrollArea()
+        self.scroll_extracts = QScrollArea(self.extracts_tab)
         self.scroll_extracts.setWidgetResizable(True)
         self.scroll_extracts.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_extracts.setStyleSheet("""
@@ -662,7 +662,7 @@ class QuickLookDialog(QDialog):
             }
         """)
 
-        self.extracts_container = QWidget()
+        self.extracts_container = QWidget(self.scroll_extracts)
         self.extracts_container.setStyleSheet("background-color: transparent; border: none;")
         self.extracts_layout = QVBoxLayout(self.extracts_container)
         self.extracts_layout.setContentsMargins(0, 0, 4, 0)

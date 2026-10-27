@@ -209,7 +209,7 @@ class CampusMainWindow(QMainWindow):
             return
 
         self.tray_icon = QSystemTrayIcon(icon, self)
-        tray_menu = QMenu()
+        tray_menu = QMenu(self)
         tray_menu.setStyleSheet("""
             QMenu {
                 background-color: #161B22;

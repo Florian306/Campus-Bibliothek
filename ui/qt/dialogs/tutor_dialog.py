@@ -98,6 +98,7 @@ class TutorStudioDialog(QDialog):
 
         self.setWindowTitle(f"KI-Tutor & Prüfungs-Studio • {self.book_title}")
         self.resize(920, 680)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0E1422;

@@ -83,7 +83,7 @@ class UpdateProgressDialog(QDialog):
 
         self.setWindowTitle(f"Campus-Bibliothek AI – Update auf v{version_tag}")
         self.setFixedSize(460, 210)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0D1117;

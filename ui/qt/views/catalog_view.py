@@ -179,7 +179,7 @@ class CatalogView(QWidget):
         self.stacked_views = QStackedWidget(self)
 
         # View 0: Virtual Shelf ScrollArea
-        self.shelf_scroll = QScrollArea(self)
+        self.shelf_scroll = QScrollArea(self.stacked_views)
         self.shelf_scroll.setWidgetResizable(True)
         self.shelf_scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
 
@@ -194,7 +194,7 @@ class CatalogView(QWidget):
         self.stacked_views.addWidget(self.shelf_scroll)
 
         # View 1: Catalog Table
-        self.table_books = QTableWidget(self)
+        self.table_books = QTableWidget(self.stacked_views)
         self.table_books.setItemDelegate(NoFocusItemDelegate(self.table_books))
         self.table_books.setColumnCount(7)
         self.table_books.setHorizontalHeaderLabels(["Pult", "Buchtitel", "Autor", "Auflage", "Seiten", "Kapitel", "Fachbereiche"])
@@ -352,22 +352,35 @@ class CatalogView(QWidget):
             self._populate_table()
 
     def _render_shelf_grid(self) -> None:
-        """Starts batch rendering for the shelf grid without freezing the UI."""
+        """Starts batch rendering for the shelf grid with flicker-free updates."""
         self._shelf_batch_timer.stop()
 
-        # Hide all existing cards in cache so off-grid cards never remain visible or misplaced
-        for card in self.cards_dict.values():
-            card.hide()
+        cols, gap, side_margin = self._calculate_shelf_geometry()
+        self._current_cols = cols
 
-        # Clear existing layout items completely
-        while self.shelf_grid.count():
-            item = self.shelf_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.hide()
+        # Freeze visual painting on container during bulk layout update
+        self.shelf_container.setUpdatesEnabled(False)
+        try:
+            self.shelf_grid.setHorizontalSpacing(gap)
+            self.shelf_grid.setVerticalSpacing(18)
+            self.shelf_grid.setContentsMargins(side_margin, 10, side_margin, 20)
 
-        self._shelf_render_idx = 0
-        self._render_next_shelf_batch(batch_size=24)
+            # Collect active book IDs for current filter
+            active_ids = {str(b["id"]) for b in self.filtered_books}
+
+            # Hide cards that are filtered out
+            for bid, card in self.cards_dict.items():
+                if bid not in active_ids and card.isVisible():
+                    card.hide()
+
+            # Remove layout items without hiding active cards to avoid visual flash
+            while self.shelf_grid.count():
+                self.shelf_grid.takeAt(0)
+
+            self._shelf_render_idx = 0
+            self._render_next_shelf_batch(batch_size=36)
+        finally:
+            self.shelf_container.setUpdatesEnabled(True)
 
     def _calculate_shelf_geometry(self) -> tuple[int, int, int]:
         """Calculates optimal column count, horizontal gap, and side margin to fill width evenly."""
@@ -381,15 +394,12 @@ class CatalogView(QWidget):
         side_margin = max(8, (leftover + 24) // 2)
         return cols, gap, side_margin
 
-    def _render_next_shelf_batch(self, batch_size: int = 28) -> None:
+    def _render_next_shelf_batch(self, batch_size: int = 48) -> None:
         if not self.filtered_books:
             return
 
         cols, gap, side_margin = self._calculate_shelf_geometry()
         self._current_cols = cols
-        self.shelf_grid.setHorizontalSpacing(gap)
-        self.shelf_grid.setVerticalSpacing(18)
-        self.shelf_grid.setContentsMargins(side_margin, 10, side_margin, 20)
 
         start = self._shelf_render_idx
         end = min(start + batch_size, len(self.filtered_books))
@@ -411,7 +421,8 @@ class CatalogView(QWidget):
             card.set_selected(bid == self.selected_book_id)
             r, c = divmod(idx, cols)
             self.shelf_grid.addWidget(card, r, c)
-            card.show()
+            if not card.isVisible():
+                card.show()
 
         self._shelf_render_idx = end
         if self._shelf_render_idx < len(self.filtered_books):

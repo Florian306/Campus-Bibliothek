@@ -34,6 +34,7 @@ class StudyPlanDialog(QDialog):
 
         self.setWindowTitle(f"Lernplan konfigurieren • {self.book_title}")
         self.resize(520, 420)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0E1422;

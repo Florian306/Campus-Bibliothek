@@ -65,6 +65,7 @@ class PdfExtractDialog(QDialog):
         self.setWindowTitle(f"Seiten extrahieren – {book.get('title', 'Dokument')}")
         self.resize(840, 580)
         self.setMinimumSize(720, 500)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setStyleSheet("""
             QDialog {
                 background-color: #121722;
