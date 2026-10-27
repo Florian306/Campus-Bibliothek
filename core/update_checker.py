@@ -9,7 +9,8 @@ from typing import Any, Dict, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "1.8.4"
+CURRENT_VERSION = "1.8.5"
+
 
 
 def check_for_updates() -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:

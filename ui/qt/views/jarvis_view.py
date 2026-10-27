@@ -132,14 +132,14 @@ class JarvisMailReaderDialog(QDialog):
         subj = self.mail_data.get("subject", "E-Mail")
         self.setWindowTitle(f"Gmail – {subj[:80]}")
         
-        # Enable full Windows window controls: Min, Max, Close, and free resizing
+        # Enable dialog controls: Title, Maximize, Close, and free resizing
         self.setWindowFlags(
-            Qt.Window
+            Qt.Dialog
             | Qt.WindowTitleHint
-            | Qt.WindowSystemMenuHint
-            | Qt.WindowMinMaxButtonsHint
+            | Qt.WindowMaximizeButtonHint
             | Qt.WindowCloseButtonHint
         )
+
         self.setSizeGripEnabled(True)
         self.setMinimumSize(700, 500)
         self.resize(1080, 780)

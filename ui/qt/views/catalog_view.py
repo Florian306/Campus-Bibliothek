@@ -562,7 +562,7 @@ class CatalogView(QWidget):
         saved_page = book.get("current_page") or 1
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
-            dlg = PdfReaderDialog(book, initial_page=saved_page, parent=self)
+            dlg = PdfReaderDialog(book, initial_page=saved_page, parent=self.window())
             dlg.exec()
             self._refresh_single_book(book_id)
         else:
@@ -652,7 +652,7 @@ class CatalogView(QWidget):
 
     def _extract_book_pages(self, book: Dict[str, Any]) -> None:
         from ui.qt.dialogs.pdf_extract_dialog import PdfExtractDialog
-        dlg = PdfExtractDialog(book, parent=self)
+        dlg = PdfExtractDialog(book, parent=self.window())
         if dlg.exec():
             self.data_changed.emit()
             self.load_data()

@@ -19,7 +19,7 @@ def enforce_single_instance() -> bool:
     if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         hwnd = user32.FindWindowW(None, "Campus-Bibliothek AI – Virtueller Lehrbuch-Workspace")
         if hwnd:
-            user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
             user32.SetForegroundWindow(hwnd)
         return False
     return True

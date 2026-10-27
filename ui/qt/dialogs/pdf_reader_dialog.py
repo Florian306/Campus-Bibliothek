@@ -384,9 +384,9 @@ class PdfReaderDialog(QDialog):
         self.resize(1300, 880)
         self.setMinimumSize(1020, 680)
         self.setWindowFlags(
-            Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
+            Qt.Dialog | Qt.WindowTitleHint | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
         )
-        self.setAttribute(Qt.WA_DeleteOnClose, True)
+
         self.setStyleSheet("""
             QDialog {
                 background-color: #0B0F19;

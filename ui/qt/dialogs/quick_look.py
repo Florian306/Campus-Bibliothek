@@ -514,12 +514,13 @@ class QuickLookDialog(QDialog):
             page = self.book.get("current_page", 1)
             cfg = load_config()
             parent_win = self.parentWidget()
+            top_parent = parent_win.window() if (parent_win and hasattr(parent_win, "window")) else self.window()
             book_data = self.book
             cached_toc = self._cached_toc
             self.was_data_modified = True
             self.accept()
             if cfg.get("use_internal_reader", True):
-                dlg = PdfReaderDialog(book_data, initial_page=page, toc_items=cached_toc, parent=parent_win)
+                dlg = PdfReaderDialog(book_data, initial_page=page, toc_items=cached_toc, parent=top_parent)
                 dlg.exec()
             else:
                 open_pdf_in_edge(path, page=page)
@@ -857,7 +858,7 @@ class QuickLookDialog(QDialog):
                 "title": f"{self.book.get('title', '')} • {title}",
                 "file_path": file_path,
             }
-            dlg = PdfReaderDialog(ext_book, initial_page=max(1, int(initial_page or 1)), parent=self)
+            dlg = PdfReaderDialog(ext_book, initial_page=max(1, int(initial_page or 1)), parent=self.window())
             dlg.exec()
             self._refresh_extracts_list()
         else:

@@ -464,11 +464,9 @@ class CampusMainWindow(QMainWindow):
                     self.view_scripts._refresh_single_book(book_id)
 
     def closeEvent(self, event) -> None:
-        """Minimizes to tray if available for instantaneous reopening, else exits cleanly."""
-        if hasattr(self, "tray_icon") and self.tray_icon and self.tray_icon.isVisible():
-            event.ignore()
-            self.hide()
-            return
+        """Cleans up resources, hides tray icon, syncs if enabled, and exits cleanly."""
+        if hasattr(self, "tray_icon") and self.tray_icon:
+            self.tray_icon.hide()
 
         try:
             self.hide()
@@ -479,4 +477,7 @@ class CampusMainWindow(QMainWindow):
                 GitHubSyncService.push_to_gist()
         except Exception:
             pass
-        os._exit(0)
+
+        event.accept()
+        QApplication.quit()
+
