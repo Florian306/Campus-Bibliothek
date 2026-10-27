@@ -489,7 +489,7 @@ class PdfReaderDialog(QDialog):
         top_layout.addWidget(sep1)
 
         # Page Navigation Pill Capsule: [ ‹ ] [ Page Input ] [ / Total ] [ › ]
-        nav_capsule = FixedPillCapsule(156, 32)
+        nav_capsule = FixedPillCapsule(180, 32)
         nav_capsule.setStyleSheet("""
             QFrame#NavCapsule {
                 background-color: #111726;
@@ -502,8 +502,8 @@ class PdfReaderDialog(QDialog):
         """)
         nav_capsule.setObjectName("NavCapsule")
         nav_layout = QHBoxLayout(nav_capsule)
-        nav_layout.setContentsMargins(4, 2, 4, 2)
-        nav_layout.setSpacing(3)
+        nav_layout.setContentsMargins(6, 2, 6, 2)
+        nav_layout.setSpacing(4)
 
         # Micro icon-button stylesheet to strictly override global QPushButton padding
         icon_btn_style = """
@@ -563,53 +563,39 @@ class PdfReaderDialog(QDialog):
         btn_prev.clicked.connect(self._prev_page)
         nav_layout.addWidget(btn_prev)
 
-        # Clean Page Number SpinBox with explicitly styled child QLineEdit
-        self.spin_page = QSpinBox()
-        self.spin_page.setButtonSymbols(QSpinBox.NoButtons)
-        self.spin_page.setMinimum(1)
-        self.spin_page.setMaximum(9999)
-        self.spin_page.setValue(self.initial_page)
-        self.spin_page.setFixedWidth(50)
+        # Clean Page Number LineEdit with clear visibility and generous width
+        from PySide6.QtGui import QIntValidator
+        self.spin_page = QLineEdit()
+        self.spin_page.setValidator(QIntValidator(1, 99999, self))
+        self.spin_page.setText(str(self.initial_page))
+        self.spin_page.setFixedWidth(54)
         self.spin_page.setFixedHeight(24)
         self.spin_page.setAlignment(Qt.AlignCenter)
         self.spin_page.setToolTip("Direkt zu Seitenzahl springen (Zahl eingeben + Enter)")
         self.spin_page.setStyleSheet("""
-            QSpinBox {
+            QLineEdit {
                 background-color: #172033;
                 color: #58A6FF;
                 border: 1px solid #283955;
                 border-radius: 4px;
                 font-weight: 700;
-                font-size: 13px;
-                padding: 0px;
+                font-size: 12px;
+                padding: 1px 3px;
                 margin: 0px;
             }
-            QSpinBox:focus {
+            QLineEdit:focus {
                 border-color: #58A6FF;
                 background-color: #1D2A45;
                 color: #FFFFFF;
             }
-            QSpinBox QLineEdit {
-                background: transparent;
-                color: #58A6FF;
-                border: none;
-                padding: 0px;
-                margin: 0px;
-                font-weight: 700;
-                font-size: 13px;
-                qproperty-alignment: AlignCenter;
-            }
-            QSpinBox QLineEdit:focus {
-                color: #FFFFFF;
-            }
         """)
-        self.spin_page.valueChanged.connect(self._on_spin_page_changed)
+        self.spin_page.returnPressed.connect(self._on_page_input_submitted)
         nav_layout.addWidget(self.spin_page)
 
         # Total Pages Label
         self.lbl_total_pages = QLabel("/ 1")
         self.lbl_total_pages.setFont(QFont("Segoe UI", 9, QFont.Bold))
-        self.lbl_total_pages.setStyleSheet("color: #798CA6; border: none; background: transparent; padding: 0 2px;")
+        self.lbl_total_pages.setStyleSheet("color: #798CA6; border: none; background: transparent; padding: 0 4px;")
         nav_layout.addWidget(self.lbl_total_pages)
 
         # Next Page Button
@@ -1344,20 +1330,19 @@ class PdfReaderDialog(QDialog):
         self.doc.load(self.file_path)
         p_count = self.doc.pageCount()
         self.lbl_total_pages.setText(f"/ {p_count}")
-        self.spin_page.setMaximum(max(1, p_count))
 
-        # Jump to initial page
+        # Jump to initial page immediately for instant first-frame render
         target_idx = max(0, min(self.initial_page - 1, p_count - 1))
+        self._update_page_input(target_idx + 1)
         self.view.pageNavigator().jump(target_idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
         self.view.setFocus()
-        self._record_progress(target_idx + 1)
 
-        # Load TOC tree
-        self._populate_toc()
-
-        # Bookmarks list
-        self._refresh_bookmarks_list()
-        self._update_bookmark_button_state(self.initial_page)
+        # Defer auxiliary tasks to background events so window pops open with zero delay
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(20, lambda: self._record_progress(target_idx + 1))
+        QTimer.singleShot(40, self._populate_toc)
+        QTimer.singleShot(60, self._refresh_bookmarks_list)
+        QTimer.singleShot(60, lambda: self._update_bookmark_button_state(self.initial_page))
 
     def _on_sidebar_tab_changed(self, index: int) -> None:
         # Tab 2 is "🖼️ Vorschau" (Thumbnails)
@@ -1722,13 +1707,18 @@ class PdfReaderDialog(QDialog):
             p_int = max(1, int(page))
             self._jump_to_page(p_int)
 
+    def _update_page_input(self, page_num: int) -> None:
+        self.spin_page.blockSignals(True)
+        self.spin_page.setText(str(page_num))
+        self.spin_page.blockSignals(False)
+
     def _jump_to_page(self, page_num: int, keep_focus: bool = False) -> None:
         p_count = self.doc.pageCount()
         if p_count <= 0:
             return
         idx = max(0, min(page_num - 1, p_count - 1))
         self._is_jumping = True
-        self.spin_page.setValue(idx + 1)
+        self._update_page_input(idx + 1)
         self.view.pageNavigator().jump(idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
         self._is_jumping = False
         self._record_progress(idx + 1)
@@ -1740,9 +1730,7 @@ class PdfReaderDialog(QDialog):
     def _on_pdf_page_changed(self, page_index: int) -> None:
         current_p = page_index + 1
         if not self._is_jumping:
-            self.spin_page.blockSignals(True)
-            self.spin_page.setValue(current_p)
-            self.spin_page.blockSignals(False)
+            self._update_page_input(current_p)
             self._record_progress(current_p)
             self._update_bookmark_button_state(current_p)
             self._sync_active_thumbnail(page_index)
@@ -1752,6 +1740,17 @@ class PdfReaderDialog(QDialog):
             self.list_thumbnails.blockSignals(True)
             self.list_thumbnails.setCurrentRow(page_index)
             self.list_thumbnails.blockSignals(False)
+
+    def _on_page_input_submitted(self) -> None:
+        txt = self.spin_page.text().strip()
+        if txt.isdigit():
+            val = int(txt)
+            p_count = self.doc.pageCount() if self.doc else 1
+            val = max(1, min(val, p_count))
+            self._jump_to_page(val)
+        else:
+            cur = self.view.pageNavigator().currentPage() + 1
+            self._update_page_input(cur)
 
     def _on_spin_page_changed(self, val: int) -> None:
         if not self._is_jumping:
@@ -1774,7 +1773,7 @@ class PdfReaderDialog(QDialog):
         self.view.setZoomFactor(self.view.zoomFactor() * 1.15)
         if cur >= 0:
             self.view.pageNavigator().jump(cur, QPointF(0, 0), self.view.zoomFactor())
-            self.spin_page.setValue(cur + 1)
+            self._update_page_input(cur + 1)
         self._is_jumping = False
 
     def _zoom_out(self) -> None:
@@ -1784,7 +1783,7 @@ class PdfReaderDialog(QDialog):
         self.view.setZoomFactor(self.view.zoomFactor() / 1.15)
         if cur >= 0:
             self.view.pageNavigator().jump(cur, QPointF(0, 0), self.view.zoomFactor())
-            self.spin_page.setValue(cur + 1)
+            self._update_page_input(cur + 1)
         self._is_jumping = False
 
     def _fit_width(self) -> None:
@@ -1793,7 +1792,7 @@ class PdfReaderDialog(QDialog):
         self.view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         if cur >= 0:
             self.view.pageNavigator().jump(cur, QPointF(0, 0), self.view.zoomFactor())
-            self.spin_page.setValue(cur + 1)
+            self._update_page_input(cur + 1)
         self._is_jumping = False
 
     def _toggle_toc_panel(self) -> None:
