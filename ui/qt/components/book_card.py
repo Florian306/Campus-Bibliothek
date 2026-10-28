@@ -6,7 +6,7 @@ import os
 import re
 from typing import Any, Dict, Optional
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QImage, QColor, QFont
+from PySide6.QtGui import QPixmap, QImage, QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QWidget,
     QFrame,
@@ -240,20 +240,21 @@ class BookCard(QFrame):
         )
         if vol_text:
             self.lbl_vol_badge = QLabel(vol_text, cover_frame)
-            self.lbl_vol_badge.setFont(QFont("Segoe UI", 7, QFont.Bold))
+            vol_font = QFont("Segoe UI", 8, QFont.Bold)
+            self.lbl_vol_badge.setFont(vol_font)
             self.lbl_vol_badge.setAlignment(Qt.AlignCenter)
             self.lbl_vol_badge.setStyleSheet("""
                 QLabel {
-                    background-color: rgba(15, 22, 38, 235);
-                    color: #58A6FF;
+                    background-color: rgba(13, 19, 34, 242);
+                    color: #79B8FF;
                     border: 1px solid #388BFD;
-                    border-radius: 4px;
-                    padding: 1px 6px;
+                    border-radius: 5px;
+                    padding: 0px;
                 }
             """)
-            self.lbl_vol_badge.adjustSize()
-            bw = max(46, self.lbl_vol_badge.width() + 4)
-            bh = 18
+            fm = QFontMetrics(vol_font)
+            bw = max(62, fm.horizontalAdvance(vol_text) + 18)
+            bh = 20
             self.lbl_vol_badge.setGeometry(
                 self.COVER_WIDTH - bw - 6,
                 self.COVER_HEIGHT - bh - 6,
@@ -365,6 +366,8 @@ class BookCard(QFrame):
             self.prog_bar.setVisible(is_desk and pct > 0)
 
     def set_selected(self, selected: bool) -> None:
+        if self.is_selected == selected:
+            return
         self.is_selected = selected
         if hasattr(self, "sel_badge"):
             self.sel_badge.setVisible(selected)
