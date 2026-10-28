@@ -1171,8 +1171,83 @@ def dismiss_edition_alert(book_id: str) -> None:
             conn.execute("UPDATE edition_alerts SET is_dismissed = 1 WHERE book_id = ?", (book_id,))
 
 
+def resolve_and_heal_book_path(file_path: str, book_id: Optional[str] = None) -> str:
+    """Self-healing file path resolver:
+    If a PDF was moved out of a subfolder into the main library folder (or vice versa),
+    or had a duplicate suffix like ' (1)' removed, automatically locates the file on disk
+    and updates the SQLite database entry in-place.
+    """
+    if not file_path:
+        return file_path
+    if os.path.isfile(file_path):
+        return file_path
+
+    from core.config import get_books_storage_dir
+    storage_dir = get_books_storage_dir()
+    if not storage_dir or not os.path.isdir(storage_dir):
+        return file_path
+
+    target_fn = os.path.basename(file_path)
+    target_fn_low = target_fn.lower()
+    # Also prepare base name without " (1)", " (2)" collision suffixes
+    stem, ext = os.path.splitext(target_fn)
+    clean_stem = re.sub(r'\s*\(\d+\)$', '', stem).strip().lower()
+    alt_fn_low = f"{clean_stem}{ext.lower()}"
+
+    found_path: Optional[str] = None
+
+    # 1. Fast check directly in storage_dir root
+    cand_root = os.path.join(storage_dir, target_fn)
+    if os.path.isfile(cand_root):
+        found_path = cand_root
+    else:
+        base_without_num = re.sub(r'\s*\(\d+\)$', '', stem).strip()
+        cand_alt = os.path.join(storage_dir, f"{base_without_num}{ext}")
+        if os.path.isfile(cand_alt):
+            found_path = cand_alt
+
+    # 2. Walk storage_dir if not found in root
+    if not found_path:
+        fallback_match = None
+        for root, _, files in os.walk(storage_dir):
+            for f in files:
+                fl = f.lower()
+                if fl == target_fn_low:
+                    found_path = os.path.join(root, f)
+                    break
+                if fl == alt_fn_low and fallback_match is None:
+                    fallback_match = os.path.join(root, f)
+            if found_path:
+                break
+        if not found_path and fallback_match:
+            found_path = fallback_match
+
+    if found_path and os.path.isfile(found_path):
+        new_fn = os.path.basename(found_path)
+        try:
+            with _db_write_lock:
+                conn = get_db_connection()
+                with conn:
+                    if book_id:
+                        conn.execute(
+                            "UPDATE books SET file_path = ?, filename = ? WHERE id = ?;",
+                            (found_path, new_fn, str(book_id)),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE books SET file_path = ?, filename = ? WHERE file_path = ?;",
+                            (found_path, new_fn, file_path),
+                        )
+        except Exception:
+            pass
+        return found_path
+
+    return file_path
+
+
 def open_pdf_in_system_viewer(file_path: str) -> bool:
     """Launches the PDF file directly in Windows default PDF viewer without moving it."""
+    file_path = resolve_and_heal_book_path(file_path)
     if not os.path.exists(file_path):
         return False
     try:
@@ -1191,6 +1266,7 @@ def open_pdf_in_system_viewer(file_path: str) -> bool:
 
 def open_pdf_in_edge(file_path: str, page: int = 1) -> bool:
     """Launches the PDF file directly in Microsoft Edge at a specific page number."""
+    file_path = resolve_and_heal_book_path(file_path)
     if not os.path.exists(file_path):
         return False
     try:

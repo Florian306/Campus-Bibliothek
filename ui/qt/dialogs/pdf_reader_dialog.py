@@ -47,6 +47,7 @@ from core.library_db import (
     get_book_bookmarks,
     toggle_book_bookmark,
     is_page_bookmarked,
+    resolve_and_heal_book_path,
 )
 from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
 from ai.tutor_engine import _resolve_model
@@ -1324,6 +1325,10 @@ class PdfReaderDialog(QDialog):
         """
 
     def _load_document(self) -> None:
+        if self.file_path and not os.path.exists(self.file_path):
+            self.file_path = resolve_and_heal_book_path(self.file_path, book_id=self.book_id)
+            self.book["file_path"] = self.file_path
+
         if not self.file_path or not os.path.exists(self.file_path):
             QMessageBox.critical(self, "Fehler", f"PDF-Datei nicht gefunden:\n{self.file_path}")
             return

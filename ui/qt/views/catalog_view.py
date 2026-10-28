@@ -43,6 +43,7 @@ from core.library_db import (
     get_book_categories,
     delete_book,
     set_book_doc_type,
+    resolve_and_heal_book_path,
 )
 from core.config import load_config
 from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
@@ -811,6 +812,8 @@ class CatalogView(QWidget):
         book = next((b for b in self.master_books if str(b["id"]) == str(book_id)), None)
         if not book or not book.get("file_path"):
             return
+        resolved = resolve_and_heal_book_path(book["file_path"], book_id=str(book_id))
+        book["file_path"] = resolved
         saved_page = book.get("current_page") or 1
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
@@ -818,7 +821,7 @@ class CatalogView(QWidget):
             dlg.exec()
             self._refresh_single_book(book_id)
         else:
-            open_pdf_in_edge(book["file_path"], page=saved_page)
+            open_pdf_in_edge(resolved, page=saved_page)
 
     def _show_book_context_menu(self, book_id: str, global_pos) -> None:
         if book_id not in self.selected_book_ids:
@@ -927,6 +930,8 @@ class CatalogView(QWidget):
             self._show_book_context_menu(bid, self.table_books.mapToGlobal(pos))
 
     def _show_in_explorer(self, path: str) -> None:
+        if path:
+            path = resolve_and_heal_book_path(path)
         if path and os.path.exists(path):
             subprocess.run(["explorer", "/select,", os.path.normpath(path)])
 
