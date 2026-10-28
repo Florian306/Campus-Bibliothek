@@ -7,9 +7,12 @@ and 1-click filing into the main library directory on Google Drive or local disk
 import os
 import shutil
 import subprocess
-from typing import Dict, List, Optional
-from PySide6.QtCore import Qt, QThread, Signal, QSize
-from PySide6.QtGui import QFont, QColor, QImage, QPixmap, QIcon, QDragEnterEvent, QDropEvent
+from typing import Dict, List, Optional, Set
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QRect, QPoint, QModelIndex
+from PySide6.QtGui import (
+    QFont, QColor, QImage, QPixmap, QIcon, QDragEnterEvent, QDropEvent,
+    QPainter, QPen, QBrush, QMouseEvent
+)
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -28,6 +31,8 @@ from PySide6.QtWidgets import (
     QSplitter,
     QApplication,
     QCheckBox,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
 )
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
@@ -297,6 +302,104 @@ class InboxCoverWorker(QThread):
                     doc.close()
             except Exception:
                 pass
+
+
+class CheckBoxHeader(QHeaderView):
+    """Custom HeaderView that draws a pixel-perfect, native-matching Cyber-Obsidian checkbox in column 0."""
+    check_all_toggled = Signal(bool)
+
+    def __init__(self, orientation=Qt.Horizontal, parent=None):
+        super().__init__(orientation, parent)
+        self._checked = False
+        self.setSectionsClickable(True)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, checked: bool) -> None:
+        if self._checked != checked:
+            self._checked = checked
+            self.viewport().update()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        idx = self.logicalIndexAt(event.pos())
+        if idx == 0:
+            self._checked = not self._checked
+            self.viewport().update()
+            self.check_all_toggled.emit(self._checked)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def paintSection(self, painter: QPainter, rect: QRect, logicalIndex: int) -> None:
+        painter.save()
+        super().paintSection(painter, rect, logicalIndex)
+        painter.restore()
+
+        if logicalIndex == 0:
+            sz = 16
+            x = rect.x() + (rect.width() - sz) // 2
+            y = rect.y() + (rect.height() - sz) // 2
+            chk_rect = QRect(x, y, sz, sz)
+
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            if self._checked:
+                painter.setBrush(QBrush(QColor("#1F6FEB")))
+                painter.setPen(QPen(QColor("#58A6FF"), 1.4))
+            else:
+                painter.setBrush(QBrush(QColor("#101726")))
+                painter.setPen(QPen(QColor("#2B3D5E"), 1.2))
+            painter.drawRoundedRect(chk_rect, 4, 4)
+
+            if self._checked:
+                pen = QPen(QColor("#FFFFFF"), 2)
+                pen.setCapStyle(Qt.RoundCap)
+                pen.setJoinStyle(Qt.RoundJoin)
+                painter.setPen(pen)
+                painter.drawLine(x + 3, y + 8, x + 7, y + 12)
+                painter.drawLine(x + 7, y + 12, x + 13, y + 4)
+            painter.restore()
+
+
+class InboxTableDelegate(QStyledItemDelegate):
+    """Custom item delegate drawing sleek Cyber-Obsidian checkboxes in Column 0 without clumsy widget embedding."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+        opt = QStyleOptionViewItem(option)
+        if opt.state & QStyle.State_HasFocus:
+            opt.state &= ~QStyle.State_HasFocus
+
+        if index.column() == 0:
+            is_checked = bool(index.data(Qt.UserRole))
+            rect = option.rect
+            sz = 16
+            x = rect.x() + (rect.width() - sz) // 2
+            y = rect.y() + (rect.height() - sz) // 2
+            chk_rect = QRect(x, y, sz, sz)
+
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            if is_checked:
+                painter.setBrush(QBrush(QColor("#1F6FEB")))
+                painter.setPen(QPen(QColor("#58A6FF"), 1.4))
+            else:
+                painter.setBrush(QBrush(QColor("#101726")))
+                painter.setPen(QPen(QColor("#2B3D5E"), 1.2))
+            painter.drawRoundedRect(chk_rect, 4, 4)
+
+            if is_checked:
+                pen = QPen(QColor("#FFFFFF"), 2)
+                pen.setCapStyle(Qt.RoundCap)
+                pen.setJoinStyle(Qt.RoundJoin)
+                painter.setPen(pen)
+                painter.drawLine(x + 3, y + 8, x + 7, y + 12)
+                painter.drawLine(x + 7, y + 12, x + 13, y + 4)
+            painter.restore()
+        else:
+            super().paint(painter, opt, index)
 
 
 class InboxView(QWidget):
@@ -623,7 +726,15 @@ class InboxView(QWidget):
         # 4. Premium Modern Table Widget
         # -------------------------------------------------------------
         self.table = QTableWidget()
-        self.table.setItemDelegate(NoFocusItemDelegate(self.table))
+        self.table_delegate = InboxTableDelegate(self.table)
+        self.table.setItemDelegate(self.table_delegate)
+
+        # Custom CheckBox Header for column 0
+        self.checkbox_header = CheckBoxHeader(Qt.Horizontal, self.table)
+        self.checkbox_header.setFixedHeight(38)
+        self.checkbox_header.check_all_toggled.connect(self._toggle_select_all)
+        self.table.setHorizontalHeader(self.checkbox_header)
+
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
             "", "BUCHTITEL & DATEINAME", "AUTOR", "KI-KATEGORIE", "STATUS", "DATEIGRÖSSE", "AKTION"
@@ -636,34 +747,14 @@ class InboxView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
 
-        self.table.setColumnWidth(0, 44)
+        self.table.setColumnWidth(0, 48)
         self.table.setColumnWidth(2, 210)
         self.table.setColumnWidth(3, 230)
         self.table.setColumnWidth(4, 130)
         self.table.setColumnWidth(5, 115)
         self.table.setColumnWidth(6, 175)
 
-        # Master Checkbox in Header for selecting / deselecting all items
-        self.chk_select_all = QCheckBox(self.table.horizontalHeader())
-        self.chk_select_all.setGeometry(14, 8, 20, 20)
-        self.chk_select_all.setToolTip("Alle auswählen / abwählen")
-        self.chk_select_all.setStyleSheet("""
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border-radius: 4px;
-                border: 1px solid #304163;
-                background-color: #121826;
-            }
-            QCheckBox::indicator:hover {
-                border-color: #58A6FF;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #1F6FEB;
-                border-color: #58A6FF;
-            }
-        """)
-        self.chk_select_all.toggled.connect(self._toggle_select_all)
+        self.table.cellClicked.connect(self._on_table_cell_clicked)
 
         self.table.verticalHeader().setDefaultSectionSize(68)
         self.table.verticalHeader().setVisible(False)
@@ -836,36 +927,35 @@ class InboxView(QWidget):
         else:
             self._selected_item_ids.clear()
 
-        # Update all row checkboxes without triggering item-level callbacks
+        # Update all row data in column 0 for delegate painting
         for r in range(self.table.rowCount()):
-            cell_w = self.table.cellWidget(r, 0)
-            if cell_w:
-                chk = cell_w.findChild(QCheckBox)
-                if chk:
-                    chk.blockSignals(True)
-                    chk.setChecked(checked)
-                    chk.blockSignals(False)
+            it = self.table.item(r, 0)
+            if it:
+                it.setData(Qt.UserRole, checked)
 
         self._update_batch_buttons_state()
 
-    def _on_row_checkbox_toggled(self, item_id: int, checked: bool) -> None:
-        """Tracks selection of an individual row."""
-        if checked:
-            self._selected_item_ids.add(item_id)
-        else:
-            self._selected_item_ids.discard(item_id)
+    def _on_table_cell_clicked(self, row: int, col: int) -> None:
+        """Toggles row selection when clicking column 0."""
+        if col == 0 and 0 <= row < len(self._items):
+            item_id = self._items[row]["id"]
+            is_now_selected = item_id not in self._selected_item_ids
+            if is_now_selected:
+                self._selected_item_ids.add(item_id)
+            else:
+                self._selected_item_ids.discard(item_id)
 
-        # Update master checkbox state
-        if len(self._items) > 0 and len(self._selected_item_ids) == len(self._items):
-            self.chk_select_all.blockSignals(True)
-            self.chk_select_all.setChecked(True)
-            self.chk_select_all.blockSignals(False)
-        else:
-            self.chk_select_all.blockSignals(True)
-            self.chk_select_all.setChecked(False)
-            self.chk_select_all.blockSignals(False)
+            it = self.table.item(row, 0)
+            if it:
+                it.setData(Qt.UserRole, is_now_selected)
 
-        self._update_batch_buttons_state()
+            # Update header checkbox
+            if len(self._items) > 0 and len(self._selected_item_ids) == len(self._items):
+                self.checkbox_header.setChecked(True)
+            else:
+                self.checkbox_header.setChecked(False)
+
+            self._update_batch_buttons_state()
 
     def _update_batch_buttons_state(self) -> None:
         count = len(self._selected_item_ids)
@@ -917,10 +1007,8 @@ class InboxView(QWidget):
         self.table.setRowCount(len(self._items))
         self.lbl_queue_count.setText(f"Warteschlange ({len(self._items)} Bücher)")
         self.btn_batch_file.setEnabled(len(self._items) > 0)
-        self.chk_select_all.setEnabled(len(self._items) > 0)
-        self.chk_select_all.blockSignals(True)
-        self.chk_select_all.setChecked(len(self._items) > 0 and len(self._selected_item_ids) == len(self._items))
-        self.chk_select_all.blockSignals(False)
+        self.checkbox_header.setEnabled(len(self._items) > 0)
+        self.checkbox_header.setChecked(len(self._items) > 0 and len(self._selected_item_ids) == len(self._items))
         self._update_batch_buttons_state()
         self.queue_updated.emit(len(self._items))
 
@@ -930,32 +1018,11 @@ class InboxView(QWidget):
             item_id = it["id"]
             is_selected = item_id in self._selected_item_ids
 
-            # Col 0: Checkbox Cell
-            chk_cell = QWidget()
-            chk_lay = QHBoxLayout(chk_cell)
-            chk_lay.setContentsMargins(14, 0, 0, 0)
-            chk_lay.setAlignment(Qt.AlignCenter)
-            row_chk = QCheckBox()
-            row_chk.setChecked(is_selected)
-            row_chk.setStyleSheet("""
-                QCheckBox::indicator {
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 4px;
-                    border: 1px solid #304163;
-                    background-color: #121826;
-                }
-                QCheckBox::indicator:hover {
-                    border-color: #58A6FF;
-                }
-                QCheckBox::indicator:checked {
-                    background-color: #1F6FEB;
-                    border-color: #58A6FF;
-                }
-            """)
-            row_chk.toggled.connect(lambda checked, iid=item_id: self._on_row_checkbox_toggled(iid, checked))
-            chk_lay.addWidget(row_chk)
-            self.table.setCellWidget(row, 0, chk_cell)
+            # Col 0: Checkbox cell rendered directly via InboxTableDelegate
+            item_chk = QTableWidgetItem()
+            item_chk.setData(Qt.UserRole, is_selected)
+            item_chk.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            self.table.setItem(row, 0, item_chk)
 
             # Col 1: Styled Cover + Title Card Widget
             title_widget = self._create_title_widget(it)

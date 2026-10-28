@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "1.8.9"
+CURRENT_VERSION = "1.8.10"
 
 
 
