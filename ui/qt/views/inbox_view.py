@@ -312,6 +312,7 @@ class InboxView(QWidget):
         self._cover_thread: Optional[InboxCoverWorker] = None
         self._cover_cache: Dict[int, QPixmap] = {}
         self._items: List[Dict] = []
+        self._selected_item_ids: set[int] = set()
 
         self._build_ui()
         self.sync_filesystem_with_db()
@@ -516,6 +517,8 @@ class InboxView(QWidget):
         # -------------------------------------------------------------
         queue_header = QHBoxLayout()
         queue_header.setContentsMargins(0, 4, 0, 0)
+        queue_header.setSpacing(12)
+
         self.lbl_queue_count = QLabel("Warteschlange (0 Bücher)")
         self.lbl_queue_count.setFont(QFont("Segoe UI", 12, QFont.Bold))
         self.lbl_queue_count.setStyleSheet("color: #F0F6FC;")
@@ -523,9 +526,39 @@ class InboxView(QWidget):
 
         self.lbl_queue_sub = QLabel("— Bereit zur Übernahme in den Bibliothekskatalog")
         self.lbl_queue_sub.setFont(QFont("Segoe UI", 9))
-        self.lbl_queue_sub.setStyleSheet("color: #8B949E; margin-left: 4px;")
+        self.lbl_queue_sub.setStyleSheet("color: #8B949E; margin-left: 2px;")
         queue_header.addWidget(self.lbl_queue_sub)
         queue_header.addStretch()
+
+        # Batch Action: Delete Selected button (visible when items selected)
+        self.btn_batch_delete = QPushButton("  Ausgewählte löschen")
+        self.btn_batch_delete.setIcon(create_vector_icon("trash", "#FF7B72", 13))
+        self.btn_batch_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_batch_delete.setFixedHeight(34)
+        self.btn_batch_delete.setStyleSheet("""
+            QPushButton {
+                background-color: #211417;
+                color: #FF7B72;
+                border: 1px solid #482329;
+                border-radius: 6px;
+                padding: 0 14px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #381920;
+                border-color: #F85149;
+                color: #FFFFFF;
+            }
+            QPushButton:disabled {
+                background-color: #161214;
+                color: #4A3034;
+                border: 1px solid #2B1D20;
+            }
+        """)
+        self.btn_batch_delete.setEnabled(False)
+        self.btn_batch_delete.clicked.connect(self._delete_selected_items)
+        queue_header.addWidget(self.btn_batch_delete)
 
         cfg = load_config()
         self.chk_subfolders = QCheckBox("Kategorie-Unterordner erstellen")
@@ -536,7 +569,8 @@ class InboxView(QWidget):
             QCheckBox {
                 color: #C9D1D9;
                 spacing: 6px;
-                margin-right: 8px;
+                margin-left: 4px;
+                margin-right: 4px;
             }
             QCheckBox::indicator {
                 width: 16px;
@@ -590,27 +624,48 @@ class InboxView(QWidget):
         # -------------------------------------------------------------
         self.table = QTableWidget()
         self.table.setItemDelegate(NoFocusItemDelegate(self.table))
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "VORSCHAU & BUCHT общеTITEL", "AUTOR", "KI-KATEGORIE", "STATUS / DUPLIKAT", "DATEIGRÖSSE", "AKTION"
+            "", "BUCHTITEL & DATEINAME", "AUTOR", "KI-KATEGORIE", "STATUS", "DATEIGRÖSSE", "AKTION"
         ])
-        self.table.setHorizontalHeaderLabels([
-            "BUCHTITEL & COVER", "AUTOR", "KI-KATEGORIE", "STATUS", "DATEIGRÖSSE", "AKTION"
-        ])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
 
-        self.table.setColumnWidth(1, 160)
-        self.table.setColumnWidth(2, 220)
-        self.table.setColumnWidth(3, 150)
-        self.table.setColumnWidth(4, 110)
-        self.table.setColumnWidth(5, 170)
+        self.table.setColumnWidth(0, 44)
+        self.table.setColumnWidth(2, 210)
+        self.table.setColumnWidth(3, 230)
+        self.table.setColumnWidth(4, 130)
+        self.table.setColumnWidth(5, 115)
+        self.table.setColumnWidth(6, 175)
 
-        self.table.verticalHeader().setDefaultSectionSize(64)
+        # Master Checkbox in Header for selecting / deselecting all items
+        self.chk_select_all = QCheckBox(self.table.horizontalHeader())
+        self.chk_select_all.setGeometry(14, 8, 20, 20)
+        self.chk_select_all.setToolTip("Alle auswählen / abwählen")
+        self.chk_select_all.setStyleSheet("""
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid #304163;
+                background-color: #121826;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #58A6FF;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #1F6FEB;
+                border-color: #58A6FF;
+            }
+        """)
+        self.chk_select_all.toggled.connect(self._toggle_select_all)
+
+        self.table.verticalHeader().setDefaultSectionSize(68)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setStyleSheet("""
@@ -723,7 +778,7 @@ class InboxView(QWidget):
         # Update row cell widget
         for r in range(self.table.rowCount()):
             if r < len(self._items) and self._items[r]["id"] == item_id:
-                w = self.table.cellWidget(r, 0)
+                w = self.table.cellWidget(r, 1)
                 if w:
                     lbl_icon = w.findChild(QLabel, "coverLabel")
                     if lbl_icon:
@@ -774,6 +829,76 @@ class InboxView(QWidget):
         lay.addStretch()
         return w
 
+    def _toggle_select_all(self, checked: bool) -> None:
+        """Selects or deselects all items in the queue."""
+        if checked:
+            self._selected_item_ids = {it["id"] for it in self._items}
+        else:
+            self._selected_item_ids.clear()
+
+        # Update all row checkboxes without triggering item-level callbacks
+        for r in range(self.table.rowCount()):
+            cell_w = self.table.cellWidget(r, 0)
+            if cell_w:
+                chk = cell_w.findChild(QCheckBox)
+                if chk:
+                    chk.blockSignals(True)
+                    chk.setChecked(checked)
+                    chk.blockSignals(False)
+
+        self._update_batch_buttons_state()
+
+    def _on_row_checkbox_toggled(self, item_id: int, checked: bool) -> None:
+        """Tracks selection of an individual row."""
+        if checked:
+            self._selected_item_ids.add(item_id)
+        else:
+            self._selected_item_ids.discard(item_id)
+
+        # Update master checkbox state
+        if len(self._items) > 0 and len(self._selected_item_ids) == len(self._items):
+            self.chk_select_all.blockSignals(True)
+            self.chk_select_all.setChecked(True)
+            self.chk_select_all.blockSignals(False)
+        else:
+            self.chk_select_all.blockSignals(True)
+            self.chk_select_all.setChecked(False)
+            self.chk_select_all.blockSignals(False)
+
+        self._update_batch_buttons_state()
+
+    def _update_batch_buttons_state(self) -> None:
+        count = len(self._selected_item_ids)
+        if count > 0:
+            self.btn_batch_delete.setEnabled(True)
+            self.btn_batch_delete.setText(f"  {count} Ausgewählte löschen")
+        else:
+            self.btn_batch_delete.setEnabled(False)
+            self.btn_batch_delete.setText("  Ausgewählte löschen")
+
+    def _delete_selected_items(self) -> None:
+        """Deletes all currently checked books from inbox queue and physical disk."""
+        if not self._selected_item_ids:
+            return
+
+        count = len(self._selected_item_ids)
+        ret = QMessageBox.question(
+            self,
+            f"{count} Bücher verwerfen & löschen?",
+            f"Möchtest du wirklich die {count} ausgewählten Bücher aus der Warteschlange und von der Festplatte löschen?\n\nDieser Schritt kann nicht rückgängig gemacht werden.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if ret != QMessageBox.Yes:
+            return
+
+        to_delete = list(self._selected_item_ids)
+        for iid in to_delete:
+            delete_inbox_item(iid, delete_file=True)
+
+        self._selected_item_ids.clear()
+        self.sync_filesystem_with_db()
+
     def _reload_table_data(self) -> None:
         self._items = get_inbox_queue()
         # Filter out items whose files no longer exist on disk
@@ -785,29 +910,67 @@ class InboxView(QWidget):
                 delete_inbox_item(it["id"])
         self._items = valid_items
 
+        # Prune selection set
+        all_ids = {it["id"] for it in self._items}
+        self._selected_item_ids = self._selected_item_ids.intersection(all_ids)
+
         self.table.setRowCount(len(self._items))
         self.lbl_queue_count.setText(f"Warteschlange ({len(self._items)} Bücher)")
         self.btn_batch_file.setEnabled(len(self._items) > 0)
+        self.chk_select_all.setEnabled(len(self._items) > 0)
+        self.chk_select_all.blockSignals(True)
+        self.chk_select_all.setChecked(len(self._items) > 0 and len(self._selected_item_ids) == len(self._items))
+        self.chk_select_all.blockSignals(False)
+        self._update_batch_buttons_state()
         self.queue_updated.emit(len(self._items))
 
         all_cats = [c[0] for c in get_category_counts()] or STANDARD_CATEGORIES
 
         for row, it in enumerate(self._items):
             item_id = it["id"]
+            is_selected = item_id in self._selected_item_ids
 
-            # Col 0: Styled Cover + Title Card Widget
+            # Col 0: Checkbox Cell
+            chk_cell = QWidget()
+            chk_lay = QHBoxLayout(chk_cell)
+            chk_lay.setContentsMargins(14, 0, 0, 0)
+            chk_lay.setAlignment(Qt.AlignCenter)
+            row_chk = QCheckBox()
+            row_chk.setChecked(is_selected)
+            row_chk.setStyleSheet("""
+                QCheckBox::indicator {
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 4px;
+                    border: 1px solid #304163;
+                    background-color: #121826;
+                }
+                QCheckBox::indicator:hover {
+                    border-color: #58A6FF;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #1F6FEB;
+                    border-color: #58A6FF;
+                }
+            """)
+            row_chk.toggled.connect(lambda checked, iid=item_id: self._on_row_checkbox_toggled(iid, checked))
+            chk_lay.addWidget(row_chk)
+            self.table.setCellWidget(row, 0, chk_cell)
+
+            # Col 1: Styled Cover + Title Card Widget
             title_widget = self._create_title_widget(it)
-            self.table.setCellWidget(row, 0, title_widget)
+            self.table.setCellWidget(row, 1, title_widget)
 
-            # Col 1: Author (Editable LineEdit)
+            # Col 2: Author (Editable LineEdit with fixed height & clean cyber obsidian styling)
             author_edit = QLineEdit(it.get("suggested_author") or "Unbekannt")
+            author_edit.setFixedHeight(34)
             author_edit.setStyleSheet("""
                 QLineEdit {
                     background-color: #121A2A;
                     color: #C9D1D9;
                     border: 1px solid #23314A;
-                    border-radius: 5px;
-                    padding: 5px 8px;
+                    border-radius: 6px;
+                    padding: 0 10px;
                     font-size: 11px;
                 }
                 QLineEdit:focus {
@@ -817,17 +980,18 @@ class InboxView(QWidget):
                 }
             """)
             author_edit.textChanged.connect(lambda txt, iid=item_id: update_inbox_item(iid, suggested_author=txt))
-            self.table.setCellWidget(row, 1, author_edit)
+            self.table.setCellWidget(row, 2, author_edit)
 
-            # Col 2: Category Combobox
+            # Col 3: Category Combobox (fixed height & clean styling)
             combo_cat = QComboBox()
+            combo_cat.setFixedHeight(34)
             combo_cat.setStyleSheet("""
                 QComboBox {
                     background-color: #121A2A;
                     color: #58A6FF;
                     border: 1px solid #23314A;
-                    border-radius: 5px;
-                    padding: 5px 8px;
+                    border-radius: 6px;
+                    padding: 0 10px;
                     font-size: 11px;
                     font-weight: 600;
                 }
@@ -850,9 +1014,9 @@ class InboxView(QWidget):
             if idx >= 0:
                 combo_cat.setCurrentIndex(idx)
             combo_cat.currentTextChanged.connect(lambda txt, iid=item_id: update_inbox_item(iid, suggested_category=txt))
-            self.table.setCellWidget(row, 2, combo_cat)
+            self.table.setCellWidget(row, 3, combo_cat)
 
-            # Col 3: Status / Duplicate Warning Badge
+            # Col 4: Status / Duplicate Warning Badge
             dup = it.get("duplicate_warning", "")
             conf = it.get("confidence", 0)
             status = it.get("status", "pending")
@@ -898,35 +1062,35 @@ class InboxView(QWidget):
                 """)
                 s_lay.addWidget(lbl_pend)
 
-            self.table.setCellWidget(row, 3, status_box)
+            self.table.setCellWidget(row, 4, status_box)
 
-            # Col 4: File Size & Pages
+            # Col 5: File Size & Pages
             sz_mb = it.get("file_size", 0) / (1024 * 1024)
             p_cnt = it.get("page_count", 0)
             sz_txt = f"{sz_mb:.1f} MB\n{p_cnt} Seiten" if p_cnt > 0 else f"{sz_mb:.1f} MB"
             item_sz = QTableWidgetItem(sz_txt)
             item_sz.setTextAlignment(Qt.AlignCenter)
             item_sz.setFlags(item_sz.flags() & ~Qt.ItemIsEditable)
-            self.table.setItem(row, 4, item_sz)
+            self.table.setItem(row, 5, item_sz)
 
-            # Col 5: Action buttons (Fixed width to avoid text truncation)
+            # Col 6: Action buttons (Fixed width to avoid text truncation)
             act_box = QWidget()
             act_lay = QHBoxLayout(act_box)
             act_lay.setContentsMargins(6, 4, 6, 4)
             act_lay.setSpacing(6)
             act_lay.setAlignment(Qt.AlignCenter)
 
-            btn_file = QPushButton(" Einsortieren")
+            btn_file = QPushButton("  Einsortieren")
             btn_file.setIcon(create_vector_icon("check", "#FFFFFF", 12))
             btn_file.setCursor(Qt.PointingHandCursor)
-            btn_file.setFixedHeight(30)
-            btn_file.setMinimumWidth(110)
+            btn_file.setFixedHeight(32)
+            btn_file.setMinimumWidth(105)
             btn_file.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #287FFB);
                     color: #FFFFFF;
                     border: 1px solid #388BFD;
-                    border-radius: 5px;
+                    border-radius: 6px;
                     padding: 0 10px;
                     font-size: 11px;
                     font-weight: 600;
@@ -939,29 +1103,26 @@ class InboxView(QWidget):
             btn_file.clicked.connect(lambda _, iid=item_id: self._file_single_book(iid))
             act_lay.addWidget(btn_file)
 
-            btn_del = QPushButton("×")
+            btn_del = QPushButton()
+            btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 13))
             btn_del.setToolTip("Aus Posteingang entfernen & Datei löschen")
-            btn_del.setFixedSize(30, 30)
+            btn_del.setFixedSize(32, 32)
             btn_del.setCursor(Qt.PointingHandCursor)
             btn_del.setStyleSheet("""
                 QPushButton {
-                    color: #FF7B72;
                     background: #1C1417;
                     border: 1px solid #482329;
-                    border-radius: 5px;
-                    font-size: 15px;
-                    font-weight: bold;
+                    border-radius: 6px;
                 }
                 QPushButton:hover {
                     background: #381920;
                     border-color: #F85149;
-                    color: #FFFFFF;
                 }
             """)
             btn_del.clicked.connect(lambda _, iid=item_id: self._delete_item(iid))
             act_lay.addWidget(btn_del)
 
-            self.table.setCellWidget(row, 5, act_box)
+            self.table.setCellWidget(row, 6, act_box)
 
     def _start_analysis_worker(self, items: List[Dict]) -> None:
         if self._analysis_thread and self._analysis_thread.isRunning():
@@ -978,7 +1139,7 @@ class InboxView(QWidget):
             if r < len(self._items) and self._items[r]["id"] == item_id:
                 # Update item title if changed
                 if data.get("suggested_title"):
-                    title_w = self.table.cellWidget(r, 0)
+                    title_w = self.table.cellWidget(r, 1)
                     if title_w:
                         lbls = title_w.findChildren(QLabel)
                         if len(lbls) >= 2:
@@ -986,14 +1147,14 @@ class InboxView(QWidget):
 
                 # Update author edit
                 if data.get("suggested_author"):
-                    auth_w = self.table.cellWidget(r, 1)
+                    auth_w = self.table.cellWidget(r, 2)
                     if isinstance(auth_w, QLineEdit):
                         auth_w.blockSignals(True)
                         auth_w.setText(data["suggested_author"])
                         auth_w.blockSignals(False)
 
                 # Update category combo
-                combo = self.table.cellWidget(r, 2)
+                combo = self.table.cellWidget(r, 3)
                 if isinstance(combo, QComboBox) and data.get("suggested_category"):
                     idx = combo.findText(data["suggested_category"])
                     if idx >= 0:
@@ -1002,7 +1163,7 @@ class InboxView(QWidget):
                         combo.blockSignals(False)
 
                 # Update status box
-                stat_box = self.table.cellWidget(r, 3)
+                stat_box = self.table.cellWidget(r, 4)
                 if stat_box:
                     dup = data.get("duplicate_warning", "")
                     conf = data.get("confidence", 0)
