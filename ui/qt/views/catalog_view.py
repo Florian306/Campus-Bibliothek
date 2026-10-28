@@ -452,7 +452,7 @@ class CatalogView(QWidget):
                 card = self.cards_dict[bid]
                 card.book = b
 
-            card.set_selected(bid in self.selected_book_ids or bid == self.selected_book_id)
+            card.set_selected(bid in self.selected_book_ids)
             r, c = divmod(idx, cols)
             self.shelf_grid.addWidget(card, r, c)
             if not card.isVisible():
@@ -506,14 +506,19 @@ class CatalogView(QWidget):
             self.table_books.setItem(r, 6, QTableWidgetItem(cat_str))
 
     def _on_card_clicked(self, book_id: str) -> None:
+        """Handles single click on a shelf book card with Explorer-like multi-selection."""
         mods = QApplication.keyboardModifiers()
         if mods & Qt.ControlModifier:
+            # Ctrl+Click: Toggle individual item in/out of selection set (just like Windows Explorer)
             if book_id in self.selected_book_ids:
                 self.selected_book_ids.remove(book_id)
+                if self.selected_book_id == book_id:
+                    self.selected_book_id = next(iter(self.selected_book_ids)) if self.selected_book_ids else None
             else:
                 self.selected_book_ids.add(book_id)
-            self.selected_book_id = book_id
+                self.selected_book_id = book_id
         elif mods & Qt.ShiftModifier and self.selected_book_id:
+            # Shift+Click: Range selection from last anchor
             ids_order = [str(b["id"]) for b in self.filtered_books]
             if self.selected_book_id in ids_order and book_id in ids_order:
                 i1 = ids_order.index(self.selected_book_id)
@@ -525,6 +530,7 @@ class CatalogView(QWidget):
                 self.selected_book_ids = {book_id}
                 self.selected_book_id = book_id
         else:
+            # Normal click: Single selection
             self.selected_book_ids = {book_id}
             self.selected_book_id = book_id
 
