@@ -1,10 +1,11 @@
 """Catalog and Library View for PySide6.
 Provides dual view modes: Interactive Shelf Grid & Searchable Table List.
+Supports Ctrl/Shift multi-selection and 1-click sibling chapter group merging.
 """
 
 import os
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtGui import QFont, QColor, QAction
 from PySide6.QtWidgets import (
@@ -60,6 +61,7 @@ class CatalogView(QWidget):
         self.master_books: List[Dict[str, Any]] = []
         self.filtered_books: List[Dict[str, Any]] = []
         self.selected_book_id: Optional[str] = None
+        self.selected_book_ids: Set[str] = set()
         self.current_category = "Alle"
         self.search_term = ""
 
@@ -203,9 +205,10 @@ class CatalogView(QWidget):
         self.table_books.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
         self.table_books.setColumnWidth(5, 75)
         self.table_books.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table_books.setSelectionMode(QTableWidget.SingleSelection)
+        self.table_books.setSelectionMode(QTableWidget.ExtendedSelection)
         self.table_books.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table_books.verticalHeader().setVisible(False)
+        self.table_books.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.table_books.cellDoubleClicked.connect(self._on_table_double_click)
         self.table_books.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_books.customContextMenuRequested.connect(self._on_table_context_menu)
@@ -235,7 +238,7 @@ class CatalogView(QWidget):
         lbl_tips_icon.setStyleSheet("border: none; background: transparent;")
         footer.addWidget(lbl_tips_icon)
 
-        lbl_tips = QLabel("Tipp: Leertaste für Quick-Look • Doppelklick öffnet PDF • Rechtsklick für Zitate & Notizen")
+        lbl_tips = QLabel("Tipp: Strg/Shift-Klick für Mehrfachauswahl • Rechtsklick zum Kapitel-Zusammenführen")
         lbl_tips.setStyleSheet("color: #8B949E; font-size: 11px;")
         footer.addWidget(lbl_tips)
         footer.addStretch()
@@ -262,12 +265,12 @@ class CatalogView(QWidget):
         btn_desk.clicked.connect(self._toggle_selected_desk)
         footer.addWidget(btn_desk)
 
-        btn_merge = QPushButton("  Kapitel / PDFs zusammenführen")
-        btn_merge.setIcon(create_vector_icon("merge", "#D2A8FF", 15))
-        btn_merge.setCursor(Qt.PointingHandCursor)
-        btn_merge.setFixedHeight(34)
-        btn_merge.setToolTip("Einzelne Kapitel-PDFs oder Studienbriefe inklusive Inhaltsverzeichnis zu einem Gesamtbuch zusammenführen")
-        btn_merge.setStyleSheet("""
+        self.btn_merge = QPushButton("  Kapitel / PDFs zusammenführen")
+        self.btn_merge.setIcon(create_vector_icon("merge", "#D2A8FF", 15))
+        self.btn_merge.setCursor(Qt.PointingHandCursor)
+        self.btn_merge.setFixedHeight(34)
+        self.btn_merge.setToolTip("Einzelne Kapitel-PDFs oder markierte Bücher inklusive Inhaltsverzeichnis zu einem Gesamtbuch zusammenführen")
+        self.btn_merge.setStyleSheet("""
             QPushButton {
                 background-color: #1A162B;
                 color: #D2A8FF;
@@ -283,8 +286,8 @@ class CatalogView(QWidget):
                 color: #FFFFFF;
             }
         """)
-        btn_merge.clicked.connect(lambda: self._open_merge_dialog())
-        footer.addWidget(btn_merge)
+        self.btn_merge.clicked.connect(self._on_footer_merge_clicked)
+        footer.addWidget(self.btn_merge)
 
         btn_del = QPushButton("  Buch entfernen")
         btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 15))
@@ -325,9 +328,14 @@ class CatalogView(QWidget):
             card.hide()
             card.deleteLater()
 
+        self.selected_book_ids = {bid for bid in self.selected_book_ids if bid in current_ids}
+        if self.selected_book_id not in current_ids:
+            self.selected_book_id = None
+
         total_cnt = len(self.master_books)
         unit = "Studienbriefe" if self.mode == "study_scripts" else "Bücher"
         self.lbl_badge_total.setText(f"{total_cnt} {unit}")
+        self._update_merge_button_label()
         self.apply_filter()
 
     def _set_view_mode(self, mode: str) -> None:
@@ -444,7 +452,7 @@ class CatalogView(QWidget):
                 card = self.cards_dict[bid]
                 card.book = b
 
-            card.set_selected(bid == self.selected_book_id)
+            card.set_selected(bid in self.selected_book_ids or bid == self.selected_book_id)
             r, c = divmod(idx, cols)
             self.shelf_grid.addWidget(card, r, c)
             if not card.isVisible():
@@ -498,21 +506,76 @@ class CatalogView(QWidget):
             self.table_books.setItem(r, 6, QTableWidgetItem(cat_str))
 
     def _on_card_clicked(self, book_id: str) -> None:
-        old_id = self.selected_book_id
-        self.selected_book_id = book_id
-        if old_id and old_id in self.cards_dict:
-            self.cards_dict[old_id].set_selected(False)
-        if book_id in self.cards_dict:
-            self.cards_dict[book_id].set_selected(True)
+        mods = QApplication.keyboardModifiers()
+        if mods & Qt.ControlModifier:
+            if book_id in self.selected_book_ids:
+                self.selected_book_ids.remove(book_id)
+            else:
+                self.selected_book_ids.add(book_id)
+            self.selected_book_id = book_id
+        elif mods & Qt.ShiftModifier and self.selected_book_id:
+            ids_order = [str(b["id"]) for b in self.filtered_books]
+            if self.selected_book_id in ids_order and book_id in ids_order:
+                i1 = ids_order.index(self.selected_book_id)
+                i2 = ids_order.index(book_id)
+                start, end = min(i1, i2), max(i1, i2)
+                for bid in ids_order[start:end + 1]:
+                    self.selected_book_ids.add(bid)
+            else:
+                self.selected_book_ids = {book_id}
+                self.selected_book_id = book_id
+        else:
+            self.selected_book_ids = {book_id}
+            self.selected_book_id = book_id
+
+        self._sync_card_selection_styles()
+        self._update_merge_button_label()
+
+    def _sync_card_selection_styles(self) -> None:
+        for bid, card in self.cards_dict.items():
+            card.set_selected(bid in self.selected_book_ids)
+
+    def _on_table_selection_changed(self) -> None:
+        if self.stacked_views.currentIndex() != 1:
+            return
+        rows = {idx.row() for idx in self.table_books.selectedIndexes()}
+        self.selected_book_ids = {
+            str(self.filtered_books[r]["id"])
+            for r in rows
+            if 0 <= r < len(self.filtered_books)
+        }
+        if len(self.selected_book_ids) == 1:
+            self.selected_book_id = next(iter(self.selected_book_ids))
+        self._update_merge_button_label()
+
+    def _update_merge_button_label(self) -> None:
+        cnt = len(self.selected_book_ids)
+        if cnt >= 2:
+            self.btn_merge.setText(f"  {cnt} ausgewählte zusammenführen")
+        else:
+            self.btn_merge.setText("  Kapitel / PDFs zusammenführen")
+
+    def _find_sibling_books_by_title(self, book: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Finds all books in master_books that share the exact same normalized title."""
+        norm_t = (book.get("title") or "").strip().lower()
+        if not norm_t or len(norm_t) < 3:
+            return [book]
+        return [
+            b for b in self.master_books
+            if (b.get("title") or "").strip().lower() == norm_t
+        ]
 
     def _on_card_double_clicked(self, book_id: str) -> None:
         self.selected_book_id = book_id
+        self.selected_book_ids = {book_id}
+        self._sync_card_selection_styles()
         self._launch_book(book_id)
 
     def _on_table_double_click(self, row: int, col: int) -> None:
         if 0 <= row < len(self.filtered_books):
             bid = str(self.filtered_books[row]["id"])
             self.selected_book_id = bid
+            self.selected_book_ids = {bid}
             self._launch_book(bid)
 
     def _open_selected_book(self) -> None:
@@ -536,6 +599,8 @@ class CatalogView(QWidget):
         if self.stacked_views.currentIndex() == 0:
             if self.selected_book_id:
                 return self.selected_book_id
+            if self.selected_book_ids:
+                return next(iter(self.selected_book_ids))
             if self.filtered_books:
                 return str(self.filtered_books[0]["id"])
             return None
@@ -561,7 +626,6 @@ class CatalogView(QWidget):
         for i, b in enumerate(self.filtered_books):
             if str(b.get("id")) == str(book_id):
                 self.filtered_books[i] = updated
-                # Also update table row if in table mode
                 if self.stacked_views.currentIndex() == 1:
                     is_desk = bool(updated.get("is_on_desk"))
                     desk_str = "● Pult" if is_desk else "—"
@@ -575,7 +639,6 @@ class CatalogView(QWidget):
                     self.table_books.setItem(i, 0, item_desk)
                 break
 
-        # Update card widget if rendered in shelf grid
         bid_str = str(book_id)
         if bid_str in self.cards_dict:
             card = self.cards_dict[bid_str]
@@ -595,12 +658,39 @@ class CatalogView(QWidget):
             open_pdf_in_edge(book["file_path"], page=saved_page)
 
     def _show_book_context_menu(self, book_id: str, global_pos) -> None:
-        self._on_card_clicked(book_id)
+        if book_id not in self.selected_book_ids:
+            self.selected_book_id = book_id
+            self.selected_book_ids = {book_id}
+            self._sync_card_selection_styles()
+            self._update_merge_button_label()
+
         book = next((b for b in self.master_books if str(b["id"]) == str(book_id)), None)
         if not book:
             return
 
         menu = QMenu(self)
+
+        # 1. Check if multiple cards are currently selected
+        if len(self.selected_book_ids) >= 2:
+            sel_books = [b for b in self.master_books if str(b["id"]) in self.selected_book_ids]
+            act_merge_sel = menu.addAction(
+                create_vector_icon("merge", "#D2A8FF", 14),
+                f"🔗 {len(sel_books)} ausgewählte Bücher zusammenführen..."
+            )
+            act_merge_sel.triggered.connect(lambda: self._open_merge_dialog(catalog_books=sel_books))
+            menu.addSeparator()
+
+        # 2. Check if this book has multiple sibling parts in the catalog (same book title!)
+        siblings = self._find_sibling_books_by_title(book)
+        if len(siblings) >= 2:
+            short_t = (book.get("title") or "Buch")[:36]
+            act_merge_siblings = menu.addAction(
+                create_vector_icon("merge", "#58A6FF", 14),
+                f"🔗 Alle {len(siblings)} Teile von „{short_t}“ zusammenführen..."
+            )
+            act_merge_siblings.triggered.connect(lambda: self._open_merge_dialog(catalog_books=siblings))
+            menu.addSeparator()
+
         act_ql = menu.addAction(create_vector_icon("search", "#58A6FF", 14), "Quick-Look & Details (Leertaste)")
         act_ql.triggered.connect(lambda: self.quick_look_requested.emit(book_id))
 
@@ -686,14 +776,43 @@ class CatalogView(QWidget):
             self.data_changed.emit()
             self.load_data()
 
-    def _open_merge_dialog(self, base_book: Optional[Dict[str, Any]] = None) -> None:
+    def _on_footer_merge_clicked(self) -> None:
+        """Smart handler for the footer Merge button:
+        - If >=2 books are selected, merges those selected books.
+        - If 1 book is selected and it has sibling parts in the catalog (same title), automatically loads all siblings!
+        - Otherwise opens the Merge Studio.
+        """
+        if len(self.selected_book_ids) >= 2:
+            sel_books = [b for b in self.master_books if str(b["id"]) in self.selected_book_ids]
+            self._open_merge_dialog(catalog_books=sel_books)
+            return
+
+        bid = self._get_active_book_id()
+        if bid:
+            book = next((b for b in self.master_books if str(b["id"]) == str(bid)), None)
+            if book:
+                siblings = self._find_sibling_books_by_title(book)
+                if len(siblings) >= 2:
+                    self._open_merge_dialog(catalog_books=siblings)
+                    return
+
+        self._open_merge_dialog()
+
+    def _open_merge_dialog(
+        self,
+        base_book: Optional[Dict[str, Any]] = None,
+        catalog_books: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         from ui.qt.dialogs.pdf_merge_dialog import PdfMergeDialog
         dlg = PdfMergeDialog(
+            catalog_books=catalog_books,
             default_doc_type=self.doc_type_filter,
             base_book=base_book,
             parent=self.window(),
         )
         if dlg.exec():
+            self.selected_book_ids.clear()
+            self.selected_book_id = None
             self.data_changed.emit()
             self.load_data()
 
@@ -744,11 +863,11 @@ class CatalogView(QWidget):
             delete_file_disk = chk_delete_file.isChecked()
             success, err = delete_book(book_id, delete_file=delete_file_disk)
             if success:
-                # Remove card from cache if present
                 if str(book_id) in self.cards_dict:
                     card = self.cards_dict.pop(str(book_id))
                     card.hide()
                     card.deleteLater()
+                self.selected_book_ids.discard(str(book_id))
                 if self.selected_book_id == str(book_id):
                     self.selected_book_id = None
                 self.data_changed.emit()
@@ -759,7 +878,6 @@ class CatalogView(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if self.stacked_views.currentIndex() == 0 and self.filtered_books:
-            # Debounce re-flow on resize
             self._resize_timer.start()
 
     def _handle_debounced_resize(self) -> None:

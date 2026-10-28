@@ -431,34 +431,46 @@ _ROMAN_MAP = {
 
 def suggest_chapter_sort_key(file_path: str, bookmark_title: str = "") -> Tuple[int, int, str]:
     """Computes an intelligent natural sort key for chapter PDFs.
-    Returns (group_priority, chapter_number, normalized_name):
-      - Group 0: Frontmatter / Cover / Table of Contents / Preface
+    Returns (group_priority, sub_order, normalized_name):
+      - Group 0: Frontmatter (01 Front Cover -> 02 Title -> 03 Impressum -> 04 Preface -> 05 TOC)
       - Group 1: Numbered Chapters / Course Units (KE / SB / Chapter / Teil)
       - Group 2: Unnumbered middle sections
-      - Group 3: Backmatter / Appendix / Index / Bibliography / Solutions
+      - Group 3: Backmatter (01 Appendix/Glossary -> 02 Bibliography -> 03 Index/Register -> 04 Back Cover)
     """
     filename = os.path.splitext(os.path.basename(file_path))[0]
     combined = f"{filename} {bookmark_title}".lower()
 
-    # 1. Check Frontmatter (Group 0)
-    front_kw = [
-        "frontmatter", "front_matter", "front-matter", "vorspann", "titelei",
-        "cover", "deckblatt", "titelseite", "vorwort", "preface", "foreword",
-        "inhaltsverzeichnis", "table of contents", "contents", "geleitwort",
-        "einleitung_00", "00_front", "bfm"
-    ]
-    if any(k in combined for k in front_kw) or re.match(r'^00[\s_.-]', filename.lower()):
-        return (0, 0, filename.lower())
+    # Check Back Cover explicitly BEFORE generic "cover" check!
+    if any(k in combined for k in ["back_cover", "back cover", "backcover", "rückseite", "rueckseite", "u4"]):
+        return (3, 9900, filename.lower())
 
-    # 2. Check Backmatter (Group 3)
-    back_kw = [
-        "backmatter", "back_matter", "back-matter", "anhang", "appendix",
-        "sachverzeichnis", "stichwortverzeichnis", "index", "register",
-        "glossar", "glossary", "literaturverzeichnis", "literatur", "bibliography",
-        "references", "lösungen", "loesungen", "solutions", "bbm"
-    ]
-    if any(k in combined for k in back_kw):
-        return (3, 9999, filename.lower())
+    # 1. Check Frontmatter (Group 0) with exact book publishing sequence
+    if any(k in combined for k in ["front_cover", "front cover", "frontcover", "deckblatt", "umschlag", "cover"]):
+        return (0, 10, filename.lower())
+    if any(k in combined for k in ["titelei", "schmutztitel", "titelseite"]) or re.search(r'(?:^|[_.\s-])titel$', filename.lower()):
+        return (0, 20, filename.lower())
+    if any(k in combined for k in ["impressum", "copyright"]):
+        return (0, 30, filename.lower())
+    if any(k in combined for k in ["frontmatter", "front_matter", "front-matter", "vorspann", "00_front", "bfm"]) or re.match(r'^00[\s_.-]', filename.lower()):
+        return (0, 35, filename.lower())
+    if any(k in combined for k in ["vorwort", "preface", "foreword", "geleitwort", "danksagung"]):
+        return (0, 40, filename.lower())
+    if any(k in combined for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "contents"]):
+        return (0, 50, filename.lower())
+    if any(k in combined for k in ["abkürzungsverzeichnis", "symbolverzeichnis"]):
+        return (0, 60, filename.lower())
+
+    # 2. Check Backmatter (Group 3) with exact book publishing sequence
+    if any(k in combined for k in ["lösungen", "loesungen", "solutions", "antworten"]):
+        return (3, 9100, filename.lower())
+    if any(k in combined for k in ["anhang", "appendix", "backmatter", "back_matter", "back-matter", "bbm"]):
+        return (3, 9200, filename.lower())
+    if any(k in combined for k in ["glossar", "glossary"]):
+        return (3, 9300, filename.lower())
+    if any(k in combined for k in ["literaturverzeichnis", "literatur", "bibliography", "references", "quellenverzeichnis"]):
+        return (3, 9400, filename.lower())
+    if any(k in combined for k in ["sachverzeichnis", "stichwortverzeichnis", "personenregister", "sachregister", "ortsregister", "register", "index"]):
+        return (3, 9500, filename.lower())
 
     # 3. Strip ISBNs / DOIs / long publication IDs from filename before extracting chapter numbers
     cleaned = re.sub(r'97[89][-\s0-9]{10,17}', ' ', filename)
@@ -489,12 +501,123 @@ def suggest_chapter_sort_key(file_path: str, bookmark_title: str = "") -> Tuple[
         minor = int(m_lead.group(2)) if m_lead.group(2) else 0
         return (1, major * 100 + minor, filename.lower())
 
-    # Trailing or embedded chapter number (e.g. "BookTitle_04", "Springer_Chp_7")
+    # Trailing or embedded chapter number (e.g. "Einfhrung_in_die_Physische_Geographie_4_Bodengeographie")
     m_any = re.findall(r'(?<!\d)(\d{1,3})(?!\d)', cleaned)
     if m_any:
         return (1, int(m_any[-1]) * 100, filename.lower())
 
+    # 4. Deep PDF Inspection Fallback: If filename has no chapter number at all, inspect Page 1 of the PDF!
+    if fitz is not None and os.path.isfile(file_path):
+        try:
+            doc = fitz.open(file_path)
+            if len(doc) > 0:
+                p_text = doc[0].get_text("text") or ""
+                lines = [ln.strip() for ln in p_text.splitlines() if ln.strip()]
+                head_text = " ".join(lines[:12]).lower()
+
+                # Check if Page 1 reveals front/backmatter
+                if any(k in head_text for k in ["inhaltsverzeichnis", "table of contents"]):
+                    doc.close()
+                    return (0, 50, filename.lower())
+                if any(k in head_text for k in ["vorwort", "preface", "geleitwort"]):
+                    doc.close()
+                    return (0, 40, filename.lower())
+                if any(k in head_text for k in ["literaturverzeichnis", "bibliography", "references"]):
+                    doc.close()
+                    return (3, 9400, filename.lower())
+                if any(k in head_text for k in ["sachverzeichnis", "stichwortverzeichnis", "register", "index"]):
+                    doc.close()
+                    return (3, 9500, filename.lower())
+
+                # Look for explicit chapter heading on Page 1 (e.g. "Kapitel 3", "3 Hydrogeographie", "1.1 Grundlagen")
+                for ln in lines[:10]:
+                    m_p1_exp = re.match(
+                        r'^(?:kapitel|chapter|teil|part|kurseinheit|ke|studienbrief|sb)\s*(\d{1,2})\b',
+                        ln,
+                        re.IGNORECASE
+                    )
+                    if m_p1_exp:
+                        doc.close()
+                        return (1, int(m_p1_exp.group(1)) * 100, filename.lower())
+
+                    m_p1_num = re.match(r'^(\d{1,2})(?:\.(\d{1,2}))?\s+[A-ZÄÖÜ][a-zA-ZäöüÄÖÜß-]{3,}', ln)
+                    if m_p1_num:
+                        maj = int(m_p1_num.group(1))
+                        min_n = int(m_p1_num.group(2)) if m_p1_num.group(2) else 0
+                        if 1 <= maj <= 40:
+                            doc.close()
+                            return (1, maj * 100 + min_n, filename.lower())
+
+                # Fallback: Check printed book page number in header/footer of Page 1 (e.g. "S. 145" or standalone "145")
+                for EdgeLn in (lines[:2] + lines[-2:]):
+                    m_pg = re.match(r'^(?:seite\s*|s\.\s*|page\s*|p\.\s*)?(\d{1,4})$', EdgeLn.strip(), re.IGNORECASE)
+                    if m_pg:
+                        pg_num = int(m_pg.group(1))
+                        if 1 <= pg_num <= 2500:
+                            doc.close()
+                            return (2, pg_num, filename.lower())
+            doc.close()
+        except Exception:
+            pass
+
     return (2, 5000, filename.lower())
+
+
+def strip_common_book_prefix(items: List[Dict[str, Any]], book_title: str = "") -> None:
+    """Strips redundant shared book title prefixes from bookmark_title across a list of chapter items in-place.
+    Example: 'Einfhrung in die Physische Geographie 1 Geomorphologie' -> '1. Geomorphologie'
+    """
+    if len(items) < 2:
+        return
+
+    raw_titles = [it.get("bookmark_title", "").strip() for it in items]
+    # Find longest common word prefix across at least 60% of the items
+    word_lists = [t.split() for t in raw_titles if t]
+    if len(word_lists) < 2:
+        return
+
+    # Candidate prefix from most frequent first N words
+    first_item_words = word_lists[0]
+    common_word_count = 0
+    for k in range(1, min(len(first_item_words), 10)):
+        prefix_tuple = tuple(w.lower() for w in first_item_words[:k])
+        matches = sum(1 for wl in word_lists if len(wl) > k and tuple(w.lower() for w in wl[:k]) == prefix_tuple)
+        if matches >= max(2, int(len(word_lists) * 0.55)):
+            common_word_count = k
+        else:
+            break
+
+    for it in items:
+        bt = (it.get("bookmark_title") or "").strip()
+        if not bt:
+            continue
+
+        words = bt.split()
+        if common_word_count >= 2 and len(words) > common_word_count:
+            cand_prefix = [w.lower() for w in words[:common_word_count]]
+            target_prefix = [w.lower() for w in first_item_words[:common_word_count]]
+            if cand_prefix == target_prefix:
+                bt = " ".join(words[common_word_count:]).strip(" -–—_.:,")
+
+        # Also strip explicit book_title if still present at start
+        if book_title and len(book_title) >= 5:
+            norm_bt = re.sub(r'[^a-zA-Z0-9äöüÄÖÜß\s]', '', book_title).strip()
+            if norm_bt and bt.lower().startswith(norm_bt.lower()) and len(bt) > len(norm_bt) + 2:
+                bt = bt[len(norm_bt):].strip(" -–—_.:,")
+
+        # Format leading number nicely: "1 Geomorphologie" -> "1. Geomorphologie"
+        m_num = re.match(r'^(\d{1,2})\s+([A-Za-zÄÖÜäöüß].*)$', bt)
+        if m_num:
+            bt = f"{int(m_num.group(1))}. {m_num.group(2)}"
+
+        # Translate English cover terms to clean German labels
+        if bt.lower() in ("front cover", "frontcover"):
+            bt = "Deckblatt (Cover)"
+        elif bt.lower() in ("back cover", "backcover"):
+            bt = "Umschlagrückseite"
+
+        if bt:
+            it["bookmark_title"] = bt
 
 
 def clean_chapter_bookmark_title(file_path: str) -> str:
