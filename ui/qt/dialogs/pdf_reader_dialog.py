@@ -36,6 +36,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QGraphicsColorizeEffect,
     QMenu,
+    QProgressBar,
+    QStackedWidget,
 )
 
 from core.library_db import (
@@ -339,6 +341,57 @@ class PageThumbnailWorker(QThread):
             pass
 
 
+class PdfStreamLoaderWorker(QThread):
+    """Asynchronous file reader & cloud-hydration worker so large or Google-Drive-streamed PDFs
+    never freeze the UI or show a blank white window while loading.
+    """
+    progress_changed = Signal(int, float, float)  # percent, read_mb, total_mb
+    file_ready = Signal(str)                      # resolved_file_path
+    error_occurred = Signal(str)
+
+    def __init__(self, file_path: str, book_id: str = "", parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+        self.book_id = book_id
+        self._is_cancelled = False
+
+    def cancel(self) -> None:
+        self._is_cancelled = True
+
+    def run(self) -> None:
+        try:
+            path = self.file_path
+            if path and not os.path.exists(path):
+                path = resolve_and_heal_book_path(path, book_id=self.book_id)
+
+            if not path or not os.path.exists(path):
+                self.error_occurred.emit(f"PDF-Datei nicht gefunden:\n{path or self.file_path}")
+                return
+
+            total_bytes = os.path.getsize(path)
+            total_mb = max(0.1, total_bytes / (1024 * 1024))
+
+            # Pre-read file chunks into OS page cache (hydrates Google Drive / OneDrive files with live progress)
+            if total_bytes > 0:
+                chunk_size = 512 * 1024  # 512 KB chunks
+                read_bytes = 0
+                with open(path, "rb") as f:
+                    while not self._is_cancelled:
+                        buf = f.read(chunk_size)
+                        if not buf:
+                            break
+                        read_bytes += len(buf)
+                        pct = min(98, int((read_bytes * 100) / total_bytes))
+                        read_mb = read_bytes / (1024 * 1024)
+                        self.progress_changed.emit(pct, read_mb, total_mb)
+
+            if not self._is_cancelled:
+                self.progress_changed.emit(100, total_mb, total_mb)
+                self.file_ready.emit(path)
+        except Exception as e:
+            self.error_occurred.emit(f"Fehler beim Lesen der PDF-Datei:\n{str(e)}")
+
+
 class TocLoaderWorker(QThread):
     finished_toc = Signal(list)
 
@@ -406,6 +459,7 @@ class PdfReaderDialog(QDialog):
         self._explainer_thread: Optional[AiExplainerWorker] = None
         self._toc_thread: Optional[TocLoaderWorker] = None
         self._thumb_thread: Optional[PageThumbnailWorker] = None
+        self._stream_loader_thread: Optional[PdfStreamLoaderWorker] = None
         self._is_jumping = False
 
         # Visual Theme / Filter Mode: "normal", "sepia", "dark"
@@ -435,7 +489,7 @@ class PdfReaderDialog(QDialog):
         self._build_ui()
         self._setup_shortcuts()
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self._load_document)
+        QTimer.singleShot(40, self._load_document)
 
     def _build_ui(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -899,7 +953,13 @@ class PdfReaderDialog(QDialog):
         self.toc_panel = self._build_toc_panel()
         self.splitter.addWidget(self.toc_panel)
 
-        # Center: QPdfView
+        # Center: QStackedWidget [0: Cyber-Obsidian Loading Screen, 1: QPdfView]
+        self.center_stack = QStackedWidget()
+        self.center_stack.setStyleSheet("background-color: #0E131F; border: none;")
+
+        self.loading_panel = self._build_loading_panel()
+        self.center_stack.addWidget(self.loading_panel)
+
         self.view.setDocument(self.doc)
         self.view.setFocusPolicy(Qt.StrongFocus)
         self.view.setPageMode(QPdfView.PageMode.MultiPage)
@@ -914,12 +974,15 @@ class PdfReaderDialog(QDialog):
         # Overlay for mouse text selection
         vp = self.view.viewport()
         if vp:
+            vp.setStyleSheet("background-color: #0E131F;")
             self._selection_overlay = PdfSelectionOverlay(vp)
             self._selection_overlay.setGeometry(vp.rect())
             self._selection_overlay.show()
             vp.installEventFilter(self)
 
-        self.splitter.addWidget(self.view)
+        self.center_stack.addWidget(self.view)
+        self.center_stack.setCurrentIndex(0)
+        self.splitter.addWidget(self.center_stack)
 
         # Right: Notes & AI Explainer Panel
         self.notes_panel = self._build_notes_panel()
@@ -933,6 +996,98 @@ class PdfReaderDialog(QDialog):
         # Connect QPdfView navigator signal
         nav = self.view.pageNavigator()
         nav.currentPageChanged.connect(self._on_pdf_page_changed)
+
+    def _build_loading_panel(self) -> QWidget:
+        """Creates a sleek Cyber-Obsidian loading overlay with progress bar and live MB status."""
+        container = QFrame()
+        container.setStyleSheet("background-color: #0E131F; border: none;")
+        outer_lay = QVBoxLayout(container)
+        outer_lay.setContentsMargins(24, 24, 24, 24)
+        outer_lay.setAlignment(Qt.AlignCenter)
+
+        card = QFrame()
+        card.setFixedWidth(440)
+        card.setStyleSheet("""
+            QFrame {
+                background-color: #131B2E;
+                border: 1px solid #263656;
+                border-radius: 16px;
+            }
+        """)
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(32, 28, 32, 28)
+        card_lay.setSpacing(14)
+
+        # Icon badge
+        icon_lbl = QLabel()
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setPixmap(create_vector_pixmap("book", "#58A6FF", 38))
+        icon_lbl.setStyleSheet("background: transparent; border: none;")
+        card_lay.addWidget(icon_lbl)
+
+        # Book title
+        title_lbl = QLabel(self.book_title)
+        title_lbl.setAlignment(Qt.AlignCenter)
+        title_lbl.setWordWrap(True)
+        title_lbl.setStyleSheet("""
+            color: #F0F6FC;
+            font-size: 16px;
+            font-weight: 800;
+            background: transparent;
+            border: none;
+        """)
+        card_lay.addWidget(title_lbl)
+
+        # Status text
+        self.lbl_loading_status = QLabel("PDF-Dokument wird geladen…")
+        self.lbl_loading_status.setAlignment(Qt.AlignCenter)
+        self.lbl_loading_status.setStyleSheet("""
+            color: #8B949E;
+            font-size: 12px;
+            font-weight: 600;
+            background: transparent;
+            border: none;
+        """)
+        card_lay.addWidget(self.lbl_loading_status)
+
+        # Progress bar
+        self.loading_bar = QProgressBar()
+        self.loading_bar.setRange(0, 100)
+        self.loading_bar.setValue(8)
+        self.loading_bar.setTextVisible(True)
+        self.loading_bar.setFormat("%p%")
+        self.loading_bar.setFixedHeight(20)
+        self.loading_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #0B0F19;
+                border: 1px solid #1E293B;
+                border-radius: 10px;
+                color: #F0F6FC;
+                font-size: 11px;
+                font-weight: 700;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #58A6FF);
+                border-radius: 9px;
+            }
+        """)
+        card_lay.addWidget(self.loading_bar)
+
+        hint_lbl = QLabel("Große Fachbücher oder Cloud-Dateien (Google Drive) werden flüssig zwischengespeichert.")
+        hint_lbl.setAlignment(Qt.AlignCenter)
+        hint_lbl.setWordWrap(True)
+        hint_lbl.setStyleSheet("""
+            color: #6E7681;
+            font-size: 11px;
+            background: transparent;
+            border: none;
+            padding-top: 2px;
+        """)
+        card_lay.addWidget(hint_lbl)
+
+        outer_lay.addWidget(card, alignment=Qt.AlignCenter)
+        return container
 
     def _build_toc_panel(self) -> QWidget:
         panel = QFrame()
@@ -1325,22 +1480,45 @@ class PdfReaderDialog(QDialog):
         """
 
     def _load_document(self) -> None:
-        if self.file_path and not os.path.exists(self.file_path):
-            self.file_path = resolve_and_heal_book_path(self.file_path, book_id=self.book_id)
-            self.book["file_path"] = self.file_path
+        self.center_stack.setCurrentIndex(0)
+        self.loading_bar.setValue(8)
+        self.lbl_loading_status.setText("PDF-Dokument wird vorbereitet…")
 
-        if not self.file_path or not os.path.exists(self.file_path):
-            QMessageBox.critical(self, "Fehler", f"PDF-Datei nicht gefunden:\n{self.file_path}")
-            return
+        if self._stream_loader_thread and self._stream_loader_thread.isRunning():
+            self._stream_loader_thread.cancel()
+            self._stream_loader_thread.wait(200)
+
+        self._stream_loader_thread = PdfStreamLoaderWorker(self.file_path, book_id=self.book_id, parent=self)
+        self._stream_loader_thread.progress_changed.connect(self._on_stream_load_progress)
+        self._stream_loader_thread.file_ready.connect(self._on_stream_file_ready)
+        self._stream_loader_thread.error_occurred.connect(self._on_stream_load_error)
+        self._stream_loader_thread.start()
+
+    def _on_stream_load_progress(self, pct: int, read_mb: float, total_mb: float) -> None:
+        self.loading_bar.setValue(max(8, pct))
+        self.lbl_loading_status.setText(f"Lade Buchdaten… {read_mb:.1f} / {total_mb:.1f} MB ({pct}%)")
+
+    def _on_stream_load_error(self, err_msg: str) -> None:
+        self.lbl_loading_status.setText("Fehler beim Laden der PDF-Datei.")
+        QMessageBox.critical(self, "Fehler", err_msg)
+
+    def _on_stream_file_ready(self, resolved_path: str) -> None:
+        self.file_path = resolved_path
+        self.book["file_path"] = resolved_path
+        self.loading_bar.setValue(100)
+        self.lbl_loading_status.setText("Seitenansicht wird initialisiert…")
+        QApplication.processEvents()
 
         self.doc.load(self.file_path)
-        p_count = self.doc.pageCount()
+        p_count = max(1, self.doc.pageCount())
         self.lbl_total_pages.setText(f"/ {p_count}")
 
         # Jump to initial page immediately for instant first-frame render
         target_idx = max(0, min(self.initial_page - 1, p_count - 1))
         self._update_page_input(target_idx + 1)
         self.view.pageNavigator().jump(target_idx, QPointF(0, 0), self.view.pageNavigator().currentZoom())
+
+        self.center_stack.setCurrentIndex(1)
         self.view.setFocus()
 
         # Run initial setups safely
@@ -2317,13 +2495,17 @@ class PdfReaderDialog(QDialog):
 
     def _save_current_position(self) -> None:
         """Ensures the currently active viewing page is persistently saved before closing."""
-        if hasattr(self, "view") and self.view and hasattr(self.view, "pageNavigator"):
-            curr_p = self.view.pageNavigator().currentPage() + 1
-            self._record_progress(curr_p)
+        if hasattr(self, "center_stack") and self.center_stack.currentIndex() == 1:
+            if hasattr(self, "view") and self.view and hasattr(self.view, "pageNavigator"):
+                curr_p = self.view.pageNavigator().currentPage() + 1
+                self._record_progress(curr_p)
 
     def _cleanup_resources(self) -> None:
         """Terminates all active worker threads and releases QtPdf resources cleanly."""
         try:
+            if hasattr(self, "_stream_loader_thread") and self._stream_loader_thread and self._stream_loader_thread.isRunning():
+                self._stream_loader_thread.cancel()
+                self._stream_loader_thread.wait(300)
             if hasattr(self, "_thumb_thread") and self._thumb_thread and self._thumb_thread.isRunning():
                 self._thumb_thread.cancel()
                 self._thumb_thread.wait(300)
