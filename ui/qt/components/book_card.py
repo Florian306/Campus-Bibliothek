@@ -125,21 +125,22 @@ class BookCard(QFrame):
 
             indicators_layout.addWidget(ext_badge)
 
-        self.desk_badge = QWidget()
+        # Parent at construction: setVisible() on orphan widgets spawns native windows
+        self.desk_badge = QWidget(self)
         desk_badge_layout = QHBoxLayout(self.desk_badge)
         desk_badge_layout.setContentsMargins(0, 0, 0, 0)
         desk_badge_layout.setSpacing(3)
 
-        lbl_bm = QLabel()
+        lbl_bm = QLabel(self.desk_badge)
         lbl_bm.setPixmap(create_vector_pixmap("bookmark", "#58A6FF", 12))
         lbl_bm.setStyleSheet("border: none; background: transparent;")
         desk_badge_layout.addWidget(lbl_bm)
 
-        self.lbl_pct = QLabel(f"{pct}%" if pct > 0 else "")
+        self.lbl_pct = QLabel(f"{pct}%" if pct > 0 else "", self.desk_badge)
         self.lbl_pct.setFont(QFont("Segoe UI", 8, QFont.Bold))
         self.lbl_pct.setStyleSheet("color: #58A6FF; border: none; background: transparent;")
-        self.lbl_pct.setVisible(pct > 0)
         desk_badge_layout.addWidget(self.lbl_pct)
+        self.lbl_pct.setVisible(pct > 0)
 
         indicators_layout.addWidget(self.desk_badge)
         self.desk_badge.setVisible(is_desk)

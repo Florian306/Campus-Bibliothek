@@ -5,7 +5,7 @@ Provides dual view modes: Interactive Shelf Grid & Searchable Table List.
 import os
 import subprocess
 from typing import Any, Dict, List, Optional
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent
 from PySide6.QtGui import QFont, QColor, QAction
 from PySide6.QtWidgets import (
     QWidget,
@@ -355,6 +355,9 @@ class CatalogView(QWidget):
         """Starts batch rendering for the shelf grid with flicker-free updates."""
         self._shelf_batch_timer.stop()
 
+        # Flush pending layouts -> real viewport width on first show
+        QApplication.sendPostedEvents(None, QEvent.LayoutRequest)
+
         cols, gap, side_margin = self._calculate_shelf_geometry()
         self._current_cols = cols
 
@@ -398,8 +401,7 @@ class CatalogView(QWidget):
         if not self.filtered_books:
             return
 
-        cols, gap, side_margin = self._calculate_shelf_geometry()
-        self._current_cols = cols
+        cols = self._current_cols or self._calculate_shelf_geometry()[0]
 
         start = self._shelf_render_idx
         end = min(start + batch_size, len(self.filtered_books))

@@ -407,15 +407,22 @@ def init_library_schema() -> None:
         except Exception:
             pass
 
+        # Lock flag for user-chosen classification
+        try:
+            cursor.execute("ALTER TABLE books ADD COLUMN doc_type_manual INTEGER DEFAULT 0;")
+        except Exception:
+            pass
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_doc_type ON books(doc_type);")
 
-        # Auto-classify study guides / scripts based on filename, path or category
+        # Auto-classify study guides / scripts (skip manually classified rows)
         try:
             cursor.execute(
                 """
                 UPDATE books 
                 SET doc_type = 'study_script'
                 WHERE (doc_type IS NULL OR doc_type = 'book' OR doc_type = '')
+                  AND COALESCE(doc_type_manual, 0) = 0
                   AND (
                     LOWER(filename) LIKE '%studienbrief%'
                     OR LOWER(filename) LIKE '%kurseinheit%'
@@ -753,7 +760,10 @@ def set_book_doc_type(book_id: str, doc_type: str) -> None:
     with _db_write_lock:
         conn = get_db_connection()
         with conn:
-            conn.execute("UPDATE books SET doc_type = ? WHERE id = ?", (doc_type, str(book_id)))
+            conn.execute(
+                "UPDATE books SET doc_type = ?, doc_type_manual = 1 WHERE id = ?",
+                (doc_type, str(book_id)),
+            )
 
 
 def get_book_by_id(book_id: str) -> Optional[Dict[str, Any]]:
