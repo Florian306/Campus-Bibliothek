@@ -368,6 +368,30 @@ class InboxView(QWidget):
         top_row.addLayout(title_box)
         top_row.addStretch()
 
+        btn_merge_studio = QPushButton("  Kapitel / PDFs zusammenführen")
+        btn_merge_studio.setIcon(create_vector_icon("merge", "#D2A8FF", 14))
+        btn_merge_studio.setCursor(Qt.PointingHandCursor)
+        btn_merge_studio.setFixedHeight(34)
+        btn_merge_studio.setToolTip("Mehrere Einzelkapitel oder PDF-Dateien inklusive Inhaltsverzeichnis zu einem Gesamtbuch verschmelzen")
+        btn_merge_studio.setStyleSheet("""
+            QPushButton {
+                background-color: #1A162B;
+                color: #D2A8FF;
+                border: 1px solid #483278;
+                border-radius: 6px;
+                padding: 0 14px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #272042;
+                border-color: #8957E5;
+                color: #FFFFFF;
+            }
+        """)
+        btn_merge_studio.clicked.connect(self._open_merge_studio)
+        top_row.addWidget(btn_merge_studio)
+
         btn_open_folder = QPushButton("  _Inbox im Explorer")
         btn_open_folder.setIcon(create_vector_icon("export", "#58A6FF", 13))
         btn_open_folder.setCursor(Qt.PointingHandCursor)
@@ -1183,3 +1207,17 @@ class InboxView(QWidget):
         if ret == QMessageBox.Yes:
             delete_inbox_item(item_id, delete_file=True)
             self._reload_table_data()
+
+    def _open_merge_studio(self) -> None:
+        """Opens the PDF Merge Studio preloaded with current Inbox PDFs."""
+        from ui.qt.dialogs.pdf_merge_dialog import PdfMergeDialog
+        inbox_paths = [it["file_path"] for it in self._items if os.path.isfile(it.get("file_path", ""))]
+        dlg = PdfMergeDialog(
+            initial_files=inbox_paths,
+            from_inbox=len(inbox_paths) > 0,
+            parent=self.window(),
+        )
+        if dlg.exec():
+            self.sync_filesystem_with_db()
+            self.book_filed.emit()
+

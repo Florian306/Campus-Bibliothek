@@ -327,6 +327,28 @@ def create_vector_pixmap(icon_name: str, color_hex: str = "#58A6FF", size: int =
         painter.drawLine(QPointF(s * 0.26, s * 0.56), QPointF(s * 0.74, s * 0.56))
         painter.drawLine(QPointF(s * 0.26, s * 0.68), QPointF(s * 0.64, s * 0.68))
 
+    elif icon_name in ("merge", "combine", "layers"):
+        # Two converging paths into a single arrow / document
+        path = QPainterPath()
+        path.moveTo(s * 0.22, s * 0.22)
+        path.cubicTo(s * 0.42, s * 0.22, s * 0.45, s * 0.50, s * 0.58, s * 0.50)
+        path.moveTo(s * 0.22, s * 0.78)
+        path.cubicTo(s * 0.42, s * 0.78, s * 0.45, s * 0.50, s * 0.58, s * 0.50)
+        painter.drawPath(path)
+        painter.drawLine(QPointF(s * 0.54, s * 0.50), QPointF(s * 0.82, s * 0.50))
+        painter.drawLine(QPointF(s * 0.66, s * 0.34), QPointF(s * 0.82, s * 0.50))
+        painter.drawLine(QPointF(s * 0.66, s * 0.66), QPointF(s * 0.82, s * 0.50))
+
+    elif icon_name == "arrow_up":
+        painter.drawLine(QPointF(s * 0.50, s * 0.80), QPointF(s * 0.50, s * 0.22))
+        painter.drawLine(QPointF(s * 0.28, s * 0.44), QPointF(s * 0.50, s * 0.22))
+        painter.drawLine(QPointF(s * 0.72, s * 0.44), QPointF(s * 0.50, s * 0.22))
+
+    elif icon_name == "arrow_down":
+        painter.drawLine(QPointF(s * 0.50, s * 0.20), QPointF(s * 0.50, s * 0.78))
+        painter.drawLine(QPointF(s * 0.28, s * 0.56), QPointF(s * 0.50, s * 0.78))
+        painter.drawLine(QPointF(s * 0.72, s * 0.56), QPointF(s * 0.50, s * 0.78))
+
     else:
         # Default dot
         painter.setBrush(QBrush(col))

@@ -262,6 +262,30 @@ class CatalogView(QWidget):
         btn_desk.clicked.connect(self._toggle_selected_desk)
         footer.addWidget(btn_desk)
 
+        btn_merge = QPushButton("  Kapitel / PDFs zusammenführen")
+        btn_merge.setIcon(create_vector_icon("merge", "#D2A8FF", 15))
+        btn_merge.setCursor(Qt.PointingHandCursor)
+        btn_merge.setFixedHeight(34)
+        btn_merge.setToolTip("Einzelne Kapitel-PDFs oder Studienbriefe inklusive Inhaltsverzeichnis zu einem Gesamtbuch zusammenführen")
+        btn_merge.setStyleSheet("""
+            QPushButton {
+                background-color: #1A162B;
+                color: #D2A8FF;
+                border: 1px solid #483278;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 12px;
+                padding: 4px 12px;
+            }
+            QPushButton:hover {
+                background-color: #272042;
+                border-color: #8957E5;
+                color: #FFFFFF;
+            }
+        """)
+        btn_merge.clicked.connect(lambda: self._open_merge_dialog())
+        footer.addWidget(btn_merge)
+
         btn_del = QPushButton("  Buch entfernen")
         btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 15))
         btn_del.setCursor(Qt.PointingHandCursor)
@@ -589,6 +613,9 @@ class CatalogView(QWidget):
         act_extract = menu.addAction(create_vector_icon("notes", "#E3B341", 14), "Seiten / Kapitel extrahieren...")
         act_extract.triggered.connect(lambda: self._extract_book_pages(book))
 
+        act_merge = menu.addAction(create_vector_icon("merge", "#D2A8FF", 14), "Weitere Kapitel / PDFs an dieses Buch anfügen...")
+        act_merge.triggered.connect(lambda: self._open_merge_dialog(base_book=book))
+
         ext_cnt = int(book.get("extract_count") or 0)
         if ext_cnt > 0:
             act_show_ext = menu.addAction(create_vector_icon("bookmark", "#D2A8FF", 14), f"Angeheftete Kapitel ({ext_cnt}) anzeigen...")
@@ -655,6 +682,17 @@ class CatalogView(QWidget):
     def _extract_book_pages(self, book: Dict[str, Any]) -> None:
         from ui.qt.dialogs.pdf_extract_dialog import PdfExtractDialog
         dlg = PdfExtractDialog(book, parent=self.window())
+        if dlg.exec():
+            self.data_changed.emit()
+            self.load_data()
+
+    def _open_merge_dialog(self, base_book: Optional[Dict[str, Any]] = None) -> None:
+        from ui.qt.dialogs.pdf_merge_dialog import PdfMergeDialog
+        dlg = PdfMergeDialog(
+            default_doc_type=self.doc_type_filter,
+            base_book=base_book,
+            parent=self.window(),
+        )
         if dlg.exec():
             self.data_changed.emit()
             self.load_data()
@@ -730,4 +768,3 @@ class CatalogView(QWidget):
         new_cols, _, _ = self._calculate_shelf_geometry()
         if new_cols != self._current_cols:
             self._render_shelf_grid()
-

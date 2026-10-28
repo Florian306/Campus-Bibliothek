@@ -92,7 +92,7 @@ hiddenimports += [
     'ui.qt.components.book_card',
     'ui.qt.components.category_chips',
     'ui.qt.dialogs.quick_look',
-    'ui.qt.dialogs.pdf_extract_dialog',
+    'ui.qt.dialogs.pdf_extract_dialog', 'ui.qt.dialogs.pdf_merge_dialog',
     'ui.qt.dialogs.study_plan_dialog',
     'ui.qt.dialogs.tutor_dialog',
     'ui.qt.dialogs.pdf_reader_dialog',
