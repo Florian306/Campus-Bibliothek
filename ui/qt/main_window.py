@@ -138,7 +138,8 @@ class CampusMainWindow(QMainWindow):
         ]
 
         for key, icon_name, text, idx in nav_items:
-            btn = QPushButton(f"  {text}")
+            safe_text = text.replace("&", "&&")
+            btn = QPushButton(f"  {safe_text}")
             btn.setIcon(create_vector_icon(icon_name, "#58A6FF", 20))
             btn.setIconSize(QSize(20, 20))
             btn.setCursor(Qt.PointingHandCursor)

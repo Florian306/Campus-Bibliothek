@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QApplication,
     QMessageBox,
     QCheckBox,
+    QComboBox,
+    QFrame,
 )
 
 from ui.qt.components.book_card import BookCard
@@ -64,6 +66,9 @@ class CatalogView(QWidget):
         self.selected_book_ids: Set[str] = set()
         self.current_category = "Alle"
         self.search_term = ""
+        self.sort_mode = "title_asc"
+        self.active_letter: str = "Alle"
+        self._letter_buttons: Dict[str, QPushButton] = {}
 
         # Shelf cards cache
         self.cards_dict: Dict[str, BookCard] = {}
@@ -158,10 +163,55 @@ class CatalogView(QWidget):
 
         top_bar.addWidget(switch_frame)
 
+        # Sort Mode Selector
+        self.combo_sort = QComboBox()
+        self.combo_sort.setFixedHeight(34)
+        self.combo_sort.setFixedWidth(185)
+        self.combo_sort.setCursor(Qt.PointingHandCursor)
+        self.combo_sort.setToolTip("Sortierreihenfolge für Bücherregal & Tabelle")
+        self.combo_sort.addItem("↕  Titel (A – Z)", "title_asc")
+        self.combo_sort.addItem("↕  Titel (Z – A)", "title_desc")
+        self.combo_sort.addItem("↕  Zuletzt hinzugefügt", "recent")
+        self.combo_sort.addItem("↕  Erscheinungsjahr (Neu)", "year_desc")
+        self.combo_sort.addItem("↕  Seitenzahl (Umfang)", "pages_desc")
+        self.combo_sort.addItem("↕  Autor (A – Z)", "author_asc")
+        self.combo_sort.setStyleSheet("""
+            QComboBox {
+                background-color: #121826;
+                color: #C9D1D9;
+                border: 1px solid #232F48;
+                border-radius: 8px;
+                padding: 0 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QComboBox:hover {
+                border-color: #58A6FF;
+                color: #FFFFFF;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 22px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #141C2E;
+                color: #F0F6FC;
+                selection-background-color: #1F6FEB;
+                selection-color: #FFFFFF;
+                border: 1px solid #324468;
+                border-radius: 6px;
+                padding: 4px;
+                outline: none;
+            }
+        """)
+        self.combo_sort.currentIndexChanged.connect(self._on_sort_changed)
+        top_bar.addWidget(self.combo_sort)
+
         # Search Input
         self.ent_search = QLineEdit()
         self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
-        self.ent_search.setFixedWidth(280)
+        self.ent_search.setFixedWidth(260)
+        self.ent_search.setFixedHeight(34)
         self.ent_search.textChanged.connect(self._on_search_changed)
         self.ent_search.setClearButtonEnabled(True)
         top_bar.addWidget(self.ent_search)
@@ -169,11 +219,41 @@ class CatalogView(QWidget):
         main_layout.addLayout(top_bar)
 
         # -------------------------------------------------------------
-        # 2. Category Chips Bar
+        # 2. Category Chips Bar & A-Z Quick Jump Bar
         # -------------------------------------------------------------
         self.chips_bar = CategoryChipsBar(self)
         self.chips_bar.category_selected.connect(self._on_category_selected)
         main_layout.addWidget(self.chips_bar)
+
+        # Compact Alphabetical Quick-Filter Strip (Alle | A B C ... Z)
+        az_frame = QFrame(self)
+        az_frame.setFixedHeight(30)
+        az_frame.setStyleSheet("""
+            QFrame {
+                background-color: #0D121F;
+                border: 1px solid #1B253B;
+                border-radius: 7px;
+            }
+        """)
+        az_layout = QHBoxLayout(az_frame)
+        az_layout.setContentsMargins(6, 2, 6, 2)
+        az_layout.setSpacing(2)
+
+        letters = ["Alle"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+        for ltr in letters:
+            btn_l = QPushButton(ltr)
+            btn_l.setCursor(Qt.PointingHandCursor)
+            btn_l.setFixedHeight(22)
+            if ltr == "Alle":
+                btn_l.setFixedWidth(42)
+            else:
+                btn_l.setFixedWidth(24)
+            btn_l.clicked.connect(lambda checked=False, l=ltr: self._on_letter_selected(l))
+            az_layout.addWidget(btn_l)
+            self._letter_buttons[ltr] = btn_l
+        az_layout.addStretch()
+        self._update_letter_bar_styles()
+        main_layout.addWidget(az_frame)
 
         # -------------------------------------------------------------
         # 3. Stacked View Container (Shelf vs. Table)
@@ -258,12 +338,12 @@ class CatalogView(QWidget):
         btn_quick.clicked.connect(self._open_quick_look_dialog)
         footer.addWidget(btn_quick)
 
-        btn_desk = QPushButton("  Auf Schreibtisch")
-        btn_desk.setIcon(create_vector_icon("check", "#3FB950", 16))
-        btn_desk.setCursor(Qt.PointingHandCursor)
-        btn_desk.setFixedHeight(34)
-        btn_desk.clicked.connect(self._toggle_selected_desk)
-        footer.addWidget(btn_desk)
+        self.btn_desk = QPushButton("  Auf Schreibtisch")
+        self.btn_desk.setIcon(create_vector_icon("check", "#3FB950", 16))
+        self.btn_desk.setCursor(Qt.PointingHandCursor)
+        self.btn_desk.setFixedHeight(34)
+        self.btn_desk.clicked.connect(self._toggle_selected_desk)
+        footer.addWidget(self.btn_desk)
 
         self.btn_merge = QPushButton("  Kapitel / PDFs zusammenführen")
         self.btn_merge.setIcon(create_vector_icon("merge", "#D2A8FF", 15))
@@ -289,11 +369,11 @@ class CatalogView(QWidget):
         self.btn_merge.clicked.connect(self._on_footer_merge_clicked)
         footer.addWidget(self.btn_merge)
 
-        btn_del = QPushButton("  Buch entfernen")
-        btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 15))
-        btn_del.setCursor(Qt.PointingHandCursor)
-        btn_del.setFixedHeight(34)
-        btn_del.setStyleSheet("""
+        self.btn_del = QPushButton("  Buch entfernen")
+        self.btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 15))
+        self.btn_del.setCursor(Qt.PointingHandCursor)
+        self.btn_del.setFixedHeight(34)
+        self.btn_del.setStyleSheet("""
             QPushButton {
                 background-color: #211215;
                 color: #FF7B72;
@@ -309,8 +389,8 @@ class CatalogView(QWidget):
                 color: #FFA198;
             }
         """)
-        btn_del.clicked.connect(self._delete_selected_book)
-        footer.addWidget(btn_del)
+        self.btn_del.clicked.connect(self._delete_selected_book)
+        footer.addWidget(self.btn_del)
 
         main_layout.addLayout(footer)
 
@@ -318,7 +398,8 @@ class CatalogView(QWidget):
         """Loads books from SQLite filtered by doc_type and triggers filter application."""
         self.master_books = get_all_books(doc_type=self.doc_type_filter)
         cat_counts = get_category_counts(doc_type=self.doc_type_filter)
-        self.chips_bar.populate(cat_counts)
+        total_cnt = len(self.master_books)
+        self.chips_bar.populate(cat_counts, total_unique_count=total_cnt)
 
         # Prune cached cards that no longer exist in master_books
         current_ids = {str(b["id"]) for b in self.master_books}
@@ -332,7 +413,6 @@ class CatalogView(QWidget):
         if self.selected_book_id not in current_ids:
             self.selected_book_id = None
 
-        total_cnt = len(self.master_books)
         unit = "Studienbriefe" if self.mode == "study_scripts" else "Bücher"
         self.lbl_badge_total.setText(f"{total_cnt} {unit}")
         self._update_merge_button_label()
@@ -357,13 +437,65 @@ class CatalogView(QWidget):
         self.search_term = text.strip().lower()
         self.apply_filter()
 
+    def _on_sort_changed(self, _index: int = 0) -> None:
+        self.sort_mode = self.combo_sort.currentData() or "title_asc"
+        self.apply_filter()
+
+    def _on_letter_selected(self, letter: str) -> None:
+        self.active_letter = letter
+        self._update_letter_bar_styles()
+        self.apply_filter()
+
+    def _update_letter_bar_styles(self) -> None:
+        for ltr, btn in self._letter_buttons.items():
+            if ltr == self.active_letter:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #1F6FEB;
+                        color: #FFFFFF;
+                        border: 1px solid #58A6FF;
+                        border-radius: 4px;
+                        font-size: 10px;
+                        font-weight: bold;
+                        padding: 0px;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: transparent;
+                        color: #8B949E;
+                        border: none;
+                        border-radius: 4px;
+                        font-size: 10px;
+                        font-weight: 600;
+                        padding: 0px;
+                    }
+                    QPushButton:hover {
+                        background-color: #1A243B;
+                        color: #F0F6FC;
+                    }
+                """)
+
     def apply_filter(self) -> None:
-        """Instant filtering (<2ms) across category and search term."""
-        books = self.master_books
+        """Instant filtering (<2ms) across category, initial letter, search term, and sort mode."""
+        books = list(self.master_books)
 
         if self.current_category != "Alle":
             target = self.current_category
             books = [b for b in books if target in (b.get("categories_str") or "")]
+
+        if self.active_letter != "Alle":
+            target_ltr = self.active_letter.upper()
+            umlaut_map = {"Ä": "A", "Ö": "O", "Ü": "U"}
+            filtered_by_letter = []
+            for b in books:
+                t_clean = (b.get("title") or "").lstrip(" ([{„\"'").upper()
+                first_ch = t_clean[0] if t_clean else ""
+                first_ch = umlaut_map.get(first_ch, first_ch)
+                if first_ch == target_ltr:
+                    filtered_by_letter.append(b)
+            books = filtered_by_letter
 
         if self.search_term:
             q = self.search_term
@@ -373,6 +505,20 @@ class CatalogView(QWidget):
                 or q in b["author"].lower()
                 or q in (b.get("categories_str") or "").lower()
             ]
+
+        # Sort filtered books according to selected sort_mode
+        if self.sort_mode == "title_desc":
+            books.sort(key=lambda x: (x.get("title") or "").lower(), reverse=True)
+        elif self.sort_mode == "recent":
+            books.sort(key=lambda x: float(x.get("file_mtime") or 0.0), reverse=True)
+        elif self.sort_mode == "year_desc":
+            books.sort(key=lambda x: (int(x.get("year") or 0), int(x.get("edition") or 1)), reverse=True)
+        elif self.sort_mode == "pages_desc":
+            books.sort(key=lambda x: int(x.get("page_count") or 0), reverse=True)
+        elif self.sort_mode == "author_asc":
+            books.sort(key=lambda x: ((x.get("author") or "ZZZ").lower(), (x.get("title") or "").lower()))
+        else:
+            books.sort(key=lambda x: (x.get("title") or "").lower())
 
         self.filtered_books = books
         unit = "Studienbriefen" if self.mode == "study_scripts" else "Büchern"
@@ -558,8 +704,12 @@ class CatalogView(QWidget):
         cnt = len(self.selected_book_ids)
         if cnt >= 2:
             self.btn_merge.setText(f"  {cnt} ausgewählte zusammenführen")
+            self.btn_del.setText(f"  {cnt} Bücher entfernen")
+            self.btn_desk.setText(f"  {cnt} auf Schreibtisch")
         else:
             self.btn_merge.setText("  Kapitel / PDFs zusammenführen")
+            self.btn_del.setText("  Buch entfernen")
+            self.btn_desk.setText("  Auf Schreibtisch")
 
     def _find_sibling_books_by_title(self, book: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Finds all books in master_books that share the exact same normalized title."""
@@ -595,6 +745,13 @@ class CatalogView(QWidget):
             self.quick_look_requested.emit(bid)
 
     def _toggle_selected_desk(self) -> None:
+        if len(self.selected_book_ids) >= 2:
+            for bid in list(self.selected_book_ids):
+                toggle_desk_item(bid)
+            self.data_changed.emit()
+            self.load_data()
+            return
+
         bid = self._get_active_book_id()
         if bid:
             toggle_desk_item(bid)
@@ -684,6 +841,18 @@ class CatalogView(QWidget):
                 f"🔗 {len(sel_books)} ausgewählte Bücher zusammenführen..."
             )
             act_merge_sel.triggered.connect(lambda: self._open_merge_dialog(catalog_books=sel_books))
+
+            act_desk_sel = menu.addAction(
+                create_vector_icon("check", "#3FB950", 14),
+                f"📌 {len(sel_books)} ausgewählte auf Schreibtisch umschalten"
+            )
+            act_desk_sel.triggered.connect(self._toggle_selected_desk)
+
+            act_del_sel = menu.addAction(
+                create_vector_icon("trash", "#FF7B72", 14),
+                f"🗑️ {len(sel_books)} ausgewählte Bücher entfernen..."
+            )
+            act_del_sel.triggered.connect(self._delete_multiple_books_prompt)
             menu.addSeparator()
 
         # 2. Check if this book has multiple sibling parts in the catalog (same book title!)
@@ -833,9 +1002,49 @@ class CatalogView(QWidget):
         QApplication.clipboard().setText(txt)
 
     def _delete_selected_book(self) -> None:
+        if len(self.selected_book_ids) >= 2:
+            self._delete_multiple_books_prompt()
+            return
         bid = self._get_active_book_id()
         if bid:
             self._delete_book_prompt(bid)
+
+    def _delete_multiple_books_prompt(self) -> None:
+        """Batch removal dialog for multiple selected books in the catalog."""
+        ids_to_del = list(self.selected_book_ids)
+        if not ids_to_del:
+            return
+
+        cnt = len(ids_to_del)
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(f"{cnt} Bücher entfernen")
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setText(f"Möchtest du wirklich die <b>{cnt} ausgewählten Bücher</b> aus dem Katalog entfernen?")
+        msg_box.setInformativeText("Notizen, Lesefortschritt und Index-Daten dieser Bücher werden gelöscht.")
+
+        chk_delete_file = QCheckBox("Auch alle zugehörigen PDF-Dateien von der Festplatte löschen")
+        chk_delete_file.setStyleSheet("color: #FF7B72; font-weight: bold; margin-top: 10px;")
+        msg_box.setCheckBox(chk_delete_file)
+
+        btn_cancel = msg_box.addButton("Abbrechen", QMessageBox.RejectRole)
+        btn_del = msg_box.addButton(f"{cnt} Bücher entfernen", QMessageBox.AcceptRole)
+        btn_del.setStyleSheet("background-color: #DA3633; color: #FFFFFF; font-weight: bold; padding: 6px 14px; border-radius: 4px;")
+
+        msg_box.exec()
+
+        if msg_box.clickedButton() == btn_del:
+            delete_file_disk = chk_delete_file.isChecked()
+            for bid in ids_to_del:
+                success, _ = delete_book(bid, delete_file=delete_file_disk)
+                if success and str(bid) in self.cards_dict:
+                    card = self.cards_dict.pop(str(bid))
+                    card.hide()
+                    card.deleteLater()
+
+            self.selected_book_ids.clear()
+            self.selected_book_id = None
+            self.data_changed.emit()
+            self.load_data()
 
     def _delete_book_prompt(self, book_id: str) -> None:
         book = next((b for b in self.master_books if str(b["id"]) == str(book_id)), None)

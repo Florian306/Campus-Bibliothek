@@ -25,6 +25,7 @@ class CategoryChipsBar(QWidget):
         super().__init__(parent)
         self.active_category: str = "Alle"
         self.category_counts: List[Tuple[str, int]] = []
+        self.total_unique_count: Optional[int] = None
         self._buttons: dict = {}
         self.btn_more: Optional[QPushButton] = None
         self._last_signature = None
@@ -38,8 +39,13 @@ class CategoryChipsBar(QWidget):
         self._resize_timer.setInterval(30)
         self._resize_timer.timeout.connect(self._rebuild_chips)
 
-    def populate(self, category_counts: List[Tuple[str, int]]) -> None:
+    def populate(
+        self,
+        category_counts: List[Tuple[str, int]],
+        total_unique_count: Optional[int] = None,
+    ) -> None:
         self.category_counts = category_counts
+        self.total_unique_count = total_unique_count
         self._last_signature = None
         self._rebuild_chips()
 
@@ -58,7 +64,11 @@ class CategoryChipsBar(QWidget):
             if avail_w < 150:
                 avail_w = 900
 
-        total_books = sum(c[1] for c in self.category_counts)
+        total_books = (
+            self.total_unique_count
+            if self.total_unique_count is not None
+            else sum(c[1] for c in self.category_counts)
+        )
         fm = QFontMetrics(self.font())
 
         # Width of 'Alle' chip

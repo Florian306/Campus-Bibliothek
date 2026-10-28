@@ -3,6 +3,7 @@ Features dynamic faculty glow badges, smooth hover animations, book spine accent
 """
 
 import os
+import re
 from typing import Any, Dict, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QImage, QColor, QFont
@@ -16,6 +17,49 @@ from PySide6.QtWidgets import (
 )
 from core.cover_manager import get_cached_cover, generate_fallback_cover, extract_and_cache_cover, FACULTY_COLORS
 from ui.qt.icons import create_vector_pixmap
+
+
+SHORT_FACULTY_LABELS: Dict[str, str] = {
+    "Mathematik": "Mathematik",
+    "Physik & Astronomie": "Physik & Astro.",
+    "Chemie": "Chemie",
+    "Biologie & Lebenswissenschaften": "Biologie",
+    "Geowissenschaften & Geologie": "Geowiss.",
+    "Informatik & Programmierung": "Informatik",
+    "Medizin & Pharmazie": "Medizin",
+    "Psychologie & Soziologie": "Psychologie",
+    "Wirtschaftswissenschaften": "Wirtschaft",
+    "Rechtswissenschaften & Jura": "Rechtswiss.",
+    "Ingenieurwissenschaften & Technik": "Ingenieurw.",
+    "Geschichte & Politik": "Geschichte",
+    "Philosophie & Religion": "Philosophie",
+    "Pädagogik & Schule": "Pädagogik",
+    "Sprach- & Literaturwissenschaft": "Sprache & Lit.",
+    "Sonstiges": "Sonstiges",
+}
+
+
+def extract_volume_or_part_badge(title: str, filename: str) -> str:
+    """Detects volume, part, or course unit numbers from title or filename (e.g. 'Band 1', 'Teil 2', 'KE 3')."""
+    combined = f"{title} {filename}"
+    m_vol = re.search(
+        r'\b(Band|Bd\.?|Teil|Part|Volume|Vol\.?|Kurseinheit|KE|Studienbrief|SB|Heft)\s*([0-9]{1,2}|[IVX]{1,4})\b',
+        combined,
+        re.IGNORECASE,
+    )
+    if m_vol:
+        raw_kind = m_vol.group(1).lower()
+        num = m_vol.group(2).upper()
+        if raw_kind in ("band", "bd", "bd.", "volume", "vol", "vol."):
+            return f"Band {num}"
+        if raw_kind in ("teil", "part"):
+            return f"Teil {num}"
+        if raw_kind in ("kurseinheit", "ke"):
+            return f"KE {num}"
+        if raw_kind in ("studienbrief", "sb"):
+            return f"SB {num}"
+        return f"{m_vol.group(1).capitalize()} {num}"
+    return ""
 
 
 class BookCard(QFrame):
@@ -58,12 +102,17 @@ class BookCard(QFrame):
         first_cat = self.book.get("primary_category") or (cats[0] if cats else "Sonstiges")
         _, accent_col = FACULTY_COLORS.get(first_cat, ("#161B22", "#58A6FF"))
 
-        display_cat = (first_cat[:12] + "…") if len(first_cat) > 13 else first_cat
+        short_cat = SHORT_FACULTY_LABELS.get(first_cat)
+        if not short_cat:
+            short_cat = (first_cat[:13] + "…") if len(first_cat) > 14 else first_cat
+
+        display_cat = short_cat
         if len(cats) > 1:
-            display_cat = f"{first_cat[:9]} +{len(cats)-1}"
+            display_cat = f"{short_cat[:10]} +{len(cats)-1}"
 
         # Pill container with semi-transparent tinted background
         pill = QFrame()
+        pill.setToolTip(f"Fachbereich: {', '.join(cats) if cats else first_cat}")
         pill.setStyleSheet(f"""
             QFrame {{
                 background-color: #0F1626;
@@ -81,7 +130,7 @@ class BookCard(QFrame):
         dot.setStyleSheet(f"color: {accent_col}; border: none; background: transparent;")
         pill_layout.addWidget(dot)
 
-        self.lbl_cat = QLabel(display_cat)
+        self.lbl_cat = QLabel(display_cat.replace("&", "&&"))
         self.lbl_cat.setFont(QFont("Segoe UI", 8, QFont.Bold))
         self.lbl_cat.setStyleSheet(f"color: {accent_col}; border: none; background: transparent;")
         pill_layout.addWidget(self.lbl_cat)
@@ -93,7 +142,7 @@ class BookCard(QFrame):
         pct = self.book.get("reading_progress") or 0
         ext_cnt = int(self.book.get("extract_count") or 0)
 
-        # Right side indicators: Extracts badge & Desk badge
+        # Right side indicators: Selection checkmark, Extracts badge & Desk badge
         indicators_layout = QHBoxLayout()
         indicators_layout.setContentsMargins(0, 0, 0, 0)
         indicators_layout.setSpacing(4)
@@ -145,6 +194,22 @@ class BookCard(QFrame):
         indicators_layout.addWidget(self.desk_badge)
         self.desk_badge.setVisible(is_desk)
 
+        # Selection Checkmark Badge (shown when card is selected via Click / Ctrl+Click)
+        self.sel_badge = QLabel(self)
+        self.sel_badge.setFixedSize(18, 18)
+        self.sel_badge.setAlignment(Qt.AlignCenter)
+        self.sel_badge.setPixmap(create_vector_pixmap("check", "#FFFFFF", 11))
+        self.sel_badge.setToolTip("Ausgewählt (Strg+Klick zum Abwählen)")
+        self.sel_badge.setStyleSheet("""
+            QLabel {
+                background-color: #1F6FEB;
+                border: 1px solid #58A6FF;
+                border-radius: 5px;
+            }
+        """)
+        indicators_layout.addWidget(self.sel_badge)
+        self.sel_badge.setVisible(False)
+
         top_bar.addLayout(indicators_layout)
         layout.addLayout(top_bar)
 
@@ -168,6 +233,34 @@ class BookCard(QFrame):
         self._load_cover_image(first_cat)
         cv_layout.addWidget(self.lbl_cover)
 
+        # Optional Volume / Part Badge Overlay on bottom-right of cover (e.g. "Band 1", "Teil 2")
+        vol_text = extract_volume_or_part_badge(
+            self.book.get("title") or "",
+            self.book.get("filename") or "",
+        )
+        if vol_text:
+            self.lbl_vol_badge = QLabel(vol_text, cover_frame)
+            self.lbl_vol_badge.setFont(QFont("Segoe UI", 7, QFont.Bold))
+            self.lbl_vol_badge.setAlignment(Qt.AlignCenter)
+            self.lbl_vol_badge.setStyleSheet("""
+                QLabel {
+                    background-color: rgba(15, 22, 38, 235);
+                    color: #58A6FF;
+                    border: 1px solid #388BFD;
+                    border-radius: 4px;
+                    padding: 1px 6px;
+                }
+            """)
+            self.lbl_vol_badge.adjustSize()
+            bw = max(46, self.lbl_vol_badge.width() + 4)
+            bh = 18
+            self.lbl_vol_badge.setGeometry(
+                self.COVER_WIDTH - bw - 6,
+                self.COVER_HEIGHT - bh - 6,
+                bw,
+                bh,
+            )
+
         layout.addWidget(cover_frame, alignment=Qt.AlignCenter)
 
         # 3. Title (Allocated 2 lines height)
@@ -179,14 +272,22 @@ class BookCard(QFrame):
         self.lbl_title.setWordWrap(True)
         self.lbl_title.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
         self.lbl_title.setFixedHeight(34)
+        self.lbl_title.setToolTip(raw_title)
         layout.addWidget(self.lbl_title)
 
-        # 4. Author (1 line, muted)
-        raw_author = self.book.get("author") or "Unbekannter Autor"
-        short_author = (raw_author[:22] + "…") if len(raw_author) > 23 else raw_author
-        self.lbl_author = QLabel(short_author)
+        # 4. Author + Page count (1 line, muted)
+        raw_author = self.book.get("author") or "Unbekannt"
+        p_cnt = int(self.book.get("page_count") or 0)
+        if p_cnt > 0:
+            short_a = (raw_author[:15] + "…") if len(raw_author) > 16 else raw_author
+            meta_line = f"{short_a} • {p_cnt} S."
+        else:
+            meta_line = (raw_author[:22] + "…") if len(raw_author) > 23 else raw_author
+
+        self.lbl_author = QLabel(meta_line)
         self.lbl_author.setFont(QFont("Segoe UI", 8))
         self.lbl_author.setAlignment(Qt.AlignCenter)
+        self.lbl_author.setToolTip(f"Autor: {raw_author}" + (f" • {p_cnt} Seiten" if p_cnt > 0 else ""))
         self.lbl_author.setStyleSheet("color: #8B949E; border: none; background: transparent;")
         layout.addWidget(self.lbl_author)
 
@@ -265,23 +366,25 @@ class BookCard(QFrame):
 
     def set_selected(self, selected: bool) -> None:
         self.is_selected = selected
+        if hasattr(self, "sel_badge"):
+            self.sel_badge.setVisible(selected)
         self._update_style()
 
     def _update_style(self, hover: bool = False) -> None:
         if self.is_selected:
-            bg = "#1A253C"
-            border = "#58A6FF"
+            bg = "#1D2A44"
+            border = "2px solid #58A6FF"
         elif hover:
             bg = "#162035"
-            border = "#388BFD"
+            border = "1px solid #388BFD"
         else:
             bg = "#121826"
-            border = "#232F48"
+            border = "1px solid #232F48"
 
         self.setStyleSheet(f"""
             BookCard {{
                 background-color: {bg};
-                border: 1px solid {border};
+                border: {border};
                 border-radius: 9px;
             }}
         """)
