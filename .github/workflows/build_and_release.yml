@@ -49,29 +49,39 @@ jobs:
         run: |
           pyinstaller Buchsortierer.spec --noconfirm
 
+      - name: Create Instant Delta Patch
+        run: |
+          cd dist/Buchsortierer
+          7z a -tzip -mx=1 "../Campus-Bibliothek-Patch.zip" "Buchsortierer.exe" "_internal/base_library.zip" "_internal/*.pyc" "_internal/ui*" "_internal/ai*" "_internal/core*"
+          cd ../..
+
+      - name: Publish Instant Release (Immediate Availability)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Campus-Bibliothek-Patch.zip
+          name: Campus-Bibliothek ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Portable Zip Package
+        run: |
+          7z a -tzip -mx=1 "dist/Campus-Bibliothek-Portable.zip" "./dist/Buchsortierer/*"
+
       - name: Install Inno Setup Fast & Compile Installer
         run: |
           Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_3_3/innosetup-6.3.3.exe" -OutFile "innosetup.exe"
           Start-Process -FilePath ".\innosetup.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -NoNewWindow -Wait
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
-      - name: Create Portable Zip Package and Delta Patch
-        run: |
-          7z a -tzip -mx=1 "dist/Campus-Bibliothek-Portable.zip" "./dist/Buchsortierer/*"
-          cd dist/Buchsortierer
-          7z a -tzip -mx=1 "../Campus-Bibliothek-Patch.zip" "Buchsortierer.exe" "_internal/base_library.zip" "_internal/*.pyc" "_internal/ui*" "_internal/ai*" "_internal/core*"
-          cd ../..
-
-      - name: Create Release and Upload Artifacts
+      - name: Upload Full Installer and Portable to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Campus-Bibliothek-Patch.zip
             dist/Campus-Bibliothek-Portable.zip
             installer_output/Campus-Bibliothek-Setup.exe
-          name: Campus-Bibliothek ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
