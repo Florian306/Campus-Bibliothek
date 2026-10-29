@@ -37,6 +37,7 @@ from core.library_db import (
     delete_book_extract,
     delete_all_book_extracts,
     toggle_extract_desk,
+    heal_and_enrich_book_metadata,
 )
 from core.config import load_config
 from ai.pdf_extractor import extract_pdf_toc, _TOC_CACHE
@@ -61,13 +62,29 @@ class TocLoaderThread(QThread):
         self.finished_toc.emit(items)
 
 
+class MetadataEnricherThread(QThread):
+    """Background worker to enrich missing ISBN, year, edition, or page count without blocking UI."""
+    finished_book = Signal(dict)
+
+    def __init__(self, book: Dict[str, Any]):
+        super().__init__()
+        self.book = dict(book)
+
+    def run(self):
+        try:
+            enriched = heal_and_enrich_book_metadata(self.book)
+        except Exception:
+            enriched = self.book
+        self.finished_book.emit(enriched)
+
+
 class QuickLookDialog(QDialog):
     """Modern modal inspection window with interactive Table of Contents (TOC) and notes."""
 
     def __init__(self, book: Dict[str, Any], parent=None):
         super().__init__(parent)
-        self.book = book
-        self.setWindowTitle(f"Quick-Look: {book.get('title', 'Buchdetails')}")
+        self.book = dict(book)
+        self.setWindowTitle(f"Quick-Look: {self.book.get('title', 'Buchdetails')}")
         self.resize(960, 640)
         self.setMinimumSize(920, 600)
         self.setWindowFlags(
@@ -81,9 +98,11 @@ class QuickLookDialog(QDialog):
         """)
 
         self._toc_thread = None
+        self._meta_thread = None
         self._cached_toc = None
         self.was_data_modified = False
         self._build_ui()
+        self._start_metadata_enrichment()
 
     def _build_ui(self) -> None:
         main_layout = QHBoxLayout(self)
@@ -206,9 +225,13 @@ class QuickLookDialog(QDialog):
         pages = f"{self.book.get('page_count', 0)} Seiten"
         isbn = self.book.get("isbn") or "Keine ISBN"
 
-        meta_layout.addWidget(QLabel(f"<span style='color:#8B949E;'>Fachbereiche:</span> <span style='color:#F0F6FC;'>{cats}</span>"))
-        meta_layout.addWidget(QLabel(f"<span style='color:#8B949E;'>Ausgabe:</span> <span style='color:#F0F6FC;'>{ed} • {pages}</span>"))
-        meta_layout.addWidget(QLabel(f"<span style='color:#8B949E;'>ISBN:</span> <span style='color:#F0F6FC;'>{isbn}</span>"))
+        self.lbl_meta_cats = QLabel(f"<span style='color:#8B949E;'>Fachbereiche:</span> <span style='color:#F0F6FC;'>{cats}</span>")
+        self.lbl_meta_ed = QLabel(f"<span style='color:#8B949E;'>Ausgabe:</span> <span style='color:#F0F6FC;'>{ed} • {pages}</span>")
+        self.lbl_meta_isbn = QLabel(f"<span style='color:#8B949E;'>ISBN:</span> <span style='color:#F0F6FC;'>{isbn}</span>")
+
+        meta_layout.addWidget(self.lbl_meta_cats)
+        meta_layout.addWidget(self.lbl_meta_ed)
+        meta_layout.addWidget(self.lbl_meta_isbn)
 
         right_col.addWidget(meta_frame)
 
@@ -465,8 +488,13 @@ class QuickLookDialog(QDialog):
                 cached_toc = self._cached_toc
                 self.accept()
                 if cfg.get("use_internal_reader", True):
-                    dlg = PdfReaderDialog(book_data, initial_page=p_int, toc_items=cached_toc, parent=parent_win)
-                    dlg.exec()
+                    top_p = parent_win.window() if (parent_win and hasattr(parent_win, "window")) else self.window()
+                    dlg = PdfReaderDialog(book_data, initial_page=p_int, toc_items=cached_toc, parent=top_p)
+                    dlg.setModal(False)
+                    dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+                    dlg.show()
+                    dlg.raise_()
+                    dlg.activateWindow()
                 else:
                     open_pdf_in_edge(path, page=p_int)
 
@@ -521,7 +549,11 @@ class QuickLookDialog(QDialog):
             self.accept()
             if cfg.get("use_internal_reader", True):
                 dlg = PdfReaderDialog(book_data, initial_page=page, toc_items=cached_toc, parent=top_parent)
-                dlg.exec()
+                dlg.setModal(False)
+                dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+                dlg.show()
+                dlg.raise_()
+                dlg.activateWindow()
             else:
                 open_pdf_in_edge(path, page=page)
 
@@ -859,8 +891,12 @@ class QuickLookDialog(QDialog):
                 "file_path": file_path,
             }
             dlg = PdfReaderDialog(ext_book, initial_page=max(1, int(initial_page or 1)), parent=self.window())
-            dlg.exec()
-            self._refresh_extracts_list()
+            dlg.setModal(False)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+            dlg.finished.connect(lambda _=None: self._refresh_extracts_list())
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
         else:
             open_pdf_in_edge(file_path, page=max(1, int(initial_page or 1)))
 
@@ -944,13 +980,71 @@ class QuickLookDialog(QDialog):
         if folder and os.path.exists(folder):
             subprocess.run(["explorer", os.path.normpath(folder)])
 
+    def _start_metadata_enrichment(self) -> None:
+        cur_pages = int(self.book.get("page_count") or 0)
+        cur_isbn = self.book.get("isbn")
+        cur_year = self.book.get("year")
+        cur_ed = int(self.book.get("edition") or 1)
+        if cur_pages > 0 and cur_isbn and cur_year and cur_ed > 1:
+            return
+        self._meta_thread = MetadataEnricherThread(self.book)
+        self._meta_thread.finished_book.connect(self._on_metadata_enriched)
+        self._meta_thread.finished.connect(self._meta_thread.deleteLater)
+        self._meta_thread.start()
+
+    def _on_metadata_enriched(self, enriched: Dict[str, Any]) -> None:
+        if not enriched:
+            return
+        old_vals = (
+            self.book.get("page_count"),
+            self.book.get("isbn"),
+            self.book.get("year"),
+            self.book.get("edition"),
+        )
+        new_vals = (
+            enriched.get("page_count"),
+            enriched.get("isbn"),
+            enriched.get("year"),
+            enriched.get("edition"),
+        )
+        self.book.update(enriched)
+        if old_vals != new_vals:
+            self.was_data_modified = True
+            ed = f"{self.book.get('edition', 1)}. Auflage ({self.book.get('year') or 'N/A'})"
+            pages = f"{self.book.get('page_count', 0)} Seiten"
+            isbn = self.book.get("isbn") or "Keine ISBN"
+            if hasattr(self, "lbl_meta_ed"):
+                self.lbl_meta_ed.setText(f"<span style='color:#8B949E;'>Ausgabe:</span> <span style='color:#F0F6FC;'>{ed} • {pages}</span>")
+            if hasattr(self, "lbl_meta_isbn"):
+                self.lbl_meta_isbn.setText(f"<span style='color:#8B949E;'>ISBN:</span> <span style='color:#F0F6FC;'>{isbn}</span>")
+
     def closeEvent(self, event):
         if self._toc_thread and self._toc_thread.isRunning():
+            try:
+                self._toc_thread.finished_toc.disconnect()
+            except Exception:
+                pass
             self._toc_thread.quit()
+        if self._meta_thread and self._meta_thread.isRunning():
+            try:
+                self._meta_thread.finished_book.disconnect()
+            except Exception:
+                pass
+            self._meta_thread.quit()
         super().closeEvent(event)
 
     def reject(self):
         if self._toc_thread and self._toc_thread.isRunning():
+            try:
+                self._toc_thread.finished_toc.disconnect()
+            except Exception:
+                pass
             self._toc_thread.quit()
+        if self._meta_thread and self._meta_thread.isRunning():
+            try:
+                self._meta_thread.finished_book.disconnect()
+            except Exception:
+                pass
+            self._meta_thread.quit()
         super().reject()
 

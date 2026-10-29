@@ -359,10 +359,14 @@ class PdfStreamLoaderWorker(QThread):
         self._is_cancelled = True
 
     def run(self) -> None:
+        import time
         try:
             path = self.file_path
             if path and not os.path.exists(path):
                 path = resolve_and_heal_book_path(path, book_id=self.book_id)
+
+            if self._is_cancelled:
+                return
 
             if not path or not os.path.exists(path):
                 self.error_occurred.emit(f"PDF-Datei nicht gefunden:\n{path or self.file_path}")
@@ -375,21 +379,29 @@ class PdfStreamLoaderWorker(QThread):
             if total_bytes > 0:
                 chunk_size = 512 * 1024  # 512 KB chunks
                 read_bytes = 0
+                last_emit_ts = 0.0
+                last_pct = -1
                 with open(path, "rb") as f:
                     while not self._is_cancelled:
                         buf = f.read(chunk_size)
-                        if not buf:
+                        if not buf or self._is_cancelled:
                             break
                         read_bytes += len(buf)
                         pct = min(98, int((read_bytes * 100) / total_bytes))
-                        read_mb = read_bytes / (1024 * 1024)
-                        self.progress_changed.emit(pct, read_mb, total_mb)
+                        now = time.monotonic()
+                        # Throttle signal emissions so Qt main event loop is never flooded on fast disks
+                        if (pct != last_pct and (now - last_emit_ts) >= 0.04) or pct >= 98:
+                            last_pct = pct
+                            last_emit_ts = now
+                            read_mb = read_bytes / (1024 * 1024)
+                            self.progress_changed.emit(pct, read_mb, total_mb)
 
             if not self._is_cancelled:
                 self.progress_changed.emit(100, total_mb, total_mb)
                 self.file_ready.emit(path)
         except Exception as e:
-            self.error_occurred.emit(f"Fehler beim Lesen der PDF-Datei:\n{str(e)}")
+            if not self._is_cancelled:
+                self.error_occurred.emit(f"Fehler beim Lesen der PDF-Datei:\n{str(e)}")
 
 
 class TocLoaderWorker(QThread):
@@ -460,6 +472,7 @@ class PdfReaderDialog(QDialog):
         self._toc_thread: Optional[TocLoaderWorker] = None
         self._thumb_thread: Optional[PageThumbnailWorker] = None
         self._stream_loader_thread: Optional[PdfStreamLoaderWorker] = None
+        self._is_closing = False
         self._is_jumping = False
 
         # Visual Theme / Filter Mode: "normal", "sepia", "dark"
@@ -1086,6 +1099,29 @@ class PdfReaderDialog(QDialog):
         """)
         card_lay.addWidget(hint_lbl)
 
+        btn_cancel_load = QPushButton("✕  Ladevorgang abbrechen & schließen (Esc)")
+        btn_cancel_load.setCursor(Qt.PointingHandCursor)
+        btn_cancel_load.setFixedHeight(32)
+        btn_cancel_load.setStyleSheet("""
+            QPushButton {
+                background-color: #1C1417;
+                color: #FF7B72;
+                border: 1px solid #482329;
+                border-radius: 8px;
+                padding: 0 16px;
+                font-size: 11px;
+                font-weight: 700;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: #381920;
+                border-color: #F85149;
+                color: #FFA198;
+            }
+        """)
+        btn_cancel_load.clicked.connect(self.reject)
+        card_lay.addWidget(btn_cancel_load, alignment=Qt.AlignCenter)
+
         outer_lay.addWidget(card, alignment=Qt.AlignCenter)
         return container
 
@@ -1486,28 +1522,40 @@ class PdfReaderDialog(QDialog):
 
         if self._stream_loader_thread and self._stream_loader_thread.isRunning():
             self._stream_loader_thread.cancel()
-            self._stream_loader_thread.wait(200)
+            try:
+                self._stream_loader_thread.progress_changed.disconnect()
+                self._stream_loader_thread.file_ready.disconnect()
+                self._stream_loader_thread.error_occurred.disconnect()
+            except Exception:
+                pass
 
-        self._stream_loader_thread = PdfStreamLoaderWorker(self.file_path, book_id=self.book_id, parent=self)
+        # Use parent=None so thread can finish a blocked OS read in the background if dialog is closed mid-load
+        self._stream_loader_thread = PdfStreamLoaderWorker(self.file_path, book_id=self.book_id, parent=None)
         self._stream_loader_thread.progress_changed.connect(self._on_stream_load_progress)
         self._stream_loader_thread.file_ready.connect(self._on_stream_file_ready)
         self._stream_loader_thread.error_occurred.connect(self._on_stream_load_error)
+        self._stream_loader_thread.finished.connect(self._stream_loader_thread.deleteLater)
         self._stream_loader_thread.start()
 
     def _on_stream_load_progress(self, pct: int, read_mb: float, total_mb: float) -> None:
+        if self._is_closing:
+            return
         self.loading_bar.setValue(max(8, pct))
         self.lbl_loading_status.setText(f"Lade Buchdaten… {read_mb:.1f} / {total_mb:.1f} MB ({pct}%)")
 
     def _on_stream_load_error(self, err_msg: str) -> None:
+        if self._is_closing:
+            return
         self.lbl_loading_status.setText("Fehler beim Laden der PDF-Datei.")
         QMessageBox.critical(self, "Fehler", err_msg)
 
     def _on_stream_file_ready(self, resolved_path: str) -> None:
+        if self._is_closing or not self.isVisible():
+            return
         self.file_path = resolved_path
         self.book["file_path"] = resolved_path
         self.loading_bar.setValue(100)
         self.lbl_loading_status.setText("Seitenansicht wird initialisiert…")
-        QApplication.processEvents()
 
         self.doc.load(self.file_path)
         p_count = max(1, self.doc.pageCount())
@@ -1541,11 +1589,14 @@ class PdfReaderDialog(QDialog):
             self._thumb_thread.wait(200)
 
         self.list_thumbnails.clear()
-        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=None, parent=self)
+        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=None, parent=None)
         self._thumb_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self._thumb_thread.finished.connect(self._thumb_thread.deleteLater)
         self._thumb_thread.start()
 
     def _on_thumbnail_ready(self, page_idx: int, raw_samples: bytes, width: int, height: int) -> None:
+        if self._is_closing:
+            return
         from PySide6.QtGui import QImage, QPixmap, QIcon
         try:
             qimg = QImage(raw_samples, width, height, width * 3, QImage.Format.Format_RGB888)
@@ -1849,12 +1900,15 @@ class PdfReaderDialog(QDialog):
                 self._apply_toc_items(_TOC_CACHE[norm_path])
                 return
 
-        # Load TOC via QThread worker with Qt Signal delivery
-        self._toc_thread = TocLoaderWorker(self.file_path, parent=self)
+        # Load TOC via QThread worker with Qt Signal delivery (parent=None so closing dialog never waits on blocked thread)
+        self._toc_thread = TocLoaderWorker(self.file_path, parent=None)
         self._toc_thread.finished_toc.connect(self._apply_toc_items)
+        self._toc_thread.finished.connect(self._toc_thread.deleteLater)
         self._toc_thread.start()
 
     def _apply_toc_items(self, toc_items: List) -> None:
+        if self._is_closing:
+            return
         self.tree_toc.setUpdatesEnabled(False)
         self.tree_toc.clear()
         if not toc_items:
@@ -2501,23 +2555,34 @@ class PdfReaderDialog(QDialog):
                 self._record_progress(curr_p)
 
     def _cleanup_resources(self) -> None:
-        """Terminates all active worker threads and releases QtPdf resources cleanly."""
+        """Terminates all active worker threads and releases QtPdf resources cleanly without blocking UI."""
+        self._is_closing = True
         try:
-            if hasattr(self, "_stream_loader_thread") and self._stream_loader_thread and self._stream_loader_thread.isRunning():
+            if hasattr(self, "_stream_loader_thread") and self._stream_loader_thread:
                 self._stream_loader_thread.cancel()
-                self._stream_loader_thread.wait(300)
+                try:
+                    self._stream_loader_thread.progress_changed.disconnect()
+                    self._stream_loader_thread.file_ready.disconnect()
+                    self._stream_loader_thread.error_occurred.disconnect()
+                except Exception:
+                    pass
+                self._stream_loader_thread = None
             if hasattr(self, "_thumb_thread") and self._thumb_thread and self._thumb_thread.isRunning():
                 self._thumb_thread.cancel()
-                self._thumb_thread.wait(300)
+                try:
+                    self._thumb_thread.thumbnail_ready.disconnect()
+                except Exception:
+                    pass
             if hasattr(self, "_toc_thread") and self._toc_thread and self._toc_thread.isRunning():
+                try:
+                    self._toc_thread.finished_toc.disconnect()
+                except Exception:
+                    pass
                 self._toc_thread.quit()
-                self._toc_thread.wait(200)
             if hasattr(self, "_explainer_thread") and self._explainer_thread and self._explainer_thread.isRunning():
                 self._explainer_thread.quit()
-                self._explainer_thread.wait(200)
             if hasattr(self, "_dict_thread") and self._dict_thread and self._dict_thread.isRunning():
                 self._dict_thread.quit()
-                self._dict_thread.wait(200)
         except Exception:
             pass
 

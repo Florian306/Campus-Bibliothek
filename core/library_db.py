@@ -1245,6 +1245,105 @@ def resolve_and_heal_book_path(file_path: str, book_id: Optional[str] = None) ->
     return file_path
 
 
+def heal_and_enrich_book_metadata(book: Dict[str, Any]) -> Dict[str, Any]:
+    """On-demand self-healing metadata extractor:
+    If a book in the catalog is missing page_count, ISBN, publication year, or has edition <= 1,
+    rapidly inspects the PDF's first 10 pages (and last 2 pages) to extract and persist them in SQLite.
+    """
+    if not book:
+        return book
+
+    bid = str(book.get("id") or "")
+    fp = book.get("file_path") or ""
+    resolved_fp = resolve_and_heal_book_path(fp, book_id=bid)
+    if resolved_fp and resolved_fp != fp:
+        book["file_path"] = resolved_fp
+        fp = resolved_fp
+
+    if not fp or not os.path.isfile(fp):
+        return book
+
+    cur_pages = int(book.get("page_count") or 0)
+    cur_isbn = book.get("isbn")
+    cur_year = book.get("year")
+    cur_ed = int(book.get("edition") or 1)
+    cur_ed_str = book.get("edition_str") or f"{cur_ed}. Auflage"
+
+    # Only inspect if at least one key bibliographic field is missing or unverified
+    if cur_pages > 0 and cur_isbn and cur_year and cur_ed > 1:
+        return book
+
+    try:
+        import fitz
+        from ai.isbn_lookup import extract_isbns
+        from ai.pdf_extractor import extract_publication_year
+        from core.delta_scanner import extract_edition_number
+
+        doc = fitz.open(fp)
+        total_p = len(doc)
+        new_pages = total_p if total_p > 0 else cur_pages
+
+        # Gather front-matter (first 8 pages only — avoids seeking to the end of large cloud-streamed PDFs)
+        pages_to_scan = list(range(min(8, total_p)))
+
+        snippet_chunks = []
+        for p_idx in pages_to_scan:
+            try:
+                snippet_chunks.append(doc[p_idx].get_text("text"))
+            except Exception:
+                pass
+        snippet = "\n".join(snippet_chunks)
+        fname = book.get("filename") or os.path.basename(fp)
+        meta = doc.metadata or {}
+        doc.close()
+
+        new_isbn = cur_isbn
+        if not new_isbn:
+            found_isbns = extract_isbns(f"ISBN {fname.replace('_', ' ')}\n{snippet}")
+            if found_isbns:
+                new_isbn = found_isbns[0]
+
+        new_ed = cur_ed
+        new_ed_str = cur_ed_str
+        ed_num, ed_s = extract_edition_number(f"{fname}\n{book.get('title', '')}\n{snippet}")
+        if ed_num > cur_ed:
+            new_ed = ed_num
+            new_ed_str = ed_s
+
+        new_year = cur_year
+        if not new_year:
+            new_year = extract_publication_year(snippet, meta, fname)
+
+        changed = (
+            new_pages != cur_pages
+            or new_isbn != cur_isbn
+            or new_year != cur_year
+            or new_ed != cur_ed
+        )
+
+        if changed and bid:
+            book["page_count"] = new_pages
+            book["isbn"] = new_isbn
+            book["year"] = new_year
+            book["edition"] = new_ed
+            book["edition_str"] = new_ed_str
+            with _db_write_lock:
+                conn = get_db_connection()
+                with conn:
+                    conn.execute(
+                        """
+                        UPDATE books
+                        SET page_count = ?, isbn = ?, year = ?, edition = ?, edition_str = ?
+                        WHERE id = ?;
+                        """,
+                        (new_pages, new_isbn, new_year, new_ed, new_ed_str, bid),
+                    )
+    except Exception:
+        pass
+
+    return book
+
+
 def open_pdf_in_system_viewer(file_path: str) -> bool:
     """Launches the PDF file directly in Windows default PDF viewer without moving it."""
     file_path = resolve_and_heal_book_path(file_path)

@@ -818,8 +818,12 @@ class CatalogView(QWidget):
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
             dlg = PdfReaderDialog(book, initial_page=saved_page, parent=self.window())
-            dlg.exec()
-            self._refresh_single_book(book_id)
+            dlg.setModal(False)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+            dlg.finished.connect(lambda _=None, bid=book_id: self._refresh_single_book(bid))
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
         else:
             open_pdf_in_edge(resolved, page=saved_page)
 

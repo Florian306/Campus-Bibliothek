@@ -19,7 +19,29 @@ from ai.pdf_extractor import extract_publication_year
 
 
 _EDITION_RE = re.compile(
-    r'(?:^|[^\d])(\d{1,2})\.\s*(?:,\s*)?(?:neu\s*bearbeitete|aktualisierte|überarbeitete|erweiterte|vollständig|korrigierte|verbesserte|wesentlich|durchgesehene)?\s*Aufl(?:age)?',
+    r'(?:^|[^\d])(\d{1,2})\.\s*(?:,\s*)?(?:[\wäöüß\-\.]+\s+){0,5}?Aufl(?:age)?\b',
+    re.IGNORECASE
+)
+
+_EDITION_EN_RE = re.compile(
+    r'\b(\d{1,2})(?:st|nd|rd|th)\s+(?:revised\s+|updated\s+|expanded\s+|international\s+)?Edition\b',
+    re.IGNORECASE
+)
+
+_WORD_EDITION_MAP = {
+    "zweite": 2, "zweiten": 2, "second": 2,
+    "dritte": 3, "dritten": 3, "third": 3,
+    "vierte": 4, "vierten": 4, "fourth": 4,
+    "fünfte": 5, "fünften": 5, "fifth": 5,
+    "sechste": 6, "sechsten": 6, "sixth": 6,
+    "siebte": 7, "siebten": 7, "siebente": 7, "seventh": 7,
+    "achte": 8, "achten": 8, "eighth": 8,
+    "neunte": 9, "neunten": 9, "ninth": 9,
+    "zehnte": 10, "zehnten": 10, "tenth": 10,
+}
+
+_EDITION_WORD_RE = re.compile(
+    r'\b(zweite[n]?|dritte[n]?|vierte[n]?|fünfte[n]?|sechste[n]?|sieb(?:en)?te[n]?|achte[n]?|neunte[n]?|zehnte[n]?|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:,\s*)?(?:[\wäöüß\-\.]+\s+){0,4}?(?:Auflage|Edition)\b',
     re.IGNORECASE
 )
 
@@ -67,15 +89,41 @@ def _rename_book_file(full_path: str, new_filename: str) -> Tuple[str, str]:
 
 
 def extract_edition_number(text: str) -> Tuple[int, str]:
-    """Detects book edition number (e.g. '4. Auflage' -> 4)."""
-    m = _EDITION_RE.search(text)
-    if m:
+    """Detects book edition number (e.g. '4. Auflage', '2., vollständig überarbeitete Auflage', '7th Edition').
+    Prioritizes the highest valid edition mentioned in front matter / preface headers.
+    """
+    if not text:
+        return 1, "1. Auflage"
+
+    candidates: List[Tuple[int, str]] = []
+
+    for m in _EDITION_RE.finditer(text):
         try:
             ed_num = int(m.group(1))
             if 1 <= ed_num <= 40:
-                return ed_num, m.group(0).strip()
+                candidates.append((ed_num, f"{ed_num}. Auflage"))
         except ValueError:
             pass
+
+    for m in _EDITION_EN_RE.finditer(text):
+        try:
+            ed_num = int(m.group(1))
+            if 1 <= ed_num <= 40:
+                candidates.append((ed_num, f"{ed_num}. Auflage"))
+        except ValueError:
+            pass
+
+    for m in _EDITION_WORD_RE.finditer(text):
+        w = m.group(1).lower()
+        ed_num = _WORD_EDITION_MAP.get(w, 0)
+        if ed_num > 1:
+            candidates.append((ed_num, f"{ed_num}. Auflage"))
+
+    if candidates:
+        # Return highest edition found on title/imprint/preface pages (since prefaces often mention "seit der 1. Auflage")
+        best = max(candidates, key=lambda x: x[0])
+        return best[0], best[1]
+
     return 1, "1. Auflage"
 
 

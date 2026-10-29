@@ -114,7 +114,7 @@ class InboxAnalysisWorker(QThread):
                         front_chunks.append(doc[p].get_text("text"))
                     front_text = "\n".join(front_chunks)
                     
-                    ed_num, ed_str = extract_edition_number(f"{fn}\n{front_text}")
+                    ed_num, ed_str = extract_edition_number(f"{fn}\n{extracted_title}\n{front_text}")
                     found_isbns = extract_isbns(f"ISBN {fn.replace('_', ' ')}\n{front_text}")
                     pub_year = extract_publication_year(front_text, doc.metadata, fn)
                     doc.close()
@@ -1265,10 +1265,13 @@ class InboxView(QWidget):
                         """)
                         lay.addWidget(lbl_ready)
 
+                # Update in-memory item dict immediately so filing right away has all extracted fields
+                self._items[r].update(data)
+
                 # Update size/pages
                 p_cnt = data.get("page_count", 0)
                 if p_cnt > 0:
-                    it_sz = self.table.item(r, 4)
+                    it_sz = self.table.item(r, 5)
                     if it_sz and "Seiten" not in it_sz.text():
                         sz_mb = self._items[r].get("file_size", 0) / (1024 * 1024)
                         it_sz.setText(f"{sz_mb:.1f} MB\n{p_cnt} Seiten")
@@ -1344,27 +1347,25 @@ class InboxView(QWidget):
             return False
 
         # Fallback inspection if page_count or metadata are still missing
-        if page_count <= 0 or not isbn or not year:
+        if page_count <= 0 or not isbn or not year or edition <= 1:
             try:
                 import fitz
                 doc = fitz.open(target_path)
+                total_p = len(doc)
                 if page_count <= 0:
-                    page_count = len(doc)
-                if not isbn or not year or edition <= 1:
-                    snippet = ""
-                    for p in range(min(8, len(doc))):
-                        snippet += doc[p].get_text("text") + "\n"
-                    if not isbn:
-                        f_isbns = extract_isbns(f"ISBN {target_filename.replace('_', ' ')}\n{snippet}")
-                        if f_isbns:
-                            isbn = f_isbns[0]
-                    if edition <= 1:
-                        ed_num, ed_s = extract_edition_number(f"{target_filename}\n{snippet}")
-                        if ed_num > 1:
-                            edition = ed_num
-                            edition_str = ed_s
-                    if not year:
-                        year = extract_publication_year(snippet, doc.metadata, target_filename)
+                    page_count = total_p
+                snippet = "\n".join(doc[p].get_text("text") for p in range(min(8, total_p)))
+                if not isbn:
+                    f_isbns = extract_isbns(f"ISBN {target_filename.replace('_', ' ')}\n{snippet}")
+                    if f_isbns:
+                        isbn = f_isbns[0]
+                if edition <= 1:
+                    ed_num, ed_s = extract_edition_number(f"{target_filename}\n{title}\n{snippet}")
+                    if ed_num > 1:
+                        edition = ed_num
+                        edition_str = ed_s
+                if not year:
+                    year = extract_publication_year(snippet, doc.metadata, target_filename)
                 doc.close()
             except Exception:
                 pass

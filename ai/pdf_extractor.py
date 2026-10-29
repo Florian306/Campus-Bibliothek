@@ -456,22 +456,27 @@ def extract_publication_year(
     import datetime
     current_year = datetime.date.today().year + 1
 
-    # 1. Direct copyright notice (e.g. © 2021, Copyright 2018, (c) 2015)
+    # 1. Direct copyright notice (e.g. © 2021, Copyright 2018, (c) 2015, or "© Springer-Verlag ... 2014, 2026")
     if text:
         cp_years = []
-        for m in re.finditer(r'(?:©|copyright|\(c\))\s*(?:by\s+)?([12]\d{3})', text, re.I):
-            try:
-                y = int(m.group(1))
-                if 1900 <= y <= current_year:
-                    cp_years.append(y)
-            except (ValueError, TypeError):
-                continue
+        for m in re.finditer(r'(?:©|copyright|\(c\))[^\n\r]{0,160}', text, re.I):
+            for ym in re.finditer(r'\b([12]\d{3})\b', m.group(0)):
+                try:
+                    y = int(ym.group(1))
+                    if 1900 <= y <= current_year:
+                        cp_years.append(y)
+                except (ValueError, TypeError):
+                    continue
         if cp_years:
             return max(cp_years)
 
-        # 2. Edition notice with year (e.g. '4. Auflage 2020', '3. überarb. Auflage 2018')
+        # 2. Edition notice with year (e.g. '4. Auflage 2020', '2., vollständig überarbeitete Auflage 2023')
         ed_years = []
-        for m in re.finditer(r'(?:\b\d+\.?\s*(?:überarb\.|aktualis\.|erw\.|vollst\.)?\s*Auflage|\bEdition)\s*[,.:-]?\s*([12]\d{3})\b', text, re.I):
+        for m in re.finditer(
+            r'(?:\b\d{1,2}\.?\s*(?:,\s*)?(?:[\wäöüß\-\.]+\s+){0,4}Aufl(?:age)?|\b\d{1,2}(?:st|nd|rd|th)\s+Edition|\bEdition)\s*[,.:;\-\s]*([12]\d{3})\b',
+            text,
+            re.I,
+        ):
             try:
                 y = int(m.group(1))
                 if 1900 <= y <= current_year:
@@ -481,12 +486,12 @@ def extract_publication_year(
         if ed_years:
             return max(ed_years)
 
-        # 3. Imprint keywords / Publishing houses
+        # 3. Imprint keywords / Publishing houses (up to 110 chars after publisher name)
         pub_years = []
         for m in re.finditer(
-            r'(?:erscheinungsjahr|veröffentlicht|gedruckt|printed|published|springer|hanser|pearson|wiley|thieme|de gruyter|c\.?\s*h\.?\s*beck|hogrefe|kohlhammer|nomos|utb|vahlen|vieweg|rowohlt|suhrkamp|campus)[^\n\r]{0,45}\b([12]\d{3})\b',
+            r'(?:erscheinungsjahr|veröffentlicht|gedruckt|printed|published|springer(?:\s+nature|\s+spektrum|\s+gabler|\s+vieweg|\s+fachmedien)?|hanser|pearson|wiley|thieme|de gruyter|c\.?\s*h\.?\s*beck|hogrefe|kohlhammer|nomos|utb|vahlen|vieweg|rowohlt|suhrkamp|campus|schubert|cornelsen|klett|westermann|oldenbourg|metzler|transcript|reclam|dtv|cambridge|oxford|routledge|elsevier|macmillan|münchen|berlin|heidelberg|wiesbaden|stuttgart|leipzig|frankfurt|köln|göttingen|weinheim|darmstadt|bonn)[^\n\r]{0,110}?\b([12]\d{3})\b',
             text,
-            re.I
+            re.I,
         ):
             try:
                 y = int(m.group(1))
@@ -496,6 +501,22 @@ def extract_publication_year(
                 continue
         if pub_years:
             return max(pub_years)
+
+        # 4. Preface / Imprint Date Line (e.g. "Aachen, im März 2016", "Dezember 2021")
+        date_years = []
+        for m in re.finditer(
+            r'\b(?:Januar|Februar|März|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember|January|February|March|May|June|July|October|December|Frühjahr|Herbst|Sommer|Winter)\s+([12]\d{3})\b',
+            text,
+            re.I,
+        ):
+            try:
+                y = int(m.group(1))
+                if 1960 <= y <= current_year:
+                    date_years.append(y)
+            except (ValueError, TypeError):
+                continue
+        if date_years:
+            return max(date_years)
 
     # 4. Embedded PDF Metadata (CreationDate / ModDate)
     if metadata:

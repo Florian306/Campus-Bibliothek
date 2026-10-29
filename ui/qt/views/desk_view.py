@@ -1161,10 +1161,13 @@ class DeskView(QWidget):
         curr_p = max(1, int(self.active_book.get("current_page") or 1))
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
-            dlg = PdfReaderDialog(self.active_book, initial_page=curr_p, parent=self)
-            dlg.exec()
-            self.load_data()
-            self.data_changed.emit()
+            dlg = PdfReaderDialog(self.active_book, initial_page=curr_p, parent=self.window())
+            dlg.setModal(False)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+            dlg.finished.connect(lambda _=None: (self.load_data(), self.data_changed.emit()))
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
         else:
             open_pdf_in_edge(fpath, page=curr_p)
 
