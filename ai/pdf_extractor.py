@@ -546,14 +546,50 @@ def extract_publication_year(
     return None
 
 
+def _get_tessdata_dir() -> Optional[str]:
+    """Ensures Tesseract OCR language files (deu, eng) are present in AppData.
+    Downloads them silently on-demand if missing (~5MB total).
+    Returns path to tessdata directory, or None if unavailable.
+    """
+    try:
+        app_data = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Buchsortierer", "tessdata")
+        os.makedirs(app_data, exist_ok=True)
+        deu_path = os.path.join(app_data, "deu.traineddata")
+        if not os.path.exists(deu_path):
+            import urllib.request
+            urllib.request.urlretrieve("https://github.com/tesseract-ocr/tessdata_fast/raw/main/deu.traineddata", deu_path)
+        return app_data
+    except Exception:
+        return None
+
+
 def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     """Heuristic fallback parser: Extracts chapters and page numbers directly from printed
     Table of Contents (Inhaltsverzeichnis) pages when no digital PDF bookmarks exist.
+    Supports digital text vectors as well as pure scanned image pages via PyMuPDF OCR.
     Returns: list of (level, chapter_title, target_pdf_page_1_indexed, printed_page_number)
     """
     total_len = len(doc)
     if total_len == 0:
         return []
+
+    # Check if the document has a digital text layer in the first 8 pages
+    has_text_layer = any(len(doc[i].get_text("text").strip()) > 30 for i in range(min(8, total_len)))
+    tessdata_dir = None if has_text_layer else _get_tessdata_dir()
+
+    def get_page_text_and_blocks(p_idx: int) -> Tuple[str, list]:
+        """Safely retrieves text and blocks, applying OCR for purely scanned pages."""
+        page_obj = doc[p_idx]
+        direct_text = page_obj.get_text("text")
+        if len(direct_text.strip()) > 20 or not tessdata_dir:
+            return direct_text, page_obj.get_text("blocks")
+        try:
+            tp = page_obj.get_textpage_ocr(tessdata=tessdata_dir, language="deu")
+            ocr_text = page_obj.get_text("text", textpage=tp)
+            ocr_blocks = page_obj.get_text("blocks", textpage=tp)
+            return ocr_text, ocr_blocks
+        except Exception:
+            return direct_text, page_obj.get_text("blocks")
 
     # 1. Locate start of printed table of contents:
     # Scan front-matter (first 40 pages) and back-matter (last 16 pages)
@@ -563,12 +599,11 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     for p_no in range(max_scan_front):
         try:
             matched = False
-            # Check line starts
-            txt = doc[p_no].get_text("text")
+            txt, blocks = get_page_text_and_blocks(p_no)
             lines = [l.strip() for l in txt.splitlines() if l.strip()]
             for l in lines[:10]:
                 low = l.lower()
-                if any(k in low for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(l) <= 45:
+                if any(k in low for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "inhaltserzeichnis"]) and len(l) <= 45:
                     toc_pages.append(p_no)
                     matched = True
                     break
@@ -579,10 +614,10 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
 
             # If not matched by first 10 lines, inspect blocks (e.g. Head-First / O'Reilly layout)
             if not matched:
-                for b in doc[p_no].get_text("blocks"):
+                for b in blocks:
                     b_txt = b[4].strip()
                     low_b = b_txt.lower()
-                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(b_txt) <= 60:
+                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "inhaltserzeichnis"]) and len(b_txt) <= 60:
                         toc_pages.append(p_no)
                         matched = True
                         break
@@ -601,10 +636,11 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
         for p_no in range(total_len - 1, max(total_len - 16, 0), -1):
             try:
                 matched = False
-                for b in doc[p_no].get_text("blocks"):
+                _, blocks = get_page_text_and_blocks(p_no)
+                for b in blocks:
                     b_txt = b[4].strip()
                     low_b = b_txt.lower()
-                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(b_txt) <= 60:
+                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "inhaltserzeichnis"]) and len(b_txt) <= 60:
                         toc_pages.append(p_no)
                         matched = True
                         break
@@ -625,10 +661,10 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     scan_range = [first_p]
     for p in range(first_p + 1, min(first_p + 20, total_len)):
         try:
-            text = doc[p].get_text("text")
+            text, _ = get_page_text_and_blocks(p)
             lines = [l.strip() for l in text.splitlines() if l.strip()]
             header_lines = " ".join(lines[:4]).lower()
-            is_toc_heading = any(k in header_lines for k in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "contents"])
+            is_toc_heading = any(k in header_lines for k in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "contents", "inhaltserzeichnis"])
             has_leaders = (
                 len(re.findall(r'(?:\.{2,}|\. \. \.|\t+)\s*\d+\s*$', text, re.MULTILINE)) >= 3
                 or "...." in text
@@ -645,7 +681,7 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     raw_entries = []
     for p_no in scan_range:
         try:
-            raw_text = doc[p_no].get_text("text")
+            raw_text, _ = get_page_text_and_blocks(p_no)
             norm_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', raw_text)
             norm_text = re.sub(r'[\u2000-\u200f\u2028-\u202f\xa0]', ' ', norm_text)
             raw_lines = [l.strip() for l in norm_text.splitlines() if l.strip()]
@@ -654,7 +690,7 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             start_idx = 0
             for idx, l in enumerate(raw_lines):
                 low_l = l.lower()
-                if any(k in low_l for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(l) <= 45:
+                if any(k in low_l for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "inhaltserzeichnis"]) and len(l) <= 45:
                     start_idx = idx + 1
                     break
                 if low_l in ["inhalt", "contents"]:
@@ -666,7 +702,7 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                 s = raw.strip()
                 if not s or re.match(r'^[\.\s·]+$', s):
                     continue
-                if any(k in s.lower() for k in ["©", "copyright", "urheberrecht", "bereitgestellt", "powered by", "inhaltsverzeichnis", "inhaltsübersicht", "inhalt"]):
+                if any(k in s.lower() for k in ["©", "copyright", "urheberrecht", "bereitgestellt", "powered by", "inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "inhaltserzeichnis"]):
                     continue
                 s_clean = re.sub(r'[\.\s·]{2,}\.?$', '', s).strip()
                 if s_clean:
@@ -719,7 +755,7 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                     continue
 
                 # Pattern C: In-line page number (e.g. 'Personenregister ... 165' or 'Title    165')
-                m = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+)(\d{1,4}|[ivxlcdm]+)$', line, re.I)
+                m = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+|\.{2,})(\d{1,4}|[ivxlcdm]+)$', line, re.I)
                 if m:
                     title = m.group(1).strip()
                     raw_p = m.group(2)
@@ -732,7 +768,7 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                 # Pattern D: Wrapped multi-line title where next line has rest of title + page
                 if i + 1 < len(cleaned_lines):
                     next_l = cleaned_lines[i + 1]
-                    m2 = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+)(\d{1,4})$', next_l)
+                    m2 = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+|\.{2,})(\d{1,4})$', next_l)
                     if m2 and not re.match(r'^(?:[IVXLCDM]+\.?|\d+\.)', next_l):
                         combined_title = f"{line} {m2.group(1).strip()}".strip()
                         p = int(m2.group(2))
