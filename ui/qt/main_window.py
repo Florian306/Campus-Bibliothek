@@ -292,6 +292,7 @@ class CampusMainWindow(QMainWindow):
         elif key == "research":
             from ui.qt.views.research_view import ResearchView
             view = ResearchView(self.stack)
+            view.data_changed.connect(self._on_data_modified)
         elif key == "textbooks":
             from ui.qt.views.textbook_search_view import TextbookSearchView
             view = TextbookSearchView(self.stack)

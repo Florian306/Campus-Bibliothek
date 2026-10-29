@@ -1030,11 +1030,13 @@ def find_related_library_books(paper: Dict[str, Any], max_results: int = 3) -> L
                 "ausgabe", "analysis", "study", "research", "results", "methods", "springer",
                 "deren", "stellt", "wurde", "worden", "beim", "beide", "haben", "format",
                 "bereich", "bereiche", "einer", "einem", "eines", "dieser", "diesem", "diesen",
-                "fragen", "frage", "blick", "finden", "zeigen", "zeigt", "geht", "gibt"
+                "fragen", "frage", "blick", "finden", "zeigen", "zeigt", "geht", "gibt",
+                "arbeit", "arbeiten", "lern", "lernen", "lernfeld", "lehr", "buch", "bände",
+                "fach", "grundlagen", "praxis", "wissen", "kompakt", "einführung"
             }
         )
 
-        keywords = [w for w in set(tokens) if w not in domain_stopwords and len(w) >= 4]
+        keywords = [w for w in set(tokens) if w not in domain_stopwords and len(w) >= 5]
         if not keywords:
             return []
 
@@ -1044,6 +1046,8 @@ def find_related_library_books(paper: Dict[str, Any], max_results: int = 3) -> L
             r'\b(19[0-8][0-9]|18[0-9]{2}|vej|auschwitz|mauthausen|reichsrechnungshof|endlösung|hitler|nsdap|wehrmacht|konzentrationslager|ss-|weimarer\s+republik)\b',
             re.IGNORECASE
         )
+
+        faculty_lower = faculty.lower()
 
         for b in books:
             pub_year = b.get("year")
@@ -1069,37 +1073,41 @@ def find_related_library_books(paper: Dict[str, Any], max_results: int = 3) -> L
 
             for kw in keywords:
                 pattern = rf"\b{re.escape(kw)}"
-                # Strong weight for match in book title
+                # Strong weight for exact word match in book title
                 if re.search(pattern, b_title):
-                    score += 5
+                    score += 6
                     matched_terms.append(kw)
                 # Moderate weight for book category match
                 elif re.search(pattern, b_cats):
-                    score += 2
+                    score += 3
                     matched_terms.append(kw)
                 # Author cross-matching
                 elif len(kw) >= 5 and re.search(pattern, b_author):
-                    score += 3
+                    score += 4
                     matched_terms.append(kw)
 
-            # Faculty semantic affinity bonus
-            if "bildung" in faculty.lower() or "pädagogik" in faculty.lower():
-                if any(k in b_cats for k in ["pädagogik", "didaktik", "schule", "lernen", "unterricht"]):
-                    score += 2
-            elif "informatik" in faculty.lower() or "künstliche intelligenz" in faculty.lower():
+            # Faculty semantic affinity bonus (only if relevant subject keywords align)
+            if "bildung" in faculty_lower or "pädagogik" in faculty_lower:
+                if any(k in b_cats for k in ["pädagogik", "didaktik", "schule", "lernen", "unterricht", "erziehung"]):
+                    score += 4
+            elif "informatik" in faculty_lower or "künstliche intelligenz" in faculty_lower:
                 if any(k in b_cats for k in ["informatik", "programmierung", "python", "software", "ki"]):
-                    score += 2
-            elif "psychologie" in faculty.lower():
+                    score += 4
+            elif "psychologie" in faculty_lower:
                 if any(k in b_cats for k in ["psychologie", "kognition", "gehirn", "verhalten"]):
-                    score += 2
-            elif "wirtschaft" in faculty.lower():
+                    score += 4
+            elif "wirtschaft" in faculty_lower:
                 if any(k in b_cats for k in ["wirtschaft", "bwl", "vwl", "management", "finanz"]):
-                    score += 2
-            elif "recht" in faculty.lower():
+                    score += 4
+            elif "recht" in faculty_lower or "jura" in faculty_lower:
                 if any(k in b_cats for k in ["recht", "jura", "gesetz", "bgb"]):
-                    score += 2
+                    score += 4
+            elif "medizin" in faculty_lower:
+                if any(k in b_cats for k in ["medizin", "anatomie", "klinik", "pharma"]):
+                    score += 4
 
-            if score > 0:
+            # Require a solid relevance score threshold (minimum 4) to eliminate spurious hits
+            if score >= 4:
                 scored_books.append((score, b, matched_terms))
 
         scored_books.sort(key=lambda x: x[0], reverse=True)

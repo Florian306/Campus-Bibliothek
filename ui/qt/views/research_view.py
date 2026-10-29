@@ -42,6 +42,9 @@ from core.library_db import (
     open_pdf_in_edge,
     get_paper_category_counts,
     find_saved_research_paper,
+    upsert_book,
+    toggle_desk_item,
+    get_desk_books,
 )
 from ai.paper_search import (
     search_all_papers,
@@ -471,6 +474,7 @@ class PaperResultCard(QFrame):
 
 class ResearchView(QWidget):
     """Dedicated Academic Research & Scientific Paper Hub."""
+    data_changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -492,6 +496,8 @@ class ResearchView(QWidget):
         self._pdt_offset = 0
         self._pdt_collapsed = False
         self._inspector_visible = True
+        self._active_faculty: Optional[str] = None
+        self._faculty_buttons: Dict[str, QPushButton] = {}
 
         self._build_ui()
 
@@ -777,6 +783,7 @@ class ResearchView(QWidget):
                 }
             """)
             btn_chip.clicked.connect(lambda checked, q=query_terms, fac=faculty_name: self._search_faculty(fac, q))
+            self._faculty_buttons[faculty_name] = btn_chip
             chips_layout.addWidget(btn_chip)
 
         chips_layout.addStretch()
@@ -1418,14 +1425,15 @@ class ResearchView(QWidget):
         ins_action_box = QVBoxLayout()
         ins_action_box.setSpacing(8)
 
-        # Primary tier (Reading, Downloading, Archiving)
-        row_primary = QHBoxLayout()
-        row_primary.setSpacing(8)
+        # Primary tier (Prominent Main Action)
+        row_hero = QHBoxLayout()
+        row_hero.setSpacing(8)
 
-        self.btn_open_pdf = QPushButton("  In Microsoft Edge öffnen")
-        self.btn_open_pdf.setCursor(Qt.PointingHandCursor)
-        self.btn_open_pdf.setFixedHeight(36)
-        self.btn_open_pdf.setStyleSheet("""
+        self.btn_dl_pdf_ins = QPushButton("  📥 PDF herunterladen & lesen")
+        self.btn_dl_pdf_ins.setIcon(create_vector_icon("download", "#FFFFFF", 14))
+        self.btn_dl_pdf_ins.setCursor(Qt.PointingHandCursor)
+        self.btn_dl_pdf_ins.setFixedHeight(38)
+        self.btn_dl_pdf_ins.setStyleSheet("""
             QPushButton {
                 background: #238636;
                 color: #FFFFFF;
@@ -1439,63 +1447,64 @@ class ResearchView(QWidget):
                 background: #2EA043;
             }
         """)
-        self.btn_open_pdf.clicked.connect(self._open_active_in_edge)
-        row_primary.addWidget(self.btn_open_pdf, stretch=2)
-
-        self.btn_dl_pdf_ins = QPushButton("  ⚡ PDF herunterladen")
-        self.btn_dl_pdf_ins.setIcon(create_vector_icon("download", "#FFFFFF", 14))
-        self.btn_dl_pdf_ins.setCursor(Qt.PointingHandCursor)
-        self.btn_dl_pdf_ins.setFixedHeight(36)
-        self.btn_dl_pdf_ins.setStyleSheet("""
-            QPushButton {
-                background: #238636;
-                color: #FFFFFF;
-                font-weight: bold;
-                border: none;
-                border-radius: 6px;
-                padding: 0 14px;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background: #2EA043;
-            }
-        """)
         self.btn_dl_pdf_ins.clicked.connect(self._download_and_open_active_pdf)
-        row_primary.addWidget(self.btn_dl_pdf_ins, stretch=2)
+        row_hero.addWidget(self.btn_dl_pdf_ins, stretch=3)
 
-        self.btn_save_ins = QPushButton("  📌 In Archiv sichern")
-        self.btn_save_ins.setIcon(create_vector_icon("bookmark", "#58A6FF", 14))
-        self.btn_save_ins.setCursor(Qt.PointingHandCursor)
-        self.btn_save_ins.setFixedHeight(36)
-        self.btn_save_ins.setStyleSheet("""
+        self.btn_pin_desk = QPushButton("  📌 Auf Schreibtisch")
+        self.btn_pin_desk.setIcon(create_vector_icon("desk", "#388BFD", 13))
+        self.btn_pin_desk.setCursor(Qt.PointingHandCursor)
+        self.btn_pin_desk.setFixedHeight(38)
+        self.btn_pin_desk.setToolTip("Pinnt dieses Paper direkt auf deinen Campus-Schreibtisch (Desk-View)")
+        self.btn_pin_desk.setStyleSheet("""
             QPushButton {
-                background: #141E33;
-                border: 1px solid #1F6FEB;
+                background: #131E35;
                 color: #58A6FF;
                 font-weight: 600;
+                border: 1px solid #1F6FEB;
                 border-radius: 6px;
-                padding: 0 14px;
+                padding: 0 12px;
                 font-size: 11px;
             }
             QPushButton:hover {
-                background: #1D2B4A;
+                background: #1C2D52;
                 color: #FFFFFF;
             }
         """)
-        self.btn_save_ins.clicked.connect(self._save_active_metadata_only)
-        row_primary.addWidget(self.btn_save_ins, stretch=1)
+        self.btn_pin_desk.clicked.connect(self._toggle_paper_on_desk)
+        row_hero.addWidget(self.btn_pin_desk, stretch=2)
+
+        self.btn_open_pdf = QPushButton("  In Edge")
+        self.btn_open_pdf.setCursor(Qt.PointingHandCursor)
+        self.btn_open_pdf.setFixedHeight(38)
+        self.btn_open_pdf.setStyleSheet("""
+            QPushButton {
+                background: #121826;
+                color: #C9D1D9;
+                border: 1px solid #232F48;
+                border-radius: 6px;
+                padding: 0 12px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: #1A2438;
+                color: #58A6FF;
+                border-color: #388BFD;
+            }
+        """)
+        self.btn_open_pdf.clicked.connect(self._open_active_in_edge)
+        row_hero.addWidget(self.btn_open_pdf, stretch=1)
 
         self.btn_del_paper = QPushButton("  Löschen")
         self.btn_del_paper.setIcon(create_vector_icon("trash", "#F85149", 13))
         self.btn_del_paper.setCursor(Qt.PointingHandCursor)
-        self.btn_del_paper.setFixedHeight(36)
+        self.btn_del_paper.setFixedHeight(38)
         self.btn_del_paper.setStyleSheet("""
             QPushButton {
                 background: #211215;
                 color: #F85149;
                 border: 1px solid #4C1D24;
                 border-radius: 6px;
-                padding: 0 14px;
+                padding: 0 12px;
                 font-size: 11px;
                 font-weight: 600;
             }
@@ -1506,49 +1515,74 @@ class ResearchView(QWidget):
         """)
         self.btn_del_paper.clicked.connect(self._delete_saved_paper)
         self.btn_del_paper.setVisible(False)
-        row_primary.addWidget(self.btn_del_paper)
+        row_hero.addWidget(self.btn_del_paper)
 
-        ins_action_box.addLayout(row_primary)
+        ins_action_box.addLayout(row_hero)
 
-        # Secondary tier (Deep research tools)
+        # Secondary tier (Archive, Similar, DOI, Proxy, BibTeX)
         row_secondary = QHBoxLayout()
         row_secondary.setSpacing(6)
 
-        self.btn_find_similar = QPushButton("  🧠 Ähnliche Arbeiten")
-        self.btn_find_similar.setIcon(create_vector_icon("radar", "#D2A8FF", 12))
-        self.btn_find_similar.setCursor(Qt.PointingHandCursor)
-        self.btn_find_similar.setFixedHeight(30)
-        self.btn_find_similar.setToolTip("Entdeckt über den Zitationsgraphen (Semantic Scholar AI) direkt verwandte wissenschaftliche Studien zu diesem Paper")
-        self.btn_find_similar.setStyleSheet("""
+        self.btn_save_ins = QPushButton("  Archiv")
+        self.btn_save_ins.setIcon(create_vector_icon("bookmark", "#58A6FF", 12))
+        self.btn_save_ins.setCursor(Qt.PointingHandCursor)
+        self.btn_save_ins.setFixedHeight(28)
+        self.btn_save_ins.setToolTip("Metadaten dauerhaft im lokalen Forschungs-Archiv sichern")
+        self.btn_save_ins.setStyleSheet("""
             QPushButton {
-                background: #1C162E;
-                border: 1px solid #6E40C9;
-                color: #D2A8FF;
+                background: #121826;
+                border: 1px solid #232F48;
+                color: #8B949E;
+                font-weight: 500;
                 border-radius: 5px;
-                padding: 0 10px;
+                padding: 0 8px;
                 font-size: 11px;
-                font-weight: 600;
             }
             QPushButton:hover {
-                background: #2B1E48;
-                border-color: #A371F7;
+                background: #1A2438;
+                color: #58A6FF;
+                border-color: #388BFD;
+            }
+        """)
+        self.btn_save_ins.clicked.connect(self._save_active_metadata_only)
+        row_secondary.addWidget(self.btn_save_ins)
+
+        self.btn_find_similar = QPushButton("  Ähnliche")
+        self.btn_find_similar.setIcon(create_vector_icon("radar", "#D2A8FF", 12))
+        self.btn_find_similar.setCursor(Qt.PointingHandCursor)
+        self.btn_find_similar.setFixedHeight(28)
+        self.btn_find_similar.setToolTip("Entdeckt verwandte Studien über den Zitationsgraphen")
+        self.btn_find_similar.setStyleSheet("""
+            QPushButton {
+                background: #121826;
+                border: 1px solid #232F48;
+                color: #D2A8FF;
+                border-radius: 5px;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background: #1C162E;
+                border-color: #6E40C9;
                 color: #FFFFFF;
             }
         """)
         self.btn_find_similar.clicked.connect(self._discover_similar_papers)
         row_secondary.addWidget(self.btn_find_similar)
 
-        self.btn_open_direct = QPushButton("  🔗 Direktlink / DOI")
+        self.btn_open_direct = QPushButton("  DOI")
         self.btn_open_direct.setIcon(create_vector_icon("search", "#C9D1D9", 12))
         self.btn_open_direct.setCursor(Qt.PointingHandCursor)
-        self.btn_open_direct.setFixedHeight(30)
+        self.btn_open_direct.setFixedHeight(28)
+        self.btn_open_direct.setToolTip("Öffnet die Original-Publikation via offizieller DOI")
         self.btn_open_direct.setStyleSheet("""
             QPushButton {
                 background: #121826;
                 border: 1px solid #232F48;
                 color: #C9D1D9;
                 border-radius: 5px;
-                padding: 0 10px;
+                padding: 0 8px;
                 font-size: 11px;
             }
             QPushButton:hover {
@@ -1560,40 +1594,42 @@ class ResearchView(QWidget):
         self.btn_open_direct.clicked.connect(self._open_active_direct)
         row_secondary.addWidget(self.btn_open_direct)
 
-        self.btn_ins_uni = QPushButton("  🏛️ FernUni-Proxy")
+        self.btn_ins_uni = QPushButton("  Uni-Proxy")
         self.btn_ins_uni.setIcon(create_vector_icon("institution", "#D29922", 12))
         self.btn_ins_uni.setCursor(Qt.PointingHandCursor)
-        self.btn_ins_uni.setFixedHeight(30)
+        self.btn_ins_uni.setFixedHeight(28)
+        self.btn_ins_uni.setToolTip("Routet dieses Paper über deinen konfigurierten Hochschul-Proxy (z.B. FernUni Hagen)")
         self.btn_ins_uni.setStyleSheet("""
             QPushButton {
-                background: #1C1810;
-                border: 1px solid #6E4A03;
+                background: #121826;
+                border: 1px solid #232F48;
                 color: #E3B341;
                 border-radius: 5px;
-                padding: 0 10px;
+                padding: 0 8px;
                 font-size: 11px;
                 font-weight: 500;
             }
             QPushButton:hover {
-                background: #2E2210;
-                border-color: #D29922;
+                background: #1C1810;
+                border-color: #6E4A03;
                 color: #FFF2C5;
             }
         """)
         self.btn_ins_uni.clicked.connect(self._open_ins_via_proxy)
         row_secondary.addWidget(self.btn_ins_uni)
 
-        self.btn_copy_saved_bib = QPushButton("  📋 BibTeX")
+        self.btn_copy_saved_bib = QPushButton("  BibTeX")
         self.btn_copy_saved_bib.setIcon(create_vector_icon("copy", "#C9D1D9", 12))
         self.btn_copy_saved_bib.setCursor(Qt.PointingHandCursor)
-        self.btn_copy_saved_bib.setFixedHeight(30)
+        self.btn_copy_saved_bib.setFixedHeight(28)
+        self.btn_copy_saved_bib.setToolTip("BibTeX Zitationscode für LaTeX kopieren")
         self.btn_copy_saved_bib.setStyleSheet("""
             QPushButton {
                 background: #121826;
                 border: 1px solid #232F48;
                 color: #C9D1D9;
                 border-radius: 5px;
-                padding: 0 10px;
+                padding: 0 8px;
                 font-size: 11px;
             }
             QPushButton:hover {
@@ -1745,9 +1781,45 @@ class ResearchView(QWidget):
         self._start_search()
 
     def _search_faculty(self, faculty_name: str, query_terms: str) -> None:
-        """Triggers a targeted academic literature search for a specific faculty."""
+        """Triggers a targeted academic literature search for a specific faculty and highlights the chip."""
+        self._set_active_faculty_chip(faculty_name)
         self.ent_search.setText(query_terms)
         self._start_search()
+
+    def _set_active_faculty_chip(self, faculty_name: Optional[str]) -> None:
+        """Visual highlight for the selected faculty chip with cyber cyan / blue."""
+        self._active_faculty = faculty_name
+        for name, btn in self._faculty_buttons.items():
+            if name == faculty_name:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: rgba(56, 139, 253, 0.22);
+                        border: 1px solid #388BFD;
+                        color: #58A6FF;
+                        font-weight: bold;
+                        border-radius: 5px;
+                        padding: 4px 10px;
+                        font-size: 11px;
+                        white-space: nowrap;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #121826;
+                        border: 1px solid #232F48;
+                        color: #8B949E;
+                        border-radius: 5px;
+                        padding: 4px 10px;
+                        font-size: 11px;
+                        white-space: nowrap;
+                    }
+                    QPushButton:hover {
+                        background-color: #1A2438;
+                        color: #58A6FF;
+                        border-color: #388BFD;
+                    }
+                """)
 
     def _seed_curated_papers(self) -> None:
         """Seeds or refreshes landmark papers for all 15 academic faculties."""
@@ -2968,6 +3040,9 @@ class ResearchView(QWidget):
         else:
             self.lbl_selected_doi.setVisible(False)
 
+        # Check desk status and update desk button
+        self._update_desk_button_ui(self._is_paper_on_desk(p))
+
         # Generate APA 7th Edition Citation
         apa_citation = generate_paper_apa7(p)
         self.lbl_apa_citation.setText(apa_citation)
@@ -3506,7 +3581,137 @@ class ResearchView(QWidget):
             clip = QGuiApplication.clipboard()
             if clip:
                 clip.setText(bib)
+                self.btn_copy_saved_bib.setText("  ✓ Kopiert")
+                self.btn_copy_saved_bib.setStyleSheet("""
+                    QPushButton {
+                        background: #238636;
+                        color: #FFFFFF;
+                        font-weight: bold;
+                        border: none;
+                        border-radius: 5px;
+                        padding: 0 8px;
+                        font-size: 11px;
+                    }
+                """)
                 self.lbl_search_status.setText("✓ BibTeX-Eintrag in die Zwischenablage kopiert!")
+                QTimer.singleShot(2000, self._reset_bibtex_button)
+
+    def _reset_bibtex_button(self) -> None:
+        self.btn_copy_saved_bib.setText("  BibTeX")
+        self.btn_copy_saved_bib.setStyleSheet("""
+            QPushButton {
+                background: #121826;
+                border: 1px solid #232F48;
+                color: #C9D1D9;
+                border-radius: 5px;
+                padding: 0 8px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: #1A2438;
+                color: #FFFFFF;
+                border-color: #388BFD;
+            }
+        """)
+
+    def _toggle_paper_on_desk(self) -> None:
+        """Pins or unpins the current paper directly to the user's virtual desk."""
+        p = self._active_saved_paper
+        if not p:
+            self.lbl_search_status.setText("ℹ️ Bitte wähle zuerst ein Paper aus.")
+            return
+
+        # Ensure paper is registered in the archive
+        pid = p.get("id") or save_research_paper(p)
+        p["id"] = pid
+        loc = p.get("local_path") or ""
+
+        # If not yet downloaded, download first
+        if not loc or not os.path.exists(loc):
+            self.lbl_search_status.setText(f"Lade Paper «{p.get('title', '')[:30]}» für den Schreibtisch herunter...")
+            def worker():
+                downloaded_path = download_paper_pdf(p)
+                if downloaded_path and os.path.exists(downloaded_path):
+                    p["local_path"] = downloaded_path
+                    save_research_paper(p)
+                    self._finalize_pin_to_desk(p)
+                else:
+                    self.lbl_search_status.setText("⚠️ Kein direkter PDF-Download möglich (Paywall).")
+            threading.Thread(target=worker, daemon=True).start()
+            return
+
+        self._finalize_pin_to_desk(p)
+
+    def _finalize_pin_to_desk(self, paper: Dict[str, Any]) -> None:
+        loc = paper.get("local_path") or ""
+        if not loc or not os.path.exists(loc):
+            return
+
+        book_id = upsert_book(
+            file_path=loc,
+            filename=os.path.basename(loc),
+            title=paper.get("title") or os.path.basename(loc),
+            author=paper.get("authors") or "",
+            categories=[paper.get("category") or "Wissenschaft & Forschung"],
+            doc_type="paper"
+        )
+
+        is_now_on_desk = toggle_desk_item(book_id)
+        self._update_desk_button_ui(is_now_on_desk)
+
+        if is_now_on_desk:
+            self.lbl_search_status.setText(f"✓ Paper «{paper.get('title', '')[:35]}» liegt jetzt auf deinem Schreibtisch!")
+        else:
+            self.lbl_search_status.setText(f"Paper «{paper.get('title', '')[:35]}» vom Schreibtisch entfernt.")
+
+        self.data_changed.emit()
+        main_win = self.window()
+        if hasattr(main_win, "_on_data_modified"):
+            main_win._on_data_modified()
+
+    def _is_paper_on_desk(self, paper: Dict[str, Any]) -> bool:
+        loc = paper.get("local_path") or ""
+        if not loc:
+            return False
+        desk_books = get_desk_books()
+        return any(b.get("file_path") == loc for b in desk_books)
+
+    def _update_desk_button_ui(self, is_on_desk: bool) -> None:
+        if is_on_desk:
+            self.btn_pin_desk.setText("  ✓ Auf Schreibtisch")
+            self.btn_pin_desk.setIcon(create_vector_icon("check", "#3FB950", 13))
+            self.btn_pin_desk.setStyleSheet("""
+                QPushButton {
+                    background: #14281E;
+                    color: #3FB950;
+                    font-weight: bold;
+                    border: 1px solid #238636;
+                    border-radius: 6px;
+                    padding: 0 12px;
+                    font-size: 11px;
+                }
+                QPushButton:hover {
+                    background: #1A3828;
+                }
+            """)
+        else:
+            self.btn_pin_desk.setText("  📌 Auf Schreibtisch")
+            self.btn_pin_desk.setIcon(create_vector_icon("desk", "#388BFD", 13))
+            self.btn_pin_desk.setStyleSheet("""
+                QPushButton {
+                    background: #131E35;
+                    color: #58A6FF;
+                    font-weight: 600;
+                    border: 1px solid #1F6FEB;
+                    border-radius: 6px;
+                    padding: 0 12px;
+                    font-size: 11px;
+                }
+                QPushButton:hover {
+                    background: #1C2D52;
+                    color: #FFFFFF;
+                }
+            """)
 
     def _clear_inspector(self) -> None:
         self._active_saved_paper = None
