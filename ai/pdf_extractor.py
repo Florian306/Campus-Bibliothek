@@ -556,19 +556,43 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
         return []
 
     # 1. Locate start of printed table of contents:
-    # First check front-matter (first 40 pages), then check back-matter (last 15 pages for French/special publisher layouts)
+    # Scan front-matter (first 40 pages) and back-matter (last 16 pages)
+    # Check both line headers and block texts for standard and non-standard layouts
     toc_pages = []
     max_scan_front = min(40, total_len)
     for p_no in range(max_scan_front):
         try:
+            matched = False
+            # Check line starts
             txt = doc[p_no].get_text("text")
             lines = [l.strip() for l in txt.splitlines() if l.strip()]
-            for l in lines[:8]:
+            for l in lines[:10]:
                 low = l.lower()
-                if any(k in low for k in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "contents", "table of contents"]):
-                    if len(l) <= 45 and not re.search(r'\d{3,}', l):
+                if any(k in low for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(l) <= 45:
+                    toc_pages.append(p_no)
+                    matched = True
+                    break
+                if low in ["inhalt", "contents"]:
+                    toc_pages.append(p_no)
+                    matched = True
+                    break
+
+            # If not matched by first 10 lines, inspect blocks (e.g. Head-First / O'Reilly layout)
+            if not matched:
+                for b in doc[p_no].get_text("blocks"):
+                    b_txt = b[4].strip()
+                    low_b = b_txt.lower()
+                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(b_txt) <= 60:
                         toc_pages.append(p_no)
+                        matched = True
                         break
+                    if low_b in ["inhalt", "contents"]:
+                        toc_pages.append(p_no)
+                        matched = True
+                        break
+
+            if matched:
+                break
         except Exception:
             pass
 
@@ -576,15 +600,19 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     if not toc_pages and total_len > 15:
         for p_no in range(total_len - 1, max(total_len - 16, 0), -1):
             try:
-                txt = doc[p_no].get_text("text")
-                lines = [l.strip() for l in txt.splitlines() if l.strip()]
-                for l in lines[:6]:
-                    low = l.lower()
-                    if any(k in low for k in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "contents", "table of contents"]):
-                        if len(l) <= 45 and not re.search(r'\d{3,}', l):
-                            toc_pages.append(p_no)
-                            break
-                if toc_pages:
+                matched = False
+                for b in doc[p_no].get_text("blocks"):
+                    b_txt = b[4].strip()
+                    low_b = b_txt.lower()
+                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(b_txt) <= 60:
+                        toc_pages.append(p_no)
+                        matched = True
+                        break
+                    if low_b in ["inhalt", "contents"]:
+                        toc_pages.append(p_no)
+                        matched = True
+                        break
+                if matched:
                     break
             except Exception:
                 pass
@@ -618,23 +646,28 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     for p_no in scan_range:
         try:
             raw_text = doc[p_no].get_text("text")
-            # Normalize rare unicode whitespace, control chars (\x08 backspace, tabs, non-breaking spaces)
             norm_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', raw_text)
             norm_text = re.sub(r'[\u2000-\u200f\u2028-\u202f\xa0]', ' ', norm_text)
-            raw_lines = norm_text.splitlines()
+            raw_lines = [l.strip() for l in norm_text.splitlines() if l.strip()]
+
+            # Determine where the TOC heading actually occurs on this page
+            start_idx = 0
+            for idx, l in enumerate(raw_lines):
+                low_l = l.lower()
+                if any(k in low_l for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents"]) and len(l) <= 45:
+                    start_idx = idx + 1
+                    break
+                if low_l in ["inhalt", "contents"]:
+                    start_idx = idx + 1
+                    break
 
             cleaned_lines = []
-            for raw in raw_lines:
+            for raw in raw_lines[start_idx:]:
                 s = raw.strip()
-                if not s:
+                if not s or re.match(r'^[\.\s·]+$', s):
                     continue
-                # Skip pure leader lines (dots and spaces)
-                if re.match(r'^[\.\s·]+$', s):
+                if any(k in s.lower() for k in ["©", "copyright", "urheberrecht", "bereitgestellt", "powered by", "inhaltsverzeichnis", "inhaltsübersicht", "inhalt"]):
                     continue
-                # Skip copyright, generator, or page headers
-                if any(k in s.lower() for k in ["©", "urheberrecht", "bereitsgestellt", "powered by", "inhaltsverzeichnis", "inhaltsübersicht", "inhalt"]):
-                    continue
-                # Strip leading/trailing dot leaders
                 s_clean = re.sub(r'[\.\s·]{2,}\.?$', '', s).strip()
                 if s_clean:
                     cleaned_lines.append(s_clean)
@@ -643,32 +676,54 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             while i < len(cleaned_lines):
                 line = cleaned_lines[i]
 
-                # Pattern A: Section prefix line (e.g. 'I.', 'II.', 'Kapitel 1') followed by title line followed by digit
+                # Pattern A: Section prefix line (e.g. 'I.', 'II.', 'Kapitel 1', or single/double digit '1', '2', '18')
+                # followed by title line followed by digit page
                 if (
                     i + 2 < len(cleaned_lines)
-                    and re.match(r'^(?:[IVXLCDM]+\.?|Teil\s+[IVXLCDM\d]+|Kapitel\s+\d+\.?)$', line, re.I)
+                    and (
+                        re.match(r'^(?:[IVXLCDM]+\.?|Teil\s+[IVXLCDM\d]+|Kapitel\s+\d+\.?|[A-Z]\b)$', line, re.I)
+                        or re.match(r'^\d{1,2}$', line)
+                    )
                     and cleaned_lines[i + 2].isdigit()
+                    and not cleaned_lines[i + 1].isdigit()
                 ):
-                    title = f"{line} {cleaned_lines[i + 1]}".strip()
+                    prefix = f"{line}. " if line.isdigit() else f"{line} "
+                    title = f"{prefix}{cleaned_lines[i + 1]}".strip()
                     p = int(cleaned_lines[i + 2])
                     raw_entries.append((1, title, p))
                     i += 3
                     continue
 
-                # Pattern B: Title line followed immediately by standalone digit line
-                if i + 1 < len(cleaned_lines) and cleaned_lines[i + 1].isdigit():
+                # Pattern B1: Line 1 + Line 2 (multiline title) followed by standalone digit
+                if (
+                    i + 2 < len(cleaned_lines)
+                    and cleaned_lines[i + 2].isdigit()
+                    and not cleaned_lines[i + 1].isdigit()
+                    and not re.match(r'^(?:[IVXLCDM]+\.?|\d+\.)', cleaned_lines[i + 1])
+                ):
+                    combined = f"{line} {cleaned_lines[i + 1]}".strip()
+                    p = int(cleaned_lines[i + 2])
+                    lvl = 2 if re.match(r'^\d+\.', combined) else 1
+                    raw_entries.append((lvl, combined, p))
+                    i += 3
+                    continue
+
+                # Pattern B2: Title line followed immediately by standalone digit (Arabic or Roman numeral)
+                if i + 1 < len(cleaned_lines) and (cleaned_lines[i + 1].isdigit() or re.match(r'^[ivxlcdm]+$', cleaned_lines[i + 1], re.I)):
                     title = line
-                    p = int(cleaned_lines[i + 1])
+                    raw_p = cleaned_lines[i + 1]
+                    p = int(raw_p) if raw_p.isdigit() else 1
                     lvl = 2 if re.match(r'^\d+\.', title) else 1
                     raw_entries.append((lvl, title, p))
                     i += 2
                     continue
 
                 # Pattern C: In-line page number (e.g. 'Personenregister ... 165' or 'Title    165')
-                m = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+)(\d{1,4})$', line)
+                m = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+)(\d{1,4}|[ivxlcdm]+)$', line, re.I)
                 if m:
                     title = m.group(1).strip()
-                    p = int(m.group(2))
+                    raw_p = m.group(2)
+                    p = int(raw_p) if raw_p.isdigit() else 1
                     lvl = 2 if re.match(r'^\d+\.', title) else 1
                     raw_entries.append((lvl, title, p))
                     i += 1
