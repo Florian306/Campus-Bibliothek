@@ -47,6 +47,7 @@ class CampusMainWindow(QMainWindow):
         self._build_ui()
         self._setup_shortcuts()
         self._setup_tray()
+        self._start_startup_update_check()
 
     def _build_ui(self) -> None:
         central_widget = QWidget(self)
@@ -304,6 +305,7 @@ class CampusMainWindow(QMainWindow):
             from ui.qt.views.sync_view import SyncView
             view = SyncView(self.stack)
             view.scan_finished.connect(self._on_data_modified)
+            view.update_available_signal.connect(self._on_update_available_badge)
 
         if view:
             self._views_cache[key] = view
@@ -404,7 +406,7 @@ class CampusMainWindow(QMainWindow):
         elif idx == 3:
             if hasattr(view, "sync_filesystem_with_db"):
                 view.sync_filesystem_with_db()
-        elif idx in (4, 5, 6, 8):
+        elif idx in (4, 5, 6, 8, 9):
             if hasattr(view, "load_data"):
                 view.load_data()
 
@@ -427,6 +429,23 @@ class CampusMainWindow(QMainWindow):
                 btn_inbox.setText(f"  Posteingang ({count})")
             else:
                 btn_inbox.setText("  Posteingang")
+
+    def _start_startup_update_check(self) -> None:
+        import threading
+        from PySide6.QtCore import QTimer
+        from core.update_checker import check_for_updates
+
+        def _worker():
+            avail, latest, _, _ = check_for_updates()
+            if avail and latest:
+                QTimer.singleShot(0, lambda: self._on_update_available_badge(latest))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_update_available_badge(self, latest_ver: str) -> None:
+        btn_sync = self._nav_buttons.get("sync")
+        if btn_sync and latest_ver:
+            btn_sync.setText(f"  Scan && Sync  •  v{latest_ver} ⬆")
 
     def _on_data_modified(self) -> None:
         self.update_sidebar_stats()
