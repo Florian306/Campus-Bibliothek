@@ -613,6 +613,11 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                     toc_pages.append(p_no)
                     matched = True
                     break
+                # Also check books without explicit "Contents" title (e.g. Essential Grammar in Use starting with sequential units 1, 2, 3...)
+                if sum(1 for i in range(1, 8) if any(x.startswith(f"{i} ") or x.startswith(f"{i}.") or x == str(i) for x in lines[:15])) >= 3:
+                    toc_pages.append(p_no)
+                    matched = True
+                    break
 
             # If not matched by first 10 lines, inspect blocks (e.g. Head-First / O'Reilly layout)
             if not matched:
@@ -683,21 +688,10 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             break
 
     # 2b. Check for IELTS Grammar / Cambridge scanned book structure
-    ielts_detected = False
-    try:
-        doc_filename = os.path.basename(getattr(doc, "name", "") or "").lower()
-        sample_ocr = " ".join([get_page_text_and_blocks(p)[0] for p in scan_range[:2]]).lower()
-        if (
-            "ielts" in doc_filename
-            or "grammar for ielts" in sample_ocr
-            or any("ielts" in str(x).lower() for x in (doc.metadata or {}).values())
-            or ("academic reading" in sample_ocr and "listening section" in sample_ocr)
-        ):
-            ielts_detected = True
-    except Exception:
-        pass
+    doc_filename = os.path.basename(getattr(doc, "name", "") or "").lower()
+    sample_ocr = " ".join([get_page_text_and_blocks(p)[0] for p in scan_range[:min(3, len(scan_range))]]).lower()
 
-    if ielts_detected and total_len >= 260:
+    if ("ielts" in doc_filename or "grammar for ielts" in sample_ocr or any("ielts" in str(x).lower() for x in (doc.metadata or {}).values())) and total_len >= 260:
         return [
             (1, "Contents", 4, 4),
             (1, "Introduction", 8, 7),
@@ -733,6 +727,106 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             (1, "Appendix 2: Phrasal verbs", 269, 256),
             (1, "CD tracklist", 271, 258),
         ]
+
+    # 2c. Check for "Vocabulary in Use" series (e.g. Pre-Intermediate / Intermediate, 100 units, 2 pages per unit)
+    if ("vocabulary" in doc_filename and "in use" in doc_filename) or ("english vocabulary in use" in sample_ocr and "connecting and linking" in sample_ocr):
+        unit_titles = {}
+        for p in scan_range:
+            raw_t, _ = get_page_text_and_blocks(p)
+            lines_p = [l.strip() for l in raw_t.splitlines() if l.strip()]
+            lines_p = [l for l in lines_p if not l.startswith("English Vocabulary in Use")]
+            if lines_p and lines_p[-1].isdigit():
+                lines_p.pop()
+            i = 0
+            while i < len(lines_p):
+                line = lines_p[i]
+                m = re.match(r"^(\d{1,3})\.?\s+(.+)$", line)
+                if m:
+                    u_num = int(m.group(1))
+                    u_title = m.group(2).strip()
+                    if 1 <= u_num <= 100:
+                        unit_titles[u_num] = u_title
+                        i += 1
+                        continue
+                m_num = re.match(r"^(\d{1,3})\.?$", line)
+                if m_num:
+                    u_num = int(m_num.group(1))
+                    if 1 <= u_num <= 100 and i + 1 < len(lines_p):
+                        next_l = lines_p[i + 1]
+                        if not next_l.isdigit():
+                            unit_titles[u_num] = next_l
+                            i += 2
+                            continue
+                i += 1
+
+        voc_toc = [(1, "Introduction", 7, 4)]
+        for u in range(1, 101):
+            title = unit_titles.get(u, f"Unit {u}")
+            phys_p = 6 + 2 * u + 1
+            printed_p = 4 + 2 * u
+            voc_toc.append((1, f"{u}. {title}", phys_p, printed_p))
+        voc_toc.extend([
+            (1, "Answer key", 209, 206),
+            (1, "Phonetic symbols", 249, 246),
+            (1, "Pronunciation problems", 250, 247),
+            (1, "Index", 251, 248),
+            (1, "Acknowledgements", 269, 266),
+        ])
+        return voc_toc
+
+    # 2d. Check for "Essential Grammar in Use" (115 units, 2 pages per unit)
+    if ("essential" in doc_filename and "grammar" in doc_filename) or ("essential grammar in use" in sample_ocr) or ("to the student" in sample_ocr and "to the teacher" in sample_ocr and "phrasal verbs" in sample_ocr):
+        unit_titles = {}
+        for p in scan_range:
+            raw_t, _ = get_page_text_and_blocks(p)
+            lines_p = [l.strip() for l in raw_t.splitlines() if l.strip()]
+            i = 0
+            while i < len(lines_p):
+                line = lines_p[i]
+                m = re.match(r"^(\d{1,3})\.?\s+(.+)$", line)
+                if m:
+                    u_num = int(m.group(1))
+                    u_title = m.group(2).strip()
+                    if 1 <= u_num <= 115:
+                        unit_titles[u_num] = u_title
+                        i += 1
+                        continue
+                m_num = re.match(r"^(\d{1,3})\.?$", line)
+                if m_num:
+                    u_num = int(m_num.group(1))
+                    if 1 <= u_num <= 115 and i + 1 < len(lines_p):
+                        next_l = lines_p[i + 1]
+                        if not next_l.isdigit():
+                            unit_titles[u_num] = next_l
+                            i += 2
+                            continue
+                i += 1
+
+        eg_toc = [
+            (1, "To the student", 9, 8),
+            (1, "To the teacher", 11, 10),
+        ]
+        for u in range(1, 116):
+            title = unit_titles.get(u, f"Unit {u}")
+            phys_p = 11 + 2 * (u - 1) + 2
+            printed_p = 1 + 2 * (u - 1)
+            eg_toc.append((1, f"{u}. {title}", phys_p, printed_p))
+        eg_toc.extend([
+            (1, "Appendix 1: Active and passive", 242, 243),
+            (1, "Appendix 2: List of irregular verbs", 243, 244),
+            (1, "Appendix 3: Irregular verbs in groups", 244, 245),
+            (1, "Appendix 4: Short forms", 245, 246),
+            (1, "Appendix 5: Spelling", 247, 248),
+            (1, "Appendix 6: Phrasal verbs", 249, 250),
+            (1, "Appendix 7: Phrasal verbs + object", 250, 251),
+            (1, "Additional exercises", 252, 252),
+            (1, "Study guide", 271, 271),
+            (1, "Key to Exercises", 283, 283),
+            (1, "Key to Additional exercises", 310, 310),
+            (1, "Key to Study guide", 313, 313),
+            (1, "Index", 315, 315),
+        ])
+        return eg_toc
 
     # 3. Parse entries from all gathered TOC pages
     raw_entries = []
