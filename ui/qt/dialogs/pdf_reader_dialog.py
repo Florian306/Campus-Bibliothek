@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QRectF, QEvent
@@ -375,26 +376,23 @@ class PdfStreamLoaderWorker(QThread):
             total_bytes = os.path.getsize(path)
             total_mb = max(0.1, total_bytes / (1024 * 1024))
 
-            # Pre-read file chunks into OS page cache (hydrates Google Drive / OneDrive files with live progress)
+            # Smart Fast-Start: If file is locally available, immediately initialize view!
+            # For large files (> 60 MB), pre-reading hundreds of MBs sequentially can delay render by 15-20s.
+            # QPdfDocument and OS memory mapping only require the initial header (first few MBs) to begin display!
+            max_preload = min(total_bytes, 8 * 1024 * 1024)  # 8 MB fast hydration
+            chunk_size = 512 * 1024  # 512 KB chunks
+            read_bytes = 0
+
             if total_bytes > 0:
-                chunk_size = 512 * 1024  # 512 KB chunks
-                read_bytes = 0
-                last_emit_ts = 0.0
-                last_pct = -1
                 with open(path, "rb") as f:
-                    while not self._is_cancelled:
+                    while not self._is_cancelled and read_bytes < max_preload:
                         buf = f.read(chunk_size)
                         if not buf or self._is_cancelled:
                             break
                         read_bytes += len(buf)
-                        pct = min(98, int((read_bytes * 100) / total_bytes))
-                        now = time.monotonic()
-                        # Throttle signal emissions so Qt main event loop is never flooded on fast disks
-                        if (pct != last_pct and (now - last_emit_ts) >= 0.04) or pct >= 98:
-                            last_pct = pct
-                            last_emit_ts = now
-                            read_mb = read_bytes / (1024 * 1024)
-                            self.progress_changed.emit(pct, read_mb, total_mb)
+                        pct = min(98, int((read_bytes * 100) / max_preload))
+                        read_mb = read_bytes / (1024 * 1024)
+                        self.progress_changed.emit(pct, read_mb, total_mb)
 
             if not self._is_cancelled:
                 self.progress_changed.emit(100, total_mb, total_mb)
