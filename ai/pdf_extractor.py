@@ -828,7 +828,8 @@ _TOC_CACHE: dict = {}
 def extract_pdf_toc(file_path: str) -> List[Tuple]:
     """Extracts chapter titles, nesting levels, and destination page numbers from PDF.
     1. First attempts reading electronic bookmarks (doc.get_toc()).
-    2. If no electronic bookmarks exist, automatically parses the printed Table of Contents.
+       Filters out dummy/garbage bookmarks (e.g. image filenames like '148.jpg', '0.pdf').
+    2. If no valid electronic bookmarks exist, automatically parses the printed Table of Contents.
     Results are cached in memory for zero-lag subsequent lookups.
     Returns list of (level, chapter_title, target_page_1_indexed, printed_page_number_optional).
     """
@@ -844,9 +845,26 @@ def extract_pdf_toc(file_path: str) -> List[Tuple]:
         if _HAS_FITZ:
             import fitz
             doc = fitz.open(file_path)
-            toc = doc.get_toc()
-            if toc:
-                for item in toc:
+            raw_toc = doc.get_toc()
+
+            # Filter dummy/raw-file bookmarks (e.g. '00.pdf', '148.jpg', 'page 1')
+            junk_bm_pattern = re.compile(
+                r'^(?:\d+\.(?:jpg|jpeg|png|tif|tiff|pdf|bmp|webp)|[ivxlcdm]+\.(?:jpg|jpeg|png|pdf)|\d+|page\s*\d+)$',
+                re.I
+            )
+            valid_toc = []
+            if raw_toc:
+                for item in raw_toc:
+                    t = str(item[1]).strip()
+                    if not junk_bm_pattern.match(t):
+                        valid_toc.append(item)
+
+                # Reject entire electronic bookmark set if it is predominantly dummy scan filenames
+                if len(valid_toc) < 3 or (len(valid_toc) / len(raw_toc)) < 0.35:
+                    valid_toc = []
+
+            if valid_toc:
+                for item in valid_toc:
                     try:
                         lvl = int(item[0])
                         t = str(item[1]).strip()
@@ -857,7 +875,7 @@ def extract_pdf_toc(file_path: str) -> List[Tuple]:
                     except Exception:
                         continue
             else:
-                # Fallback to intelligent printed TOC text parsing
+                # Fallback to intelligent printed TOC parsing (with OCR for pure image scans)
                 results = _extract_printed_toc(doc)
 
             doc.close()
