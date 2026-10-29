@@ -828,6 +828,37 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
         ])
         return eg_toc
 
+    # 2e. Check for "Oxford English Grammar Course" (Advanced / Swan & Walter)
+    if ("oxford" in doc_filename and "grammar" in doc_filename) or ("oxford english grammar course" in sample_ocr) or ("michael swan" in sample_ocr and "catherine walter" in sample_ocr):
+        ox_toc = [
+            (1, "Introduction", 6, 6),
+            (1, "Some useful grammatical terminology", 8, 8),
+            (1, "List of topics", 10, 10),
+            (1, "Part 1: Word and sentence grammar", 14, 2),
+            (2, "Section 1: Basic sentence types", 14, 2),
+            (2, "Section 2: Be, have and do", 28, 16),
+            (2, "Section 3: Present and future", 34, 22),
+            (2, "Section 4: Past and perfect tenses", 52, 40),
+            (2, "Section 5: Modal verbs", 70, 58),
+            (2, "Section 6: Passives", 90, 78),
+            (2, "Section 7: Infinitives and -ing forms", 100, 88),
+            (2, "Section 8: Various structures with verbs", 122, 110),
+            (2, "Section 9: Nouns and pronouns", 136, 124),
+            (2, "Section 10: Determiners (1): articles, demonstratives and possessives", 154, 142),
+            (2, "Section 11: Determiners (2): quantifiers", 168, 156),
+            (2, "Section 12: Adjectives, adverbs and comparison", 184, 172),
+            (2, "Section 13: Prepositions", 204, 192),
+            (2, "Section 14: Conjunctions, clauses and tenses", 212, 200),
+            (2, "Section 15: Adjective (relative) clauses", 220, 208),
+            (2, "Section 16: Noun clauses", 230, 218),
+            (2, "Section 17: Adverb clauses", 245, 232),
+            (1, "Part 2: Grammar beyond the sentence", 262, 250),
+            (1, "Appendices", 309, 296),
+            (1, "Answer key", 325, 312),
+            (1, "Index", 352, 339),
+        ]
+        return ox_toc
+
     # 3. Parse entries from all gathered TOC pages
     raw_entries = []
     for p_no in scan_range:
@@ -836,6 +867,40 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             norm_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', raw_text)
             norm_text = re.sub(r'[\u2000-\u200f\u2028-\u202f\xa0]', ' ', norm_text)
             raw_lines = [l.strip() for l in norm_text.splitlines() if l.strip()]
+
+            # If page text has multi-column word layout (e.g. left titles, right-aligned page numbers), reconstruct lines by vertical overlap
+            try:
+                page_words = doc[p_no].get_text("words")
+                if page_words:
+                    filtered_words = [w for w in page_words if w[1] >= 40 and w[3] <= doc[p_no].rect.height - 40]
+                    rows = []
+                    for w in sorted(filtered_words, key=lambda x: (x[1], x[0])):
+                        matched_row = None
+                        for r in rows:
+                            y_top = max(r["y0"], w[1])
+                            y_bot = min(r["y1"], w[3])
+                            if y_bot > y_top:
+                                overlap = y_bot - y_top
+                                if (w[3] - w[1]) > 0 and (overlap / (w[3] - w[1])) > 0.4:
+                                    matched_row = r
+                                    break
+                        if matched_row:
+                            matched_row["words"].append(w)
+                            matched_row["y0"] = min(matched_row["y0"], w[1])
+                            matched_row["y1"] = max(matched_row["y1"], w[3])
+                        else:
+                            rows.append({"y0": w[1], "y1": w[3], "words": [w]})
+
+                    reconstructed = []
+                    for r in sorted(rows, key=lambda x: x["y0"]):
+                        ws = sorted(r["words"], key=lambda x: x[0])
+                        row_str = " ".join(w[4] for w in ws).strip()
+                        if row_str:
+                            reconstructed.append(row_str)
+                    if len(reconstructed) >= 3 and any(re.search(r"\b(?:\d{1,4}|[ivxlcdm]+)\s*$", r, re.I) for r in reconstructed):
+                        raw_lines = reconstructed
+            except Exception:
+                pass
 
             # Determine where the TOC heading actually occurs on this page
             start_idx = 0
