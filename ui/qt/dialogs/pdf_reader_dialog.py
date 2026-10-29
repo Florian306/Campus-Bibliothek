@@ -1538,13 +1538,13 @@ class PdfReaderDialog(QDialog):
         self._stream_loader_thread.start()
 
     def _on_stream_load_progress(self, pct: int, read_mb: float, total_mb: float) -> None:
-        if self._is_closing:
+        if self._is_closing or not self.isVisible():
             return
         self.loading_bar.setValue(max(8, pct))
         self.lbl_loading_status.setText(f"Lade Buchdaten… {read_mb:.1f} / {total_mb:.1f} MB ({pct}%)")
 
     def _on_stream_load_error(self, err_msg: str) -> None:
-        if self._is_closing:
+        if self._is_closing or not self.isVisible():
             return
         self.lbl_loading_status.setText("Fehler beim Laden der PDF-Datei.")
         QMessageBox.critical(self, "Fehler", err_msg)
@@ -1556,6 +1556,9 @@ class PdfReaderDialog(QDialog):
         self.book["file_path"] = resolved_path
         self.loading_bar.setValue(100)
         self.lbl_loading_status.setText("Seitenansicht wird initialisiert…")
+
+        if not self.doc or self._is_closing:
+            return
 
         self.doc.load(self.file_path)
         p_count = max(1, self.doc.pageCount())
@@ -1925,7 +1928,9 @@ class PdfReaderDialog(QDialog):
             target_p = item_data[2]
             printed_p = item_data[3] if len(item_data) > 3 else target_p
 
-            item = QTreeWidgetItem([f"{title} (S. {printed_p})"])
+            # Clean and modern display label: strip dot leaders and formatting noise
+            clean_title = re.sub(r'[\.\s·]{2,}\.?$', '', str(title)).strip()
+            item = QTreeWidgetItem([f"{clean_title} (S. {printed_p})"])
             item.setData(0, Qt.UserRole, target_p)
 
             if lvl == 1 or (lvl - 1) not in stack:
@@ -2551,26 +2556,31 @@ class PdfReaderDialog(QDialog):
         """Ensures the currently active viewing page is persistently saved before closing."""
         if hasattr(self, "center_stack") and self.center_stack.currentIndex() == 1:
             if hasattr(self, "view") and self.view and hasattr(self.view, "pageNavigator"):
-                curr_p = self.view.pageNavigator().currentPage() + 1
-                self._record_progress(curr_p)
+                try:
+                    curr_p = self.view.pageNavigator().currentPage() + 1
+                    self._record_progress(curr_p)
+                except Exception:
+                    pass
 
     def _cleanup_resources(self) -> None:
         """Terminates all active worker threads and releases QtPdf resources cleanly without blocking UI."""
         self._is_closing = True
         try:
             if hasattr(self, "_stream_loader_thread") and self._stream_loader_thread:
-                self._stream_loader_thread.cancel()
+                worker = self._stream_loader_thread
+                self._stream_loader_thread = None
+                worker.cancel()
                 try:
-                    self._stream_loader_thread.progress_changed.disconnect()
-                    self._stream_loader_thread.file_ready.disconnect()
-                    self._stream_loader_thread.error_occurred.disconnect()
+                    worker.progress_changed.disconnect()
+                    worker.file_ready.disconnect()
+                    worker.error_occurred.disconnect()
                 except Exception:
                     pass
-                self._stream_loader_thread = None
             if hasattr(self, "_thumb_thread") and self._thumb_thread and self._thumb_thread.isRunning():
-                self._thumb_thread.cancel()
+                t_worker = self._thumb_thread
+                t_worker.cancel()
                 try:
-                    self._thumb_thread.thumbnail_ready.disconnect()
+                    t_worker.thumbnail_ready.disconnect()
                 except Exception:
                     pass
             if hasattr(self, "_toc_thread") and self._toc_thread and self._toc_thread.isRunning():

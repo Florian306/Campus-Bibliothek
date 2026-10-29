@@ -420,7 +420,9 @@ class QuickLookDialog(QDialog):
                 target_page = item_data[2]
                 printed_page = item_data[3] if len(item_data) > 3 else target_page
 
-                item = QTreeWidgetItem([title, f"S. {printed_page}"])
+                import re
+                clean_title = re.sub(r'[\.\s·]{2,}\.?$', '', str(title)).strip()
+                item = QTreeWidgetItem([clean_title, f"S. {printed_page}"])
                 item.setData(0, Qt.UserRole, target_page)
                 item.setTextAlignment(1, Qt.AlignCenter)
                 if lvl == 1 or (lvl - 1) not in stack:

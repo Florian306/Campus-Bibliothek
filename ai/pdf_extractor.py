@@ -546,9 +546,10 @@ def extract_publication_year(
     return None
 
 
-def _extract_printed_toc(doc) -> List[Tuple[int, str, int]]:
+def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     """Heuristic fallback parser: Extracts chapters and page numbers directly from printed
     Table of Contents (Inhaltsverzeichnis) pages when no digital PDF bookmarks exist.
+    Returns: list of (level, chapter_title, target_pdf_page_1_indexed, printed_page_number)
     """
     total_len = len(doc)
     if total_len == 0:
@@ -594,115 +595,104 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int]]:
         except Exception:
             break
 
-    # 3. Parse entries (handling multi-line blocks with trailing page numbers and line patterns)
+    # 3. Parse entries from all gathered TOC pages
     raw_entries = []
     for p_no in scan_range:
-        page_entries = []
-
-        # 3a. Block-based parsing (preserves multi-line chapter descriptions)
         try:
-            blocks = doc[p_no].get_text("blocks")
-            for b_idx, b in enumerate(blocks):
-                txt = b[4].strip()
-                norm = re.sub(r'[\t\u2000-\u200f\u2028-\u202f]+', ' ', txt)
-                norm = re.sub(r' +', ' ', norm)
-                m = re.search(r'^(.*?)(?:\s*\.{2,}|\s{2,}|\n\s*|\s+)(\d{1,4})\s*$', norm, re.DOTALL)
+            raw_lines = doc[p_no].get_text("text").splitlines()
+            cleaned_lines = []
+            for raw in raw_lines:
+                s = raw.strip()
+                if not s:
+                    continue
+                # Skip pure leader lines (dots and spaces)
+                if re.match(r'^[\.\s·]+$', s):
+                    continue
+                # Skip copyright, generator, or page headers
+                if any(k in s.lower() for k in ["©", "urheberrecht", "bereitsgestellt", "powered by", "inhaltsverzeichnis", "inhaltsübersicht", "inhalt"]):
+                    continue
+                # Strip leading/trailing dot leaders
+                s_clean = re.sub(r'[\.\s·]{2,}\.?$', '', s).strip()
+                # Also strip isolated leading Roman numerals like "V" on the first line if followed by real chapters
+                if s_clean and not (len(s_clean) <= 4 and re.match(r'^[IVXLCDMivxlcdm]+$', s_clean) and not s_clean.endswith('.')):
+                    cleaned_lines.append(s_clean)
+
+            i = 0
+            while i < len(cleaned_lines):
+                line = cleaned_lines[i]
+
+                # Pattern A: Section prefix line (e.g. 'I.', 'II.', 'Kapitel 1') followed by title line followed by digit
+                if (
+                    i + 2 < len(cleaned_lines)
+                    and re.match(r'^(?:[IVXLCDM]+\.?|Teil\s+[IVXLCDM\d]+|Kapitel\s+\d+\.?)$', line, re.I)
+                    and cleaned_lines[i + 2].isdigit()
+                ):
+                    title = f"{line} {cleaned_lines[i + 1]}".strip()
+                    p = int(cleaned_lines[i + 2])
+                    raw_entries.append((1, title, p))
+                    i += 3
+                    continue
+
+                # Pattern B: Title line followed immediately by standalone digit line
+                if i + 1 < len(cleaned_lines) and cleaned_lines[i + 1].isdigit():
+                    title = line
+                    p = int(cleaned_lines[i + 1])
+                    lvl = 2 if re.match(r'^\d+\.', title) else 1
+                    raw_entries.append((lvl, title, p))
+                    i += 2
+                    continue
+
+                # Pattern C: In-line page number (e.g. 'Personenregister ... 165' or 'Title    165')
+                m = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{3,}|\t+)(\d{1,4})$', line)
                 if m:
-                    raw_t = re.sub(r'\s+', ' ', m.group(1)).strip()
-                    p_num = int(m.group(2))
-                    if b_idx > 0:
-                        prev_txt = blocks[b_idx - 1][4].strip()
-                        if prev_txt.isdigit() and len(prev_txt) <= 3 and not re.match(r'^(?:Lernfeld|\d+)', raw_t):
-                            raw_t = f"{prev_txt}. {raw_t}"
-                    clean_t = raw_t.lstrip('.-· ')
-                    if (
-                        clean_t
-                        and len(clean_t) >= 2
-                        and not any(j in clean_t.lower() for j in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt"])
-                    ):
-                        lvl = 1
-                        if re.match(r'^\d+\.\d+\.\d+', clean_t):
-                            lvl = 3
-                        elif re.match(r'^\d+\.\d+', clean_t):
-                            lvl = 2
-                        page_entries.append((lvl, clean_t, p_num))
+                    title = m.group(1).strip()
+                    p = int(m.group(2))
+                    lvl = 2 if re.match(r'^\d+\.', title) else 1
+                    raw_entries.append((lvl, title, p))
+                    i += 1
+                    continue
+
+                i += 1
         except Exception:
             pass
-
-        # 3b. Line-based parsing fallback if block extraction yielded few results
-        if len(page_entries) < 2:
-            line_entries = []
-            try:
-                txt = doc[p_no].get_text("text")
-                norm_txt = re.sub(r'(?:[\.\s·]{2,}\.|\.{2,})', ' ... ', txt)
-                norm_txt = re.sub(r'\.\.\.\s*\n\s*(\d{1,4})\b', r'... \1', norm_txt)
-                lines = [l.strip() for l in norm_txt.splitlines() if l.strip()]
-                i = 0
-                while i < len(lines):
-                    line = lines[i]
-                    m = re.search(r'^(.*?)\s*\.{2,}\s*(\d{1,4})\s*$', line)
-                    if not m:
-                        m = re.search(r'^(.*?)(?:\t+|\s{3,})(\d{1,4})\s*$', line)
-                    if m:
-                        raw_title = m.group(1).strip()
-                        page_num = int(m.group(2))
-                        if (
-                            i > 0
-                            and len(lines[i - 1]) < 30
-                            and re.match(r'^(?:Teil\s+[IVXLCDM\d]+|Kapitel\s+\d+|\d+(?:\.\d+)*\.?)$', lines[i - 1], re.IGNORECASE)
-                        ):
-                            raw_title = f"{lines[i - 1]} {raw_title}"
-
-                        clean_title = re.sub(r'[\r\n\t]+', ' ', raw_title).strip().lstrip('.-· ')
-                        if (
-                            clean_title
-                            and len(clean_title) >= 2
-                            and not any(j in clean_title.lower() for j in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt"])
-                        ):
-                            lvl = 1
-                            if re.match(r'^\d+\.\d+\.\d+', clean_title):
-                                lvl = 3
-                            elif re.match(r'^\d+\.\d+', clean_title):
-                                lvl = 2
-                            line_entries.append((lvl, clean_title, page_num))
-                    i += 1
-            except Exception:
-                pass
-            if len(line_entries) > len(page_entries):
-                page_entries = line_entries
-
-        raw_entries.extend(page_entries)
 
     if not raw_entries:
         return []
 
-    # 4. Detect offset between printed book page numbers and physical PDF page indices
+    # 4. Intelligently detect page offset between printed page numbers and PDF physical page index
+    # We inspect headers/footers in the first 35 pages of the document where page 1 or 2 appears
     detected_offsets = []
-    for p_idx in range(min(scan_range), min(scan_range[-1] + 25, total_len)):
+    for pdf_idx in range(min(35, total_len)):
         try:
-            txt = doc[p_idx].get_text("text")
-            lines = [l.strip() for l in txt.splitlines() if l.strip()]
-            if not lines:
-                continue
-            for cand in [lines[0], lines[-1]]:
-                if cand.isdigit():
-                    val = int(cand)
-                    if 1 <= val <= total_len:
-                        detected_offsets.append((p_idx + 1) - val)
+            page_obj = doc[pdf_idx]
+            page_h = page_obj.rect.height
+            page_dict = page_obj.get_text("dict")
+            for b in page_dict.get("blocks", []):
+                if b.get("type") != 0:
+                    continue
+                for l in b.get("lines", []):
+                    for s in l.get("spans", []):
+                        txt = s.get("text", "").strip()
+                        if txt.isdigit():
+                            p_val = int(txt)
+                            y_pos = s.get("bbox", (0, 0, 0, 0))[1]
+                            # Check if the number is in header (< 15% height) or footer (> 85% height)
+                            if y_pos < page_h * 0.15 or y_pos > page_h * 0.85:
+                                if 1 <= p_val <= total_len:
+                                    offset_candidate = (pdf_idx + 1) - p_val
+                                    if 0 <= offset_candidate <= 35:
+                                        detected_offsets.append(offset_candidate)
         except Exception:
             pass
 
     offset = 0
     if detected_offsets:
-        valid_offsets = [o for o in detected_offsets if 0 <= o <= 40]
-        if valid_offsets:
-            offset = max(set(valid_offsets), key=valid_offsets.count)
+        offset = max(set(detected_offsets), key=detected_offsets.count)
 
     adjusted_entries = []
-    for lvl, t, p in raw_entries:
-        # Use the exact page number printed directly in the document
-        page_in_doc = min(total_len, max(1, p))
-        adjusted_entries.append((lvl, t, page_in_doc))
+    for lvl, title, printed_p in raw_entries:
+        target_pdf_page = min(total_len, max(1, printed_p + offset))
+        adjusted_entries.append((lvl, title, target_pdf_page, printed_p))
 
     return adjusted_entries
 
@@ -710,12 +700,12 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int]]:
 _TOC_CACHE: dict = {}
 
 
-def extract_pdf_toc(file_path: str) -> List[Tuple[int, str, int]]:
+def extract_pdf_toc(file_path: str) -> List[Tuple]:
     """Extracts chapter titles, nesting levels, and destination page numbers from PDF.
     1. First attempts reading electronic bookmarks (doc.get_toc()).
     2. If no electronic bookmarks exist, automatically parses the printed Table of Contents.
     Results are cached in memory for zero-lag subsequent lookups.
-    Returns list of (level, chapter_title, page_number_1_indexed).
+    Returns list of (level, chapter_title, target_page_1_indexed, printed_page_number_optional).
     """
     if not os.path.exists(file_path):
         return []
@@ -724,27 +714,28 @@ def extract_pdf_toc(file_path: str) -> List[Tuple[int, str, int]]:
     if norm_path in _TOC_CACHE:
         return _TOC_CACHE[norm_path]
 
-    results: List[Tuple[int, str, int]] = []
+    results: List[Tuple] = []
     try:
-        import fitz
-        doc = fitz.open(file_path)
-        toc = doc.get_toc()
-        if toc:
-            for item in toc:
-                try:
-                    lvl = int(item[0])
-                    t = str(item[1]).strip()
-                    p = int(item[2])
-                    if t and p > 0:
-                        t = re.sub(r'[\r\n\t]+', ' ', t).strip()
-                        results.append((lvl, t, p))
-                except Exception:
-                    continue
-        else:
-            # Fallback to intelligent printed TOC text parsing
-            results = _extract_printed_toc(doc)
+        if _HAS_FITZ:
+            import fitz
+            doc = fitz.open(file_path)
+            toc = doc.get_toc()
+            if toc:
+                for item in toc:
+                    try:
+                        lvl = int(item[0])
+                        t = str(item[1]).strip()
+                        p = int(item[2])
+                        if t and p > 0:
+                            t = re.sub(r'[\r\n\t]+', ' ', t).strip()
+                            results.append((lvl, t, p, p))
+                    except Exception:
+                        continue
+            else:
+                # Fallback to intelligent printed TOC text parsing
+                results = _extract_printed_toc(doc)
 
-        doc.close()
+            doc.close()
     except Exception:
         pass
 
