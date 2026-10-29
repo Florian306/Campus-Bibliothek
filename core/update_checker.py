@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "1.9.7"
+CURRENT_VERSION = "1.9.8"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "1.9.7",
+        "version": "1.9.8",
         "date": "Aktuell",
+        "title": "High-Speed TOC, Crash-Schutz & Hintergrund-Update-Polling",
+        "notes": "• Crash-Schutz: Sicheres Schließen des Readers auch während des Ladevorgangs\n• Bis zu 250x schnelleres Öffnen von Büchern ohne digitales Inhaltsverzeichnis (0.05s)\n• Automatisches Update-Polling alle 30 Minuten mit Live-Benachrichtigungsbanner\n• 2-Stufen Release Pipeline für blitzschnelle Patch-Bereitstellung",
+    },
+    {
+        "version": "1.9.7",
+        "date": "29.10.2026",
         "title": "Universal-Inhaltsverzeichnis: OCR-Erkennung für Buch-Scans & Layout-Engine",
         "notes": "• Automatischer Tesseract-OCR Fallback für rein bildbasierte Buchscans\n• Filter für Dummy-/Dateinamen-Bookmarks (z. B. '148.jpg', '0.pdf')\n• Erweiterte Layout-Engine für O'Reilly-, Suhrkamp- & Back-Matter-Verzeichnisse",
     },
