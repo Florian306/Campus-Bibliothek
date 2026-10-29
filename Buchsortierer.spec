@@ -254,14 +254,15 @@ exe = EXE(
     icon='app_icon.ico',
 )
 
-# Filter collected binaries and data files to eliminate test suites, cache artifacts, and unneeded docs
+# Filter collected binaries and data files to eliminate test suites, cache artifacts, and unneeded docs/QML
 clean_datas = []
 for dest, src, typ in a.datas:
     dest_lower = dest.lower().replace('\\', '/')
-    # Drop tests, docs, sphinx and sample assets
+    # Drop tests, docs, QML, translations, and unused framework artifacts
     if any(x in dest_lower for x in [
         '/tests/', '/test/', 'google/genai/tests', 'matplotlib/tests',
-        'pip/', 'setuptools/', '.dist-info/licenses',
+        'pip/', 'setuptools/', '.dist-info/licenses', 'qml/', '/qml',
+        'translations/', 'translations\\', 'qt3d', 'qtdesigner',
     ]):
         continue
     clean_datas.append((dest, src, typ))
@@ -269,8 +270,16 @@ for dest, src, typ in a.datas:
 clean_binaries = []
 for dest, src, typ in a.binaries:
     dest_lower = dest.lower().replace('\\', '/')
-    # Drop unused dynamic libraries (e.g. database drivers for Firebird/Mimer/Oracle not used by SQLite)
-    if any(x in dest_lower for x in ['qsqlibase.dll', 'qsqlmimer.dll', 'qsqloci.dll']):
+    # Drop unused dynamic libraries (Quick, Qml, 3D, Sensors, Database drivers not used)
+    if any(x in dest_lower for x in [
+        'qsqlibase.dll', 'qsqlmimer.dll', 'qsqloci.dll', 'qsqlpsql.dll', 'qsqlmysql.dll',
+        'qt6quick', 'qt6qml', 'qt63d', 'qt6designer', 'qt6multimedia',
+        'qt6bluetooth', 'qt6sensors', 'qt6positioning', 'qt6location', 'qt6nfc',
+        'qt6serialport', 'qt6serialbus', 'qt6spatialaudio', 'qt6scxml',
+        'qt6statemachine', 'qt6charts', 'qt6datavisualization', 'qt6graphs',
+        'qt6httpserver', 'qt6remoteobjects', 'qt6shadertools', 'qt6test',
+        'qt6virtualkeyboard', 'qt6webchannelquick', 'qt6quicktimeline',
+    ]):
         continue
     clean_binaries.append((dest, src, typ))
 
