@@ -4,6 +4,7 @@ compatible with Google Calendar, Outlook/Office 365, Apple Calendar, and univers
 """
 
 import re
+import ssl
 import time
 import threading
 import urllib.request
@@ -11,6 +12,7 @@ import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.config import load_config, save_config
+from core.credential_vault import mask_secret_url
 from core.library_db import (
     _db_write_lock,
     get_db_connection,
@@ -218,14 +220,16 @@ def sync_webcal_feed(ics_url: str) -> Tuple[int, str]:
         url = "https://" + url
 
     try:
+        ssl_ctx = ssl.create_default_context()
         req = urllib.request.Request(
             url,
             headers={"User-Agent": "Buchsortierer-CampusAI/1.0 (Windows NT 10.0; Win64; x64)"}
         )
-        with urllib.request.urlopen(req, timeout=10.0) as resp:
+        with urllib.request.urlopen(req, timeout=10.0, context=ssl_ctx) as resp:
             content = resp.read().decode("utf-8", errors="ignore")
     except Exception as e:
-        return 0, f"Netzwerkfehler beim Abrufen des Kalenders: {e}"
+        safe_err = mask_secret_url(str(e))
+        return 0, f"Netzwerkfehler beim Abrufen des Kalenders: {safe_err}"
 
     if "BEGIN:VEVENT" not in content:
         return 0, "Keine Termine (VEVENT) im iCal-Feed gefunden."

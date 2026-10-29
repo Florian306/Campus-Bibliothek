@@ -125,31 +125,46 @@ def save_app_config(cfg: AppConfig) -> bool:
 
 
 def load_config() -> Dict[str, Any]:
-    """Loads configuration dictionary from disk or returns defaults (100% backwards compatible)."""
+    """Loads configuration dictionary from disk or returns defaults (100% backwards compatible).
+    Automatically decrypts DPAPI-protected secrets in memory and migrates legacy plaintext secrets on disk.
+    """
+    from core.credential_vault import decrypt_config_dict
+
     default_config: Dict[str, Any] = AppConfig().to_dict()
 
     config_path = get_config_path()
     if not os.path.isfile(config_path):
         return default_config
 
+    had_plaintext = False
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict):
-                default_config.update(data)
+                decrypted, had_plaintext = decrypt_config_dict(data)
+                default_config.update(decrypted)
     except Exception:
         pass
+
+    if had_plaintext:
+        try:
+            save_config(default_config)
+        except Exception:
+            pass
 
     return default_config
 
 
 def save_config(config_data: Dict[str, Any]) -> bool:
-    """Saves configuration dictionary to disk (atomic write)."""
+    """Saves configuration dictionary to disk (atomic write with DPAPI encryption for sensitive keys)."""
+    from core.credential_vault import encrypt_config_dict
+
     config_path = get_config_path()
     tmp_path = config_path + ".tmp"
+    disk_payload = encrypt_config_dict(config_data)
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=4, ensure_ascii=False)
+            json.dump(disk_payload, f, indent=4, ensure_ascii=False)
         os.replace(tmp_path, config_path)
         return True
     except Exception:

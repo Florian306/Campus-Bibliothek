@@ -36,6 +36,7 @@ except Exception:
     _HAS_WEBENGINE = False
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
+from core.credential_vault import mask_secret_url
 from core.calendar_service import (
     get_today_events,
     get_display_events,
@@ -760,7 +761,28 @@ class JarvisSetupDialog(QDialog):
         header_row.addLayout(head_text_col)
         header_row.addStretch()
 
+        vault_badge = QLabel("🔒 Windows-Tresor (DPAPI)")
+        vault_badge.setFont(QFont("Segoe UI", 8, QFont.Bold))
+        vault_badge.setToolTip(
+            "Sensible Zugangsdaten (App-Passwörter & geheime Kalender-Feeds) werden "
+            "mit der Windows Data Protection API (DPAPI) hardware- und benutzergebunden verschlüsselt."
+        )
+        vault_badge.setStyleSheet("""
+            QLabel {
+                background-color: rgba(35, 134, 54, 0.18);
+                color: #3FB950;
+                border: 1px solid #2EA043;
+                border-radius: 6px;
+                padding: 4px 10px;
+            }
+        """)
+        header_row.addWidget(vault_badge, alignment=Qt.AlignVCenter)
+
         main_layout.addLayout(header_row)
+
+        self._existing_cal_url = get_cal_url().strip()
+        settings = get_mail_settings()
+        self._existing_mail_pass = str(settings.get("password", "")).strip()
 
         # Scroll area container for perfect fit
         scroll = QScrollArea()
@@ -826,9 +848,63 @@ class JarvisSetupDialog(QDialog):
         lbl_cal_field.setStyleSheet("color: #E6EDF3; border: none;")
         cal_layout.addWidget(lbl_cal_field)
 
-        self.input_cal_url = QLineEdit(get_cal_url())
-        self.input_cal_url.setPlaceholderText("https://... oder webcal://... (Google Kalender, Outlook, Uni-Stundenplan)")
-        cal_layout.addWidget(self.input_cal_url)
+        cal_url_row = QHBoxLayout()
+        cal_url_row.setSpacing(6)
+        self.input_cal_url = QLineEdit()
+        self.input_cal_url.setEchoMode(QLineEdit.Password)
+        if self._existing_cal_url:
+            masked_preview = mask_secret_url(self._existing_cal_url)
+            if len(masked_preview) > 48:
+                masked_preview = masked_preview[:24] + "..." + masked_preview[-20:]
+            self.input_cal_url.setPlaceholderText(f"🔒 Im Tresor hinterlegt ({masked_preview}) – Zum Ändern neu eingeben")
+        else:
+            self.input_cal_url.setPlaceholderText("https://... oder webcal://... (Google Kalender, Outlook, Uni-Stundenplan)")
+        cal_url_row.addWidget(self.input_cal_url, stretch=1)
+
+        self.btn_toggle_cal_url = QPushButton()
+        self.btn_toggle_cal_url.setIcon(create_vector_icon("eye", "#8B949E", 18))
+        self.btn_toggle_cal_url.setIconSize(QSize(18, 18))
+        self.btn_toggle_cal_url.setFixedSize(38, 38)
+        self.btn_toggle_cal_url.setToolTip("Neu eingegebene Kalender-URL ein-/ausblenden")
+        self.btn_toggle_cal_url.setCursor(Qt.PointingHandCursor)
+        self.btn_toggle_cal_url.setStyleSheet("""
+            QPushButton {
+                background: #161B22;
+                border: 1px solid #30363D;
+                border-radius: 6px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background: #21262D;
+                border-color: #58A6FF;
+            }
+        """)
+        self.btn_toggle_cal_url.clicked.connect(self._toggle_cal_url_visibility)
+        cal_url_row.addWidget(self.btn_toggle_cal_url)
+
+        if self._existing_cal_url:
+            self.btn_clear_cal_url = QPushButton()
+            self.btn_clear_cal_url.setIcon(create_vector_icon("trash", "#FF7B72", 16))
+            self.btn_clear_cal_url.setIconSize(QSize(16, 16))
+            self.btn_clear_cal_url.setFixedSize(38, 38)
+            self.btn_clear_cal_url.setToolTip("Gespeicherte Kalender-URL aus dem Tresor entfernen")
+            self.btn_clear_cal_url.setCursor(Qt.PointingHandCursor)
+            self.btn_clear_cal_url.setStyleSheet("""
+                QPushButton {
+                    background: #1A1418;
+                    border: 1px solid #3D2228;
+                    border-radius: 6px;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background: #2D1A20;
+                    border-color: #FF7B72;
+                }
+            """)
+            self.btn_clear_cal_url.clicked.connect(self._clear_saved_cal_url)
+            cal_url_row.addWidget(self.btn_clear_cal_url)
+
+        cal_layout.addLayout(cal_url_row)
 
         lbl_cal_hint = QLabel("💡 Tipp: Google Kalender ➔ ⚙️ Einstellungen ➔ Kalender auswählen ➔ 'Geheime Adresse im iCal-Format' kopieren.")
         lbl_cal_hint.setFont(QFont("Segoe UI", 8))
@@ -949,26 +1025,30 @@ class JarvisSetupDialog(QDialog):
 
         pass_row = QHBoxLayout()
         pass_row.setSpacing(6)
-        self.input_mail_pass = QLineEdit(settings.get("password", ""))
+        self.input_mail_pass = QLineEdit()
         self.input_mail_pass.setEchoMode(QLineEdit.Password)
-        self.input_mail_pass.setPlaceholderText("16-stelliges Google App-Passwort eingeben")
+        if self._existing_mail_pass:
+            self.input_mail_pass.setPlaceholderText("🔒 App-Passwort sicher im Tresor hinterlegt (zum Ändern neu eingeben)")
+        else:
+            self.input_mail_pass.setPlaceholderText("16-stelliges Google App-Passwort eingeben")
         pass_row.addWidget(self.input_mail_pass, stretch=1)
 
-        self.btn_toggle_pass = QPushButton("👁")
-        self.btn_toggle_pass.setFixedSize(36, 32)
-        self.btn_toggle_pass.setToolTip("Passwort anzeigen / verbergen")
+        self.btn_toggle_pass = QPushButton()
+        self.btn_toggle_pass.setIcon(create_vector_icon("eye", "#8B949E", 18))
+        self.btn_toggle_pass.setIconSize(QSize(18, 18))
+        self.btn_toggle_pass.setFixedSize(38, 38)
+        self.btn_toggle_pass.setToolTip("Neu eingegebenes Passwort anzeigen / verbergen")
         self.btn_toggle_pass.setCursor(Qt.PointingHandCursor)
         self.btn_toggle_pass.setStyleSheet("""
             QPushButton {
                 background: #161B22;
-                color: #8B949E;
                 border: 1px solid #30363D;
                 border-radius: 6px;
-                font-size: 13px;
+                padding: 0px;
             }
             QPushButton:hover {
                 background: #21262D;
-                color: #F0F6FC;
+                border-color: #58A6FF;
             }
         """)
         self.btn_toggle_pass.clicked.connect(self._toggle_pass_visibility)
@@ -1041,7 +1121,7 @@ class JarvisSetupDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         footer_row.addWidget(btn_cancel)
 
-        btn_save = QPushButton("  ✓ Speichern & Synchronisieren")
+        btn_save = QPushButton("  ✓ Speichern && Synchronisieren")
         btn_save.setFont(QFont("Segoe UI", 9, QFont.Bold))
         btn_save.setFixedHeight(36)
         btn_save.setCursor(Qt.PointingHandCursor)
@@ -1062,31 +1142,67 @@ class JarvisSetupDialog(QDialog):
 
         main_layout.addLayout(footer_row)
 
+    def _toggle_cal_url_visibility(self) -> None:
+        if self.input_cal_url.echoMode() == QLineEdit.Password:
+            self.input_cal_url.setEchoMode(QLineEdit.Normal)
+            self.btn_toggle_cal_url.setIcon(create_vector_icon("eye_off", "#FFFFFF", 18))
+            self.btn_toggle_cal_url.setStyleSheet("""
+                QPushButton {
+                    background: #1F6FEB;
+                    border: 1px solid #388BFD;
+                    border-radius: 6px;
+                    padding: 0px;
+                }
+            """)
+        else:
+            self.input_cal_url.setEchoMode(QLineEdit.Password)
+            self.btn_toggle_cal_url.setIcon(create_vector_icon("eye", "#8B949E", 18))
+            self.btn_toggle_cal_url.setStyleSheet("""
+                QPushButton {
+                    background: #161B22;
+                    border: 1px solid #30363D;
+                    border-radius: 6px;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background: #21262D;
+                    border-color: #58A6FF;
+                }
+            """)
+
+    def _clear_saved_cal_url(self) -> None:
+        self._existing_cal_url = ""
+        self.input_cal_url.clear()
+        self.input_cal_url.setPlaceholderText("https://... oder webcal://... (Google Kalender, Outlook, Uni-Stundenplan)")
+        save_cal_url("")
+        if hasattr(self, "btn_clear_cal_url"):
+            self.btn_clear_cal_url.hide()
+
     def _toggle_pass_visibility(self) -> None:
         if self.input_mail_pass.echoMode() == QLineEdit.Password:
             self.input_mail_pass.setEchoMode(QLineEdit.Normal)
+            self.btn_toggle_pass.setIcon(create_vector_icon("eye_off", "#FFFFFF", 18))
             self.btn_toggle_pass.setStyleSheet("""
                 QPushButton {
                     background: #1F6FEB;
-                    color: #FFFFFF;
                     border: 1px solid #388BFD;
                     border-radius: 6px;
-                    font-size: 13px;
+                    padding: 0px;
                 }
             """)
         else:
             self.input_mail_pass.setEchoMode(QLineEdit.Password)
+            self.btn_toggle_pass.setIcon(create_vector_icon("eye", "#8B949E", 18))
             self.btn_toggle_pass.setStyleSheet("""
                 QPushButton {
                     background: #161B22;
-                    color: #8B949E;
                     border: 1px solid #30363D;
                     border-radius: 6px;
-                    font-size: 13px;
+                    padding: 0px;
                 }
                 QPushButton:hover {
                     background: #21262D;
-                    color: #F0F6FC;
+                    border-color: #58A6FF;
                 }
             """)
 
@@ -1094,7 +1210,8 @@ class JarvisSetupDialog(QDialog):
         self.input_mail_host.setText(host)
         self.input_mail_port.setText(str(port))
         if "gmail" in host.lower():
-            self.input_mail_pass.setPlaceholderText("16-stelliges Google App-Passwort eingeben")
+            if not self._existing_mail_pass:
+                self.input_mail_pass.setPlaceholderText("16-stelliges Google App-Passwort eingeben")
             self.lbl_test_result.setText("💡 Gmail aktiv: Bitte dein 16-stelliges App-Passwort nutzen.")
             self.lbl_test_result.setStyleSheet("color: #58A6FF; border: none;")
 
@@ -1106,7 +1223,7 @@ class JarvisSetupDialog(QDialog):
         host = self.input_mail_host.text().strip()
         port = int(self.input_mail_port.text().strip() or "993")
         user = self.input_mail_user.text().strip()
-        pwd = self.input_mail_pass.text().strip()
+        pwd = self.input_mail_pass.text().strip() or self._existing_mail_pass
 
         self.lbl_test_result.setText("⏳ Verbinde mit Mailserver...")
         self.lbl_test_result.setStyleSheet("color: #58A6FF; border: none;")
@@ -1127,15 +1244,16 @@ class JarvisSetupDialog(QDialog):
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_save(self) -> None:
-        cal_url = self.input_cal_url.text().strip()
-        if cal_url:
-            save_cal_url(cal_url)
-            count, msg = sync_webcal_feed(cal_url)
+        typed_cal_url = self.input_cal_url.text().strip()
+        effective_cal_url = typed_cal_url if typed_cal_url else self._existing_cal_url
+        if effective_cal_url:
+            save_cal_url(effective_cal_url)
+            count, msg = sync_webcal_feed(effective_cal_url)
             QMessageBox.information(self, "Kalender-Sync", msg)
 
         host = self.input_mail_host.text().strip()
         user = self.input_mail_user.text().strip()
-        pwd = self.input_mail_pass.text().strip()
+        pwd = self.input_mail_pass.text().strip() or self._existing_mail_pass
         port = int(self.input_mail_port.text().strip() or "993")
         enabled = bool(host and user and pwd)
         only_unseen = self.chk_only_unseen.isChecked()

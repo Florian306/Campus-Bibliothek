@@ -623,13 +623,21 @@ class SyncView(QWidget):
 
     def _configure_github_token(self) -> None:
         cfg = load_app_config()
+        has_existing = bool(cfg.github_token.strip())
+        prompt_text = (
+            "🔒 Ein GitHub Token ist bereits sicher im Windows-Tresor (DPAPI) hinterlegt.\n"
+            "Gib ein neues Token ein, um es zu ersetzen (oder lasse das Feld leer, um das Token zu löschen):\n\n"
+            "Erstellen unter: github.com/settings/tokens (classic) -> Haken bei 'gist'"
+            if has_existing else
+            "Gib dein GitHub Personal Access Token ein (Berechtigung: 'gist'):\n\n"
+            "Erstellen unter: github.com/settings/tokens (classic) -> Haken bei 'gist'"
+        )
         token, ok = QInputDialog.getText(
             self,
-            "GitHub Personal Access Token",
-            "Gib dein GitHub Personal Access Token ein (Berechtigung: 'gist'):\n\n"
-            "Erstellen unter: github.com/settings/tokens (classic) -> Haken bei 'gist'",
+            "GitHub Personal Access Token (Windows-Tresor)",
+            prompt_text,
             QLineEdit.Password,
-            cfg.github_token,
+            "",
         )
         if ok and token is not None:
             token = token.strip()

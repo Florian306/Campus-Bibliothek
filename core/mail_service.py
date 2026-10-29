@@ -6,6 +6,7 @@ filtering exclusively for unread messages (UNSEEN), plus connection diagnostics.
 import email
 import email.utils
 import imaplib
+import ssl
 from email.header import decode_header
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -75,7 +76,8 @@ def _get_connection(settings: Dict[str, Any], readonly: bool = True) -> imaplib.
         _drop_connection()
 
     if _CONN is None:
-        conn = imaplib.IMAP4_SSL(settings["host"], settings["port"], timeout=8.0)
+        ssl_ctx = ssl.create_default_context()
+        conn = imaplib.IMAP4_SSL(settings["host"], settings["port"], ssl_context=ssl_ctx, timeout=8.0)
         conn.login(user, pwd)
         _CONN, _CONN_KEY = conn, key
 
@@ -92,7 +94,8 @@ def test_mail_connection(host: str, port: int, user: str, password: str) -> Tupl
     clean_user = user.strip()
 
     try:
-        mail = imaplib.IMAP4_SSL(host, port, timeout=6.0)
+        ssl_ctx = ssl.create_default_context()
+        mail = imaplib.IMAP4_SSL(host, port, ssl_context=ssl_ctx, timeout=6.0)
         mail.login(clean_user, clean_pwd)
         mail.select("INBOX", readonly=True)
 
