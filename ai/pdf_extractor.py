@@ -577,14 +577,15 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     has_text_layer = any(len(doc[i].get_text("text").strip()) > 30 for i in range(min(8, total_len)))
     tessdata_dir = None if has_text_layer else _get_tessdata_dir()
 
-    def get_page_text_and_blocks(p_idx: int) -> Tuple[str, list]:
-        """Safely retrieves text and blocks, applying OCR for purely scanned pages."""
+    def get_page_text_and_blocks(p_idx: int, fast_mode: bool = False) -> Tuple[str, list]:
+        """Safely retrieves text and blocks, applying fast low-dpi OCR for scanned pages when locating headers."""
         page_obj = doc[p_idx]
         direct_text = page_obj.get_text("text")
         if len(direct_text.strip()) > 20 or not tessdata_dir:
             return direct_text, page_obj.get_text("blocks")
         try:
-            tp = page_obj.get_textpage_ocr(tessdata=tessdata_dir, language="deu")
+            dpi_val = 72 if fast_mode else 150
+            tp = page_obj.get_textpage_ocr(tessdata=tessdata_dir, language="eng+deu", dpi=dpi_val)
             ocr_text = page_obj.get_text("text", textpage=tp)
             ocr_blocks = page_obj.get_text("blocks", textpage=tp)
             return ocr_text, ocr_blocks
@@ -592,14 +593,15 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             return direct_text, page_obj.get_text("blocks")
 
     # 1. Locate start of printed table of contents:
-    # Scan front-matter (first 40 pages) and back-matter (last 16 pages)
+    # Scan front-matter (first 25 pages) and back-matter (last 16 pages)
     # Check both line headers and block texts for standard and non-standard layouts
     toc_pages = []
-    max_scan_front = min(40, total_len)
+    # If purely scanned without text, limit discovery to first 12 pages for optimal performance
+    max_scan_front = min(25 if has_text_layer else 12, total_len)
     for p_no in range(max_scan_front):
         try:
             matched = False
-            txt, blocks = get_page_text_and_blocks(p_no)
+            txt, blocks = get_page_text_and_blocks(p_no, fast_mode=True)
             lines = [l.strip() for l in txt.splitlines() if l.strip()]
             for l in lines[:10]:
                 low = l.lower()
@@ -785,28 +787,20 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
         return []
 
     # 4. Intelligently detect page offset between printed page numbers and PDF physical page index
-    # We inspect headers/footers in the first 35 pages of the document where page 1 or 2 appears
+    # Fast header/footer check across first 10 pages for printed page numbers
     detected_offsets = []
-    for pdf_idx in range(min(35, total_len)):
+    for pdf_idx in range(min(12, total_len)):
         try:
             page_obj = doc[pdf_idx]
-            page_h = page_obj.rect.height
-            page_dict = page_obj.get_text("dict")
-            for b in page_dict.get("blocks", []):
-                if b.get("type") != 0:
-                    continue
-                for l in b.get("lines", []):
-                    for s in l.get("spans", []):
-                        txt = s.get("text", "").strip()
-                        if txt.isdigit():
-                            p_val = int(txt)
-                            y_pos = s.get("bbox", (0, 0, 0, 0))[1]
-                            # Check if the number is in header (< 15% height) or footer (> 85% height)
-                            if y_pos < page_h * 0.15 or y_pos > page_h * 0.85:
-                                if 1 <= p_val <= total_len:
-                                    offset_candidate = (pdf_idx + 1) - p_val
-                                    if 0 <= offset_candidate <= 35:
-                                        detected_offsets.append(offset_candidate)
+            lines = [l.strip() for l in page_obj.get_text("text").splitlines() if l.strip()]
+            header_footer = lines[:2] + lines[-2:]
+            for line in header_footer:
+                if line.isdigit():
+                    p_val = int(line)
+                    if 1 <= p_val <= total_len:
+                        cand = (pdf_idx + 1) - p_val
+                        if 0 <= cand <= 35:
+                            detected_offsets.append(cand)
         except Exception:
             pass
 

@@ -46,6 +46,17 @@ from ui.qt.icons import create_vector_icon
 from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
 
 
+# Module-level registry to prevent garbage collection crashes on running threads
+_ACTIVE_QUICKLOOK_WORKERS = set()
+
+
+def _retain_ql_worker(worker: QThread) -> None:
+    if worker is None:
+        return
+    _ACTIVE_QUICKLOOK_WORKERS.add(worker)
+    worker.finished.connect(lambda: _ACTIVE_QUICKLOOK_WORKERS.discard(worker))
+
+
 class TocLoaderThread(QThread):
     """Background worker to extract Table of Contents without blocking dialog render."""
     finished_toc = Signal(list)
@@ -53,13 +64,18 @@ class TocLoaderThread(QThread):
     def __init__(self, file_path: str):
         super().__init__()
         self.file_path = file_path
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
 
     def run(self):
         try:
             items = extract_pdf_toc(self.file_path) if self.file_path and os.path.exists(self.file_path) else []
         except Exception:
             items = []
-        self.finished_toc.emit(items)
+        if not self._is_cancelled:
+            self.finished_toc.emit(items)
 
 
 class MetadataEnricherThread(QThread):
@@ -313,7 +329,9 @@ class QuickLookDialog(QDialog):
                 self._on_toc_loaded(_TOC_CACHE[norm_fp])
             else:
                 self._toc_thread = TocLoaderThread(fp)
+                _retain_ql_worker(self._toc_thread)
                 self._toc_thread.finished_toc.connect(self._on_toc_loaded)
+                self._toc_thread.finished.connect(self._toc_thread.deleteLater)
                 self._toc_thread.start()
         else:
             self.lbl_toc_status.setText("Keine Datei verknüpft oder Datei existiert nicht mehr.")
@@ -1021,32 +1039,46 @@ class QuickLookDialog(QDialog):
                 self.lbl_meta_isbn.setText(f"<span style='color:#8B949E;'>ISBN:</span> <span style='color:#F0F6FC;'>{isbn}</span>")
 
     def closeEvent(self, event):
-        if self._toc_thread and self._toc_thread.isRunning():
+        if self._toc_thread:
+            t = self._toc_thread
+            self._toc_thread = None
+            t.cancel()
             try:
-                self._toc_thread.finished_toc.disconnect()
+                t.finished_toc.disconnect()
             except Exception:
                 pass
-            self._toc_thread.quit()
-        if self._meta_thread and self._meta_thread.isRunning():
+            if t.isRunning():
+                _retain_ql_worker(t)
+        if self._meta_thread:
+            m = self._meta_thread
+            self._meta_thread = None
             try:
-                self._meta_thread.finished_book.disconnect()
+                m.finished_book.disconnect()
             except Exception:
                 pass
-            self._meta_thread.quit()
+            if m.isRunning():
+                _retain_ql_worker(m)
         super().closeEvent(event)
 
     def reject(self):
-        if self._toc_thread and self._toc_thread.isRunning():
+        if self._toc_thread:
+            t = self._toc_thread
+            self._toc_thread = None
+            t.cancel()
             try:
-                self._toc_thread.finished_toc.disconnect()
+                t.finished_toc.disconnect()
             except Exception:
                 pass
-            self._toc_thread.quit()
-        if self._meta_thread and self._meta_thread.isRunning():
+            if t.isRunning():
+                _retain_ql_worker(t)
+        if self._meta_thread:
+            m = self._meta_thread
+            self._meta_thread = None
             try:
-                self._meta_thread.finished_book.disconnect()
+                m.finished_book.disconnect()
             except Exception:
                 pass
-            self._meta_thread.quit()
+            if m.isRunning():
+                _retain_ql_worker(m)
         super().reject()
 

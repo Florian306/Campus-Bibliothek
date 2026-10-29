@@ -410,13 +410,30 @@ class TocLoaderWorker(QThread):
     def __init__(self, file_path: str, parent=None):
         super().__init__(parent)
         self.file_path = file_path
+        self._is_cancelled = False
+
+    def cancel(self):
+        self._is_cancelled = True
 
     def run(self):
         try:
             items = extract_pdf_toc(self.file_path) if self.file_path and os.path.exists(self.file_path) else []
         except Exception:
             items = []
-        self.finished_toc.emit(items)
+        if not self._is_cancelled:
+            self.finished_toc.emit(items)
+
+
+# Module-level worker registry to prevent Python GC from destroying active QThreads before native run() finishes
+_ACTIVE_READER_WORKERS = set()
+
+
+def _retain_worker(worker: QThread) -> None:
+    """Keeps a strong Python reference to a QThread until its native run() completes cleanly."""
+    if worker is None:
+        return
+    _ACTIVE_READER_WORKERS.add(worker)
+    worker.finished.connect(lambda: _ACTIVE_READER_WORKERS.discard(worker))
 
 
 class FixedPillCapsule(QFrame):
@@ -1531,6 +1548,7 @@ class PdfReaderDialog(QDialog):
 
         # Use parent=None so thread can finish a blocked OS read in the background if dialog is closed mid-load
         self._stream_loader_thread = PdfStreamLoaderWorker(self.file_path, book_id=self.book_id, parent=None)
+        _retain_worker(self._stream_loader_thread)
         self._stream_loader_thread.progress_changed.connect(self._on_stream_load_progress)
         self._stream_loader_thread.file_ready.connect(self._on_stream_file_ready)
         self._stream_loader_thread.error_occurred.connect(self._on_stream_load_error)
@@ -1593,6 +1611,7 @@ class PdfReaderDialog(QDialog):
 
         self.list_thumbnails.clear()
         self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=None, parent=None)
+        _retain_worker(self._thumb_thread)
         self._thumb_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_thread.finished.connect(self._thumb_thread.deleteLater)
         self._thumb_thread.start()
@@ -1905,6 +1924,7 @@ class PdfReaderDialog(QDialog):
 
         # Load TOC via QThread worker with Qt Signal delivery (parent=None so closing dialog never waits on blocked thread)
         self._toc_thread = TocLoaderWorker(self.file_path, parent=None)
+        _retain_worker(self._toc_thread)
         self._toc_thread.finished_toc.connect(self._apply_toc_items)
         self._toc_thread.finished.connect(self._toc_thread.deleteLater)
         self._toc_thread.start()
@@ -2576,23 +2596,42 @@ class PdfReaderDialog(QDialog):
                     worker.error_occurred.disconnect()
                 except Exception:
                     pass
-            if hasattr(self, "_thumb_thread") and self._thumb_thread and self._thumb_thread.isRunning():
+            if hasattr(self, "_thumb_thread") and self._thumb_thread:
                 t_worker = self._thumb_thread
+                self._thumb_thread = None
                 t_worker.cancel()
                 try:
                     t_worker.thumbnail_ready.disconnect()
                 except Exception:
                     pass
-            if hasattr(self, "_toc_thread") and self._toc_thread and self._toc_thread.isRunning():
+            if hasattr(self, "_toc_thread") and self._toc_thread:
+                toc_worker = self._toc_thread
+                self._toc_thread = None
+                toc_worker.cancel()
                 try:
-                    self._toc_thread.finished_toc.disconnect()
+                    toc_worker.finished_toc.disconnect()
                 except Exception:
                     pass
-                self._toc_thread.quit()
-            if hasattr(self, "_explainer_thread") and self._explainer_thread and self._explainer_thread.isRunning():
-                self._explainer_thread.quit()
-            if hasattr(self, "_dict_thread") and self._dict_thread and self._dict_thread.isRunning():
-                self._dict_thread.quit()
+            if hasattr(self, "_explainer_thread") and self._explainer_thread:
+                exp_worker = self._explainer_thread
+                self._explainer_thread = None
+                try:
+                    exp_worker.finished_explanation.disconnect()
+                    exp_worker.error_occurred.disconnect()
+                except Exception:
+                    pass
+                if exp_worker.isRunning():
+                    _retain_worker(exp_worker)
+            if hasattr(self, "_dict_thread") and self._dict_thread:
+                dict_worker = self._dict_thread
+                self._dict_thread = None
+                try:
+                    dict_worker.finished_result.disconnect()
+                    dict_worker.error_occurred.disconnect()
+                except Exception:
+                    pass
+                if dict_worker.isRunning():
+                    _retain_worker(dict_worker)
         except Exception:
             pass
 
