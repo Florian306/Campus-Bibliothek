@@ -7,9 +7,9 @@ hiddenimports = []
 
 # Collect PySide6 modules, keeping WebEngine/Quick/Qml and filtering only truly unused bloated modules
 tmp_ret = collect_all('PySide6')
-filtered_datas = [d for d in tmp_ret[0] if not any(x in d[0].lower() for x in ['translations', '3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'charts', 'graphs', 'datavisualization'])]
-filtered_binaries = [b for b in tmp_ret[1] if not any(x in b[0].lower() for x in ['3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'location', 'nfc', 'serialport', 'spatialaudio', 'scxml', 'charts', 'graphs', 'datavisualization', 'httpserver', 'serialbus'])]
-filtered_hidden = [h for h in tmp_ret[2] if not any(x in h for x in ['Qt3D', 'QtDesigner', 'QtMultimedia', 'QtBluetooth', 'QtSensors', 'QtPositioning', 'QtLocation', 'QtNfc', 'QtSerialPort', 'QtCharts', 'QtDataVisualization', 'QtGraphs', 'QtHttpServer', 'QtSerialBus', 'QtAxContainer'])]
+filtered_datas = [d for d in tmp_ret[0] if not any(x in d[0].lower().replace('\\', '/') for x in ['qml', 'translations', '3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'charts', 'graphs', 'datavisualization'])]
+filtered_binaries = [b for b in tmp_ret[1] if not any(x in b[0].lower().replace('\\', '/') for x in ['qml', 'quick', '3d', 'designer', 'multimedia', 'bluetooth', 'sensors', 'positioning', 'location', 'nfc', 'serialport', 'spatialaudio', 'scxml', 'charts', 'graphs', 'datavisualization', 'httpserver', 'serialbus'])]
+filtered_hidden = [h for h in tmp_ret[2] if not any(x in h for x in ['QtQuick', 'QtQml', 'Qt3D', 'QtDesigner', 'QtMultimedia', 'QtBluetooth', 'QtSensors', 'QtPositioning', 'QtLocation', 'QtNfc', 'QtSerialPort', 'QtCharts', 'QtDataVisualization', 'QtGraphs', 'QtHttpServer', 'QtSerialBus', 'QtAxContainer'])]
 datas += filtered_datas
 binaries += filtered_binaries
 hiddenimports += filtered_hidden
@@ -71,9 +71,6 @@ hiddenimports += [
     'PySide6.QtWebEngineWidgets',
     'dateutil.rrule',
     'PySide6.QtWebEngineCore',
-    'PySide6.QtQuick',
-    'PySide6.QtQuickWidgets',
-    'PySide6.QtQml',
     'ui.qt.views.catalog_view',
     'ui.qt.views.desk_view',
     'ui.qt.views.research_view',
@@ -148,6 +145,9 @@ hiddenimports += [
 
 excludes = [
     # Unused PySide6 components
+    'PySide6.QtQuick',
+    'PySide6.QtQuickWidgets',
+    'PySide6.QtQml',
     'PySide6.QtWebEngineQuick',
     'PySide6.QtQuick3D',
     'PySide6.Qt3DCore',
