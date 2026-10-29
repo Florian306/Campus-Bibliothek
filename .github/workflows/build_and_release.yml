@@ -21,12 +21,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache Installed Python Packages
+      - name: Cache Pip Wheels
         uses: actions/cache@v4
-        id: cache-pip
         with:
-          path: ${{ env.pythonLocation }}
-          key: ${{ runner.os }}-python-${{ hashFiles('requirements.txt') }}
+          path: ~\AppData\Local\pip\cache
+          key: ${{ runner.os }}-pip-cache-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-cache-
 
       - name: Cache PyInstaller Dependency Graph
         uses: actions/cache@v4
@@ -39,7 +40,6 @@ jobs:
             ${{ runner.os }}-pyinstaller-
 
       - name: Install Dependencies
-        if: steps.cache-pip.outputs.cache-hit != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -49,9 +49,10 @@ jobs:
         run: |
           pyinstaller Buchsortierer.spec --noconfirm
 
-      - name: Compile Windows Installer (Inno Setup)
+      - name: Install Inno Setup Fast & Compile Installer
         run: |
-          choco install innosetup --no-progress -y
+          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_3_3/innosetup-6.3.3.exe" -OutFile "innosetup.exe"
+          Start-Process -FilePath ".\innosetup.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -NoNewWindow -Wait
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
       - name: Create Portable Zip Package and Delta Patch
