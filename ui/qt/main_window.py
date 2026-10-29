@@ -431,21 +431,156 @@ class CampusMainWindow(QMainWindow):
                 btn_inbox.setText("  Posteingang")
 
     def _start_startup_update_check(self) -> None:
+        """Starts background update polling (immediately on boot, then every 30 minutes)."""
         import threading
         from PySide6.QtCore import QTimer
         from core.update_checker import check_for_updates
 
-        def _worker():
-            avail, latest, _, _ = check_for_updates()
-            if avail and latest:
-                QTimer.singleShot(0, lambda: self._on_update_available_badge(latest))
+        self._last_notified_update = None
 
+        def _worker():
+            avail, latest, url, notes = check_for_updates()
+            if avail and latest and latest != self._last_notified_update:
+                self._last_notified_update = latest
+                QTimer.singleShot(0, lambda: self._on_update_available_badge(latest, url, notes))
+
+        # Check in background immediately
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _on_update_available_badge(self, latest_ver: str) -> None:
+        # Recurring background timer every 30 minutes (1800000 ms)
+        self._update_poll_timer = QTimer(self)
+        self._update_poll_timer.timeout.connect(lambda: threading.Thread(target=_worker, daemon=True).start())
+        self._update_poll_timer.start(30 * 60 * 1000)
+
+    def _on_update_available_badge(self, latest_ver: str, url: str = "", notes: str = "") -> None:
+        """Updates the sidebar badge and shows non-intrusive toast notification and tray alert."""
         btn_sync = self._nav_buttons.get("sync")
         if btn_sync and latest_ver:
             btn_sync.setText(f"  Scan && Sync  •  v{latest_ver} ⬆")
+
+        # Notify sync view if it was already created
+        if "sync" in self._views_cache:
+            try:
+                self._views_cache["sync"].set_update_available(latest_ver, url, notes, silent=True)
+            except Exception:
+                pass
+
+        # Windows Tray Notification (if tray icon is available)
+        if hasattr(self, "tray_icon") and self.tray_icon:
+            try:
+                from PySide6.QtWidgets import QSystemTrayIcon
+                self.tray_icon.showMessage(
+                    f"Campus-Bibliothek v{latest_ver} verfügbar!",
+                    "Ein neues Update wurde gefunden. Klicke auf 'Scan & Sync', um es mit 1 Klick zu installieren.",
+                    QSystemTrayIcon.Information,
+                    5000
+                )
+            except Exception:
+                pass
+
+        # In-App Toast Banner
+        self._show_update_toast(latest_ver)
+
+    def _show_update_toast(self, latest_ver: str) -> None:
+        """Displays an elegant, floating toast in the bottom right corner with direct 1-click update."""
+        if hasattr(self, "_toast_widget") and self._toast_widget:
+            try:
+                self._toast_widget.deleteLater()
+            except Exception:
+                pass
+
+        self._toast_widget = QFrame(self)
+        self._toast_widget.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1A2333, stop:1 #111827);
+                border: 1px solid #388BFD;
+                border-radius: 10px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            }
+        """)
+        layout = QHBoxLayout(self._toast_widget)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(12)
+
+        from ui.qt.icons import create_vector_pixmap
+        lbl_icon = QLabel()
+        lbl_icon.setPixmap(create_vector_pixmap("research", "#58A6FF", 18))
+        lbl_icon.setStyleSheet("border: none; background: transparent;")
+        layout.addWidget(lbl_icon)
+
+        lbl_msg = QLabel(f"<b>Update v{latest_ver} bereit!</b><br><span style='color: #8B949E; font-size: 11px;'>Jetzt ohne Neustart verfügbar.</span>")
+        lbl_msg.setStyleSheet("color: #F0F6FC; border: none; background: transparent; font-size: 12px;")
+        layout.addWidget(lbl_msg)
+
+        btn_open = QPushButton("Jetzt ansehen")
+        btn_open.setCursor(Qt.PointingHandCursor)
+        btn_open.setStyleSheet("""
+            QPushButton {
+                background-color: #238636;
+                color: #FFFFFF;
+                font-weight: bold;
+                font-size: 11px;
+                border: 1px solid #2EA043;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #2EA043;
+            }
+        """)
+        btn_open.clicked.connect(lambda: [self._switch_tab("sync", 4), self._toast_widget.hide()])
+        layout.addWidget(btn_open)
+
+        btn_close = QPushButton("✕")
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #8B949E;
+                font-size: 13px;
+                border: none;
+                padding: 2px 6px;
+            }
+            QPushButton:hover {
+                color: #F0F6FC;
+            }
+        """)
+        btn_close.clicked.connect(self._toast_widget.hide)
+        layout.addWidget(btn_close)
+
+        self._toast_widget.adjustSize()
+        # Position at bottom-right of central widget
+        margin_x = 24
+        margin_y = 24
+        toast_w = self._toast_widget.width()
+        toast_h = self._toast_widget.height()
+        self._toast_widget.setGeometry(
+            self.width() - toast_w - margin_x,
+            self.height() - toast_h - margin_y,
+            toast_w,
+            toast_h
+        )
+        self._toast_widget.show()
+        self._toast_widget.raise_()
+
+        # Auto-hide after 15 seconds
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(15000, lambda: self._toast_widget.hide() if hasattr(self, "_toast_widget") and self._toast_widget else None)
+
+    def resizeEvent(self, event) -> None:
+        """Repositions floating toast if window is resized."""
+        super().resizeEvent(event)
+        if hasattr(self, "_toast_widget") and self._toast_widget and self._toast_widget.isVisible():
+            margin_x = 24
+            margin_y = 24
+            toast_w = self._toast_widget.width()
+            toast_h = self._toast_widget.height()
+            self._toast_widget.setGeometry(
+                self.width() - toast_w - margin_x,
+                self.height() - toast_h - margin_y,
+                toast_w,
+                toast_h
+            )
 
     def _on_data_modified(self) -> None:
         self.update_sidebar_stats()
