@@ -831,23 +831,35 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             while i < len(cleaned_lines):
                 line = cleaned_lines[i]
 
-                # Normalize line ending numbers with OCR character replacements (e.g. B->8, G->6, O->0, S->5)
-                line_ocr_norm = re.sub(
-                    r'[\.\-·_\s]+([BGO\d]{1,4})$',
-                    lambda m: ' ' + m.group(1).replace('B', '8').replace('G', '6').replace('O', '0').replace('S', '5'),
-                    line
-                )
-                if line_ocr_norm != line:
-                    line = line_ocr_norm
+                # Check if line is a unit / chapter title (e.g. '13 Modals 1' or '4 Past tenses 2' or '3 Present perfect')
+                m_unit = re.match(r'^(\d{1,2})\s+([A-Za-z\s]+?)(?:\s+(\d{1,2}))?$', line.strip())
+                if m_unit:
+                    u_num = m_unit.group(1)
+                    u_name = m_unit.group(2).strip()
+                    part = f" {m_unit.group(3)}" if m_unit.group(3) else ""
+                    unit_title = f"Unit {u_num}: {u_name}{part}".strip()
+                    # Look ahead for page number in subsequent lines
+                    p_found = None
+                    for look_idx in range(i + 1, min(i + 4, len(cleaned_lines))):
+                        m_next_p = re.search(r'[\s\.·_~,\-–—]+([BGO\d]{1,4})$', cleaned_lines[look_idx])
+                        if m_next_p:
+                            raw_val = m_next_p.group(1).upper()
+                            num_str = raw_val.replace('B', '8').replace('G', '6').replace('O', '0').replace('S', '5')
+                            if num_str.isdigit():
+                                p_found = int(num_str)
+                                break
+                    if p_found is not None:
+                        raw_entries.append((1, unit_title, p_found))
+                    else:
+                        raw_entries.append((1, unit_title, 1))
+                    i += 1
+                    continue
 
-                # Pattern A: Section prefix line (e.g. 'I.', 'II.', 'Kapitel 1', or single/double digit '1', '2', '18')
+                # Pattern A: Section prefix line (e.g. 'I.', 'II.', 'Kapitel 1')
                 # followed by title line followed by digit page
                 if (
                     i + 2 < len(cleaned_lines)
-                    and (
-                        re.match(r'^(?:[IVXLCDM]+\.?|Teil\s+[IVXLCDM\d]+|Kapitel\s+\d+\.?|[A-Z]\b)$', line, re.I)
-                        or re.match(r'^\d{1,2}$', line)
-                    )
+                    and re.match(r'^(?:[IVXLCDM]+\.?|Teil\s+[IVXLCDM\d]+|Kapitel\s+\d+\.?|[A-Z]\b)$', line, re.I)
                     and cleaned_lines[i + 2].isdigit()
                     and not cleaned_lines[i + 1].isdigit()
                 ):
@@ -882,30 +894,34 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                     i += 2
                     continue
 
-                # Pattern C: In-line page number (e.g. 'Personenregister ... 165' or 'Title    165' or 'Energie 6')
-                m = re.search(r'^(.*?)(?:\s*[\.\s·_~-]{2,}\.?|\s+)(\d{1,4}|[ivxlcdm]+)$', line, re.I)
+                # Pattern C: In-line page number with dot leader cleaning
+                # Matches trailing page numbers and cleans OCR dot leader noise
+                m = re.search(r'[\s\.·_~,\-–—]+([BGO\d]{1,4}|[ivxlcdm]+)$', line, re.I)
                 if m:
-                    title = m.group(1).strip()
-                    raw_p = m.group(2)
-                    p = int(raw_p) if raw_p.isdigit() else 1
-                    title_clean = re.sub(r'[\.\s·_~-]+$', '', title).strip()
-                    if len(title_clean) >= 3 and not re.match(r'^[^\w]+$', title_clean):
+                    raw_val = m.group(1).upper()
+                    num_str = raw_val.replace('B', '8').replace('G', '6').replace('O', '0').replace('S', '5')
+                    p = int(num_str) if num_str.isdigit() else 1
+                    raw_title = line[:m.start()].strip()
+                    # Strip dot leader garbage characters (e.g. repeated n, e, s, i, m, u, o, c, dots)
+                    clean_title = re.sub(r'[\.\s·_~,\-–—]+(?:[cnoesmruiawz0\.\s_~,\-–—]{4,})?$', '', raw_title, flags=re.I).strip()
+                    clean_title = re.sub(r'[\.\s·_~,\-–—]+$', '', clean_title).strip()
+                    if len(clean_title) >= 3 and not re.match(r'^[^\w]+$', clean_title):
                         lvl = 1
-                        if re.match(r'^\d+\.\d+\.\d+', title_clean):
-                            lvl = 3
-                        elif re.match(r'^\d+\.\d+', title_clean) or re.match(r'^(?:blickpunkt|methode|grundwissen|wiederholung)\b', title_clean, re.I):
+                        if re.match(r'^\d+\.\d+\.\d+', clean_title) or re.match(r'^(?:test practice|blickpunkt|methode)\b', clean_title, re.I):
                             lvl = 2
-                        raw_entries.append((lvl, title_clean, p))
+                        raw_entries.append((lvl, clean_title, p))
                     i += 1
                     continue
 
                 # Pattern D: Wrapped multi-line title where next line has rest of title + page
                 if i + 1 < len(cleaned_lines):
                     next_l = cleaned_lines[i + 1]
-                    m2 = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+|\.{2,})(\d{1,4})$', next_l)
+                    m2 = re.search(r'[\s\.·_~,\-–—]+(\d{1,4})$', next_l)
                     if m2 and not re.match(r'^(?:[IVXLCDM]+\.?|\d+\.)', next_l):
-                        combined_title = f"{line} {m2.group(1).strip()}".strip()
-                        p = int(m2.group(2))
+                        raw_next_title = next_l[:m2.start()].strip()
+                        clean_next_title = re.sub(r'[\.\s·_~,\-–—]+$', '', raw_next_title).strip()
+                        combined_title = f"{line} {clean_next_title}".strip()
+                        p = int(m2.group(1))
                         lvl = 2 if re.match(r'^\d+\.', combined_title) else 1
                         raw_entries.append((lvl, combined_title, p))
                         i += 2
