@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 from typing import Dict, List, Optional, Set
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QRect, QPoint, QModelIndex
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QRect, QPoint, QModelIndex, QTimer
 from PySide6.QtGui import (
     QFont, QColor, QImage, QPixmap, QIcon, QDragEnterEvent, QDropEvent,
     QPainter, QPen, QBrush, QMouseEvent
@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
 from ui.qt.theme import NoFocusItemDelegate
+from ui.qt.dialogs.quick_look import QuickLookDialog
+from ui.qt.dialogs.pdf_reader_dialog import PdfReaderDialog
 from core.config import get_inbox_directory, get_books_storage_dir, load_config, save_config
 from core.library_db import (
     add_to_inbox_queue,
@@ -424,6 +426,8 @@ class InboxView(QWidget):
         self._cover_cache: Dict[int, QPixmap] = {}
         self._items: List[Dict] = []
         self._selected_item_ids: set[int] = set()
+        self._last_clicked_row: Optional[int] = None
+        self._toast_timer: Optional[QTimer] = None
 
         self._build_ui()
         self.sync_filesystem_with_db()
@@ -762,6 +766,8 @@ class InboxView(QWidget):
         self.table.setColumnWidth(5, 125)
         self.table.setColumnWidth(6, 175)
 
+        self.table.cellDoubleClicked.connect(self._on_table_cell_double_clicked)
+
         self.table.verticalHeader().setDefaultSectionSize(70)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionMode(QTableWidget.NoSelection)
@@ -894,6 +900,8 @@ class InboxView(QWidget):
         cover_lbl.setObjectName("coverLabel")
         cover_lbl.setFixedSize(38, 52)
         cover_lbl.setAlignment(Qt.AlignCenter)
+        cover_lbl.setCursor(Qt.PointingHandCursor)
+        cover_lbl.setToolTip("Klicke hier für eine Sofort-Vorschau (Quick-Look)")
         cover_lbl.setStyleSheet("""
             background: #141B2B;
             border: 1px solid #23334E;
@@ -904,6 +912,10 @@ class InboxView(QWidget):
             cover_lbl.setPixmap(self._cover_cache[item_id].scaled(38, 52, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         else:
             cover_lbl.setPixmap(create_vector_pixmap("book", "#58A6FF", 18))
+
+        def _on_cover_click(event):
+            self._open_quick_look_for_item(item)
+        cover_lbl.mousePressEvent = _on_cover_click
 
         lay.addWidget(cover_lbl)
 
@@ -1131,11 +1143,32 @@ class InboxView(QWidget):
                 }
             """)
 
-            def _on_row_chk_toggled(checked: bool, iid: int = item_id):
-                if checked:
-                    self._selected_item_ids.add(iid)
+            def _on_row_chk_toggled(checked: bool, iid: int = item_id, r_idx: int = row):
+                modifiers = QApplication.keyboardModifiers()
+                if modifiers & Qt.ShiftModifier and self._last_clicked_row is not None and 0 <= self._last_clicked_row < len(self._items):
+                    # Multi-selection range via Shift-Click
+                    start_r = min(self._last_clicked_row, r_idx)
+                    end_r = max(self._last_clicked_row, r_idx)
+                    for r in range(start_r, end_r + 1):
+                        it_r = self._items[r]
+                        if checked:
+                            self._selected_item_ids.add(it_r["id"])
+                        else:
+                            self._selected_item_ids.discard(it_r["id"])
+                        cell_w = self.table.cellWidget(r, 0)
+                        if cell_w:
+                            sub_cb = cell_w.findChild(QCheckBox)
+                            if sub_cb:
+                                sub_cb.blockSignals(True)
+                                sub_cb.setChecked(checked)
+                                sub_cb.blockSignals(False)
                 else:
-                    self._selected_item_ids.discard(iid)
+                    if checked:
+                        self._selected_item_ids.add(iid)
+                    else:
+                        self._selected_item_ids.discard(iid)
+
+                self._last_clicked_row = r_idx
 
                 if len(self._items) > 0 and len(self._selected_item_ids) == len(self._items):
                     self.checkbox_header.setChecked(True)
@@ -1415,7 +1448,110 @@ class InboxView(QWidget):
     def _on_all_analyzed(self) -> None:
         self._items = get_inbox_queue()
 
-    def _on_subfolders_toggled(self, checked: bool) -> None:
+    def _on_table_cell_double_clicked(self, row: int, col: int) -> None:
+        """Opens quick-look modal or full reader on double click for the clicked book."""
+        if 0 <= row < len(self._items):
+            self._open_quick_look_for_item(self._items[row])
+
+    def _open_quick_look_for_item(self, item: Dict) -> None:
+        """Opens QuickLookDialog or in-app reader for staging book inspection."""
+        fp = item.get("file_path", "")
+        if not fp or not os.path.exists(fp):
+            return
+        book_mock = {
+            "id": f"inbox_{item.get('id')}",
+            "title": item.get("suggested_title") or item.get("filename", ""),
+            "author": item.get("suggested_author", "Unbekannt"),
+            "category": item.get("suggested_category", "Sonstiges"),
+            "categories": [item.get("suggested_category", "Sonstiges")],
+            "file_path": fp,
+            "filename": item.get("filename", ""),
+            "page_count": item.get("page_count", 0),
+            "isbn": item.get("isbn", ""),
+            "edition": item.get("edition", 1),
+            "year": item.get("year"),
+        }
+        try:
+            dlg = QuickLookDialog(book_mock, parent=self)
+            dlg.exec()
+        except Exception:
+            try:
+                reader = PdfReaderDialog(book_mock, parent=self)
+                reader.exec()
+            except Exception:
+                pass
+
+    def _show_toast(self, title: str, subtitle: str, is_success: bool = True) -> None:
+        """Displays sleek non-blocking notification banner inside the inbox view."""
+        if not hasattr(self, "_toast_frame") or not self._toast_frame:
+            self._toast_frame = QFrame(self)
+            self._toast_frame.setFixedSize(360, 56)
+            self._toast_frame.setStyleSheet(f"""
+                QFrame {{
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0D1B2A, stop:1 #132238);
+                    border: 1px solid #1E4472;
+                    border-radius: 8px;
+                }}
+            """)
+            t_lay = QHBoxLayout(self._toast_frame)
+            t_lay.setContentsMargins(12, 8, 12, 8)
+            t_lay.setSpacing(10)
+
+            self._lbl_toast_icon = QLabel()
+            t_lay.addWidget(self._lbl_toast_icon)
+
+            txt_box = QVBoxLayout()
+            txt_box.setSpacing(1)
+            self._lbl_toast_title = QLabel()
+            self._lbl_toast_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            self._lbl_toast_title.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
+            txt_box.addWidget(self._lbl_toast_title)
+
+            self._lbl_toast_sub = QLabel()
+            self._lbl_toast_sub.setFont(QFont("Segoe UI", 8))
+            self._lbl_toast_sub.setStyleSheet("color: #8B949E; border: none; background: transparent;")
+            txt_box.addWidget(self._lbl_toast_sub)
+            t_lay.addLayout(txt_box)
+            t_lay.addStretch()
+
+        if is_success:
+            self._lbl_toast_icon.setPixmap(create_vector_pixmap("check", "#3FB950", 18))
+            self._toast_frame.setStyleSheet("""
+                QFrame {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0C1E14, stop:1 #102B1D);
+                    border: 1px solid #238636;
+                    border-radius: 8px;
+                }
+            """)
+        else:
+            self._lbl_toast_icon.setPixmap(create_vector_pixmap("sync", "#58A6FF", 18))
+            self._toast_frame.setStyleSheet("""
+                QFrame {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0D1B2A, stop:1 #132238);
+                    border: 1px solid #1F6FEB;
+                    border-radius: 8px;
+                }
+            """)
+
+        self._lbl_toast_title.setText(title)
+        self._lbl_toast_sub.setText(subtitle)
+
+        # Position at top right
+        self._toast_frame.move(self.width() - 380, 24)
+        self._toast_frame.show()
+        self._toast_frame.raise_()
+
+        if self._toast_timer and self._toast_timer.isActive():
+            self._toast_timer.stop()
+        self._toast_timer = QTimer(self)
+        self._toast_timer.setSingleShot(True)
+        self._toast_timer.timeout.connect(self._toast_frame.hide)
+        self._toast_timer.start(3500)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "_toast_frame") and self._toast_frame and self._toast_frame.isVisible():
+            self._toast_frame.move(self.width() - 380, 24)
         cfg = load_config()
         cfg["inbox_create_subfolders"] = bool(checked)
         save_config(cfg)
@@ -1546,6 +1682,7 @@ class InboxView(QWidget):
         delete_inbox_item(item_id)
         self._reload_table_data()
         self.book_filed.emit()
+        self._show_toast("✓ Buch einsortiert", f"'{title[:38]}' ➔ {category}", is_success=True)
         return True
 
     def _file_all_ready(self) -> None:
