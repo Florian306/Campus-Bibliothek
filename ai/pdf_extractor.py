@@ -622,12 +622,12 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             txt, blocks = get_page_text_and_blocks(p_no, fast_mode=True)
             lines = [l.strip() for l in txt.splitlines() if l.strip()]
             for l in lines[:10]:
-                low = l.lower().strip(': .')
-                if any(k in low for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "inhaltserzeichnis"]) and len(l) <= 45:
+                low = l.lower().strip(': .–-')
+                if low in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "contents", "table of contents"]:
                     toc_pages.append(p_no)
                     matched = True
                     break
-                if low in ["inhalt", "contents", "table of contents"]:
+                if re.match(r'^(?:inhaltsverzeichnis|inhaltsübersicht|table of contents)\b', low) and len(low) <= 40:
                     toc_pages.append(p_no)
                     matched = True
                     break
@@ -641,12 +641,12 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             if not matched:
                 for b in blocks:
                     b_txt = b[4].strip()
-                    low_b = b_txt.lower().strip(': .')
-                    if any(k in low_b for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "inhaltserzeichnis"]) and len(b_txt) <= 60:
+                    low_b = b_txt.lower().strip(': .–-')
+                    if low_b in ["inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "contents", "table of contents"]:
                         toc_pages.append(p_no)
                         matched = True
                         break
-                    if low_b in ["inhalt", "contents", "table of contents"]:
+                    if re.match(r'^(?:inhaltsverzeichnis|inhaltsübersicht|table of contents)\b', low_b) and len(low_b) <= 40:
                         toc_pages.append(p_no)
                         matched = True
                         break
@@ -987,25 +987,41 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                 if page_words:
                     filtered_words = [w for w in page_words if w[1] >= 40 and w[3] <= doc[p_no].rect.height - 40]
                     
-                    # Automated multi-column gutter detection
+                    # Automated multi-column gutter detection (supports 1, 2, or 3 columns)
                     w_page = doc[p_no].rect.width
-                    nbins = 100
+                    nbins = 200
                     hist = [0] * nbins
+                    bin_width = w_page / nbins
                     for w in filtered_words:
-                        b0 = max(0, min(nbins - 1, int((w[0] / w_page) * nbins)))
-                        b1 = max(0, min(nbins - 1, int((w[2] / w_page) * nbins)))
+                        b0 = max(0, min(nbins - 1, int(w[0] / bin_width)))
+                        b1 = max(0, min(nbins - 1, int(w[2] / bin_width)))
                         for b in range(b0, b1 + 1):
                             hist[b] += 1
-                    valleys = sorted([(hist[b], b * (w_page / nbins)) for b in range(35, 65)])
-                    
+
+                    # Check for 3-column layout (gutters around 28-42% and 58-72%)
+                    c1_valleys = [b for b in range(int(nbins * 0.28), int(nbins * 0.42)) if hist[b] <= 1]
+                    c2_valleys = [b for b in range(int(nbins * 0.58), int(nbins * 0.72)) if hist[b] <= 1]
                     column_word_sets = []
-                    # Check if there is a distinct vertical column separator (gutter)
-                    if valleys and valleys[0][0] <= 1:
-                        split_x = valleys[0][1]
-                        left_w = [w for w in filtered_words if w[2] <= split_x]
-                        right_w = [w for w in filtered_words if w[0] >= split_x]
-                        if len(left_w) >= 5 and len(right_w) >= 5:
-                            column_word_sets = [left_w, right_w]
+
+                    if c1_valleys and c2_valleys:
+                        g1 = (sum(c1_valleys) / len(c1_valleys)) * bin_width
+                        g2 = (sum(c2_valleys) / len(c2_valleys)) * bin_width
+                        col1 = [w for w in filtered_words if w[2] <= g1]
+                        col2 = [w for w in filtered_words if w[0] >= g1 and w[2] <= g2]
+                        col3 = [w for w in filtered_words if w[0] >= g2]
+                        if len(col1) >= 8 and len(col2) >= 8 and len(col3) >= 8:
+                            column_word_sets = [col1, col2, col3]
+
+                    # Check for 2-column layout if not 3 columns
+                    if not column_word_sets:
+                        center_valleys = [b for b in range(int(nbins * 0.35), int(nbins * 0.65)) if hist[b] <= 1]
+                        if center_valleys:
+                            split_x = (sum(center_valleys) / len(center_valleys)) * bin_width
+                            left_w = [w for w in filtered_words if w[2] <= split_x]
+                            right_w = [w for w in filtered_words if w[0] >= split_x]
+                            if len(left_w) >= 5 and len(right_w) >= 5:
+                                column_word_sets = [left_w, right_w]
+
                     if not column_word_sets:
                         column_word_sets = [filtered_words]
 
@@ -1065,6 +1081,15 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
             i = 0
             while i < len(cleaned_lines):
                 line = cleaned_lines[i]
+
+                # Normalize line ending numbers with OCR character replacements (e.g. B->8, G->6, O->0, S->5)
+                line_ocr_norm = re.sub(
+                    r'[\.\-·_\s]+([BGO\d]{1,4})$',
+                    lambda m: ' ' + m.group(1).replace('B', '8').replace('G', '6').replace('O', '0').replace('S', '5'),
+                    line
+                )
+                if line_ocr_norm != line:
+                    line = line_ocr_norm
 
                 # Pattern A: Section prefix line (e.g. 'I.', 'II.', 'Kapitel 1', or single/double digit '1', '2', '18')
                 # followed by title line followed by digit page
@@ -1137,6 +1162,21 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
 
     if not raw_entries:
         return []
+
+    # 3b. Monotonicity and OCR digit flip filter
+    # Consecutive TOC page numbers are strictly non-decreasing. Fix OCR misreads like 33 between 52 and 54 -> 53
+    filtered_entries = []
+    prev_valid_p = 1
+    for lvl, title, p in raw_entries:
+        if p < prev_valid_p and (prev_valid_p - p) > 5 and (prev_valid_p - p) <= 40:
+            tens = prev_valid_p // 10
+            cand = tens * 10 + (p % 10)
+            if cand >= prev_valid_p:
+                p = cand
+        if p >= prev_valid_p:
+            prev_valid_p = p
+        filtered_entries.append((lvl, title, p))
+    raw_entries = filtered_entries
 
     # 4. Intelligently detect page offset between printed page numbers and PDF physical page index
     detected_offsets = []
