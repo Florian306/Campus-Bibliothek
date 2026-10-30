@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.0.8"
+CURRENT_VERSION = "2.0.9"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.0.8",
+        "version": "2.0.9",
         "date": "Aktuell",
+        "title": "Multi-Faktor Duplikaterkennung, SQLite-Persistenz & Warteschlangen-UI",
+        "notes": "• Intelligente Duplikaterkennung nach ISBN, Autor, Titel und Datei (keine Falschmeldungen bei gleichen Titeln verschiedener Autoren)\n• Dauerhafte Speicherung des Duplikat-Status in SQLite\n• Direkte Inline-Titelbearbeitung, ISBN-Badges & verfeinertes Cyber-Obsidian-Design",
+    },
+    {
+        "version": "2.0.8",
+        "date": "30.10.2026",
         "title": "Akademische Lernzeit-Telemetrie & Layout-Feinschliff",
         "notes": "• Neue Live-Metrik: Echtzeit-Berechnung des Studien- und Lesevolumens (~2 Min/Seite) über alle Fachbereiche\n• Intelligente Null-Seiten-Korrektur bei importierten Dokumenten\n• Optimierte Dashboard-Synchronisation",
     },
