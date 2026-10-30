@@ -1552,6 +1552,8 @@ class InboxView(QWidget):
         super().resizeEvent(event)
         if hasattr(self, "_toast_frame") and self._toast_frame and self._toast_frame.isVisible():
             self._toast_frame.move(self.width() - 380, 24)
+
+    def _on_subfolders_toggled(self, checked: bool) -> None:
         cfg = load_config()
         cfg["inbox_create_subfolders"] = bool(checked)
         save_config(cfg)

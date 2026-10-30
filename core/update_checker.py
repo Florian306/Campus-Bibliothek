@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.1.0"
+CURRENT_VERSION = "2.1.1"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.0",
+        "version": "2.1.1",
         "date": "Aktuell",
+        "title": "Vollwertige Fach-Websuche, Live-Suchvorschläge & Inbox Stabilität",
+        "notes": "• Entfesselte Fach-Websuche ohne künstliche Ausschlussfilter; Presets steuern intelligentes Relevanz-Scoring\n• Live-Autocomplete & Suchvorschläge in Echtzeit direkt bei der Eingabe\n• Behoben: Klickbarkeit und Initialisierung der Posteingangs-Ansicht wiederhergestellt",
+    },
+    {
+        "version": "2.1.0",
+        "date": "30.10.2026",
         "title": "Quick-Look Staging Preview, Shift-Multi-Select & Live Feedback",
         "notes": "• Sofortige Buch- und Reader-Vorschau per Doppelklick / Cover-Klick direkt in der Warteschlange\n• Flüssige Mehrfachauswahl via Shift-Klick für schnelle Stapelverarbeitung\n• Native interaktive Checkboxen & Non-blocking Toast-Benachrichtigung beim Einsortieren",
     },

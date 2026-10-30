@@ -31,17 +31,17 @@ PRESET_FILTERS = {
     "uni": {
         "label": "🎓 Uni-Skripte & Vorlesungen",
         "description": "Vorlesungsskripte, Foliensätze und Lehrmaterialien von Hochschulen und Universitäten.",
-        "query_suffix": "Skript OR Vorlesung OR lecture OR filetype:pdf",
+        "query_suffix": "",
     },
     "lexikon": {
         "label": "📖 Fachlexika & Definitionen",
         "description": "Definitionen und fundierte Fachartikel aus wissenschaftlichen Enzyklopädien und Lexika.",
-        "query_suffix": "Lexikon OR Definition OR Enzyklopädie",
+        "query_suffix": "",
     },
     "tech": {
         "label": "💻 Tech- & MINT-Dokus",
         "description": "Offizielle Dokumentationen, RFCs und technische Entwicklerreferenzen.",
-        "query_suffix": "documentation OR tutorial OR reference OR docs",
+        "query_suffix": "",
     },
 }
 
@@ -453,6 +453,51 @@ def _search_duckduckgo(effective_query: str) -> List[Dict[str, Any]]:
     return results
 
 
+def get_web_search_suggestions(query: str, limit: int = 8) -> List[str]:
+    """Retrieves real-time search query completions/suggestions.
+    Combines Google and DuckDuckGo suggestions with strict timeouts.
+    """
+    clean = query.strip()
+    if not clean or len(clean) < 2:
+        return []
+
+    results: List[str] = []
+    q_enc = urllib.parse.quote(clean)
+
+    # 1. Google Suggest (High quality German suggestions)
+    try:
+        url_g = f"https://suggestqueries.google.com/complete/search?client=chrome&q={q_enc}&hl=de"
+        req = urllib.request.Request(url_g, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            data = json.loads(resp.read().decode("utf-8", "ignore"))
+            if len(data) > 1 and isinstance(data[1], list):
+                for s in data[1]:
+                    if s and isinstance(s, str):
+                        s_clean = s.strip()
+                        if s_clean and s_clean not in results:
+                            results.append(s_clean)
+    except Exception:
+        pass
+
+    # 2. DuckDuckGo Suggest fallback / enrichment
+    if len(results) < limit:
+        try:
+            url_ddg = f"https://ac.duckduckgo.com/ac/?q={q_enc}&type=list"
+            req = urllib.request.Request(url_ddg, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode("utf-8", "ignore"))
+                if len(data) > 1 and isinstance(data[1], list):
+                    for s in data[1]:
+                        if s and isinstance(s, str):
+                            s_clean = s.strip()
+                            if s_clean and s_clean not in results:
+                                results.append(s_clean)
+        except Exception:
+            pass
+
+    return results[:limit]
+
+
 def search_academic_web(
     query: str,
     preset: str = "all",
@@ -507,16 +552,15 @@ def search_academic_web(
         except Exception:
             pass
 
-        # 2. Harvest DuckDuckGo if Bing had few results
-        if len(results) < 8:
-            try:
-                for item in future_ddg.result(timeout=8):
-                    if item["url"] not in seen_urls:
-                        seen_urls.add(item["url"])
-                        item["preset"] = preset
-                        results.append(item)
-            except Exception:
-                pass
+        # 2. Harvest DuckDuckGo simultaneously (enriching Bing instead of waiting for low count)
+        try:
+            for item in future_ddg.result(timeout=8):
+                if item["url"] not in seen_urls:
+                    seen_urls.add(item["url"])
+                    item["preset"] = preset
+                    results.append(item)
+        except Exception:
+            pass
 
         # 3. Harvest Wikipedia (capped to max 2 items to prevent Wikipedia dominance)
         if not pdf_only and preset in ("all", "lexikon"):

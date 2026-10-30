@@ -32,7 +32,9 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QSizePolicy,
+    QCompleter,
 )
+from PySide6.QtCore import QStringListModel
 
 # Safe conditional import of QtWebEngineWidgets to prevent startup crashes in frozen environments
 _HAS_WEBENGINE = False
@@ -59,7 +61,7 @@ except Exception as e:
         pass
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
-from ai.academic_web_search import search_academic_web, PRESET_FILTERS
+from ai.academic_web_search import search_academic_web, PRESET_FILTERS, get_web_search_suggestions
 from ai.daily_web_impulse import get_daily_web_impulse
 from ui.qt.dialogs.quick_look import QuickLookDialog
 from core.library_db import save_web_research_article
@@ -77,6 +79,7 @@ class WebSearchSignals(QObject):
     ai_summary_finished = Signal(str)
     ai_summary_error = Signal(str)
     pdf_import_finished = Signal(str, bool, str)  # url, success, message
+    suggestions_ready = Signal(list)  # list of str suggestions
 
 
 class AcademicWebView(QWidget):
@@ -92,12 +95,21 @@ class AcademicWebView(QWidget):
         self._signals.ai_summary_finished.connect(self._on_ai_summary_finished)
         self._signals.ai_summary_error.connect(self._on_ai_summary_error)
         self._signals.pdf_import_finished.connect(self._on_pdf_import_finished)
+        self._signals.suggestions_ready.connect(self._on_suggestions_ready)
 
         self._active_preset = "all"
         self._preset_buttons: Dict[str, QPushButton] = {}
         self._is_searching = False
         self._current_article: Optional[Dict[str, Any]] = None
         self._loaded_text_content = ""
+
+        # Autocomplete suggestion debounce timer
+        self._suggest_timer = QTimer(self)
+        self._suggest_timer.setSingleShot(True)
+        self._suggest_timer.setInterval(220)
+        self._suggest_timer.timeout.connect(self._fetch_suggestions_async)
+        self._suggest_model = QStringListModel(self)
+        self._completer = None
 
         self._build_ui()
 
@@ -190,6 +202,36 @@ class AcademicWebView(QWidget):
             }
         """)
         self.input_search.returnPressed.connect(self._on_search_clicked)
+        self.input_search.textEdited.connect(self._on_search_text_edited)
+
+        # Attach sleek auto-completer
+        self._completer = QCompleter(self._suggest_model, self)
+        self._completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self._completer.setCompletionMode(QCompleter.PopupCompletion)
+        self._completer.setMaxVisibleItems(8)
+        completer_popup = self._completer.popup()
+        completer_popup.setFont(QFont("Segoe UI", 10))
+        completer_popup.setStyleSheet("""
+            QListView {
+                background-color: #0D1424;
+                border: 1px solid #388BFD;
+                border-radius: 6px;
+                color: #F0F6FC;
+                padding: 4px;
+                outline: none;
+            }
+            QListView::item {
+                padding: 6px 12px;
+                border-radius: 4px;
+            }
+            QListView::item:hover, QListView::item:selected {
+                background-color: #1F6FEB;
+                color: #FFFFFF;
+            }
+        """)
+        self._completer.activated[str].connect(self._on_suggestion_selected)
+        self.input_search.setCompleter(self._completer)
+
         input_row.addWidget(self.input_search, stretch=1)
 
         self.btn_search = QPushButton("  Fach-Web durchsuchen")
@@ -691,6 +733,43 @@ class AcademicWebView(QWidget):
 
         self._update_preset_buttons_ui()
         self._show_welcome_state()
+
+    def _on_search_text_edited(self, text: str) -> None:
+        """Restarts debounce timer for autocomplete suggestions."""
+        clean = text.strip()
+        if len(clean) >= 2:
+            self._suggest_timer.start()
+        else:
+            self._suggest_timer.stop()
+            self._suggest_model.setStringList([])
+
+    def _fetch_suggestions_async(self) -> None:
+        """Asynchronously requests search suggestions."""
+        current_text = self.input_search.text().strip()
+        if len(current_text) < 2:
+            return
+
+        def _worker():
+            try:
+                suggestions = get_web_search_suggestions(current_text, limit=8)
+                self._signals.suggestions_ready.emit(suggestions)
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_suggestions_ready(self, suggestions: List[str]) -> None:
+        """Populates completer model with fresh live suggestions."""
+        if not suggestions:
+            return
+        self._suggest_model.setStringList(suggestions)
+        if self.input_search.hasFocus() and self._completer:
+            self._completer.complete()
+
+    def _on_suggestion_selected(self, text: str) -> None:
+        """Executes search immediately when a suggestion item is clicked."""
+        self.input_search.setText(text)
+        self._on_search_clicked()
 
     def _set_preset(self, preset_key: str) -> None:
         self._active_preset = preset_key
