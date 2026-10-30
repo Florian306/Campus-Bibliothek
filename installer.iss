@@ -2,7 +2,7 @@
 ; Produces a modern, professional Windows installer (Setup.exe) with Start Menu and Desktop shortcuts.
 
 #define MyAppName "Campus-Bibliothek AI"
-#define MyAppVersion "2.0.5"
+#define MyAppVersion "2.0.6"
 
 #define MyAppPublisher "Florian"
 #define MyAppURL "https://github.com/Florian306/Campus-Bibliothek"
@@ -32,7 +32,7 @@ CloseApplicationsFilter=*.exe
 RestartApplications=no
 
 ; Visual design
-WizardSmallImageFile=app_icon.png
+WizardSmallImageFile=wizard_small.bmp
 
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
