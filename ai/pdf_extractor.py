@@ -595,6 +595,9 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
     has_text_layer = any(len(doc[i].get_text("text").strip()) > 30 for i in range(min(8, total_len)))
     tessdata_dir = None if has_text_layer else _get_tessdata_dir()
 
+    # In-memory OCR TextPage cache so we don't re-run OCR multiple times on the same page
+    ocr_tp_cache: dict = {}
+
     def get_page_text_and_blocks(p_idx: int, fast_mode: bool = False) -> Tuple[str, list]:
         """Safely retrieves text and blocks, applying fast low-dpi OCR for scanned pages when locating headers."""
         page_obj = doc[p_idx]
@@ -602,8 +605,13 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
         if len(direct_text.strip()) > 20 or not tessdata_dir:
             return direct_text, page_obj.get_text("blocks")
         try:
-            dpi_val = 72 if fast_mode else 150
-            tp = page_obj.get_textpage_ocr(tessdata=tessdata_dir, language="eng+deu", dpi=dpi_val)
+            if p_idx in ocr_tp_cache:
+                tp = ocr_tp_cache[p_idx]
+            else:
+                dpi_val = 72 if fast_mode else 150
+                tp = page_obj.get_textpage_ocr(tessdata=tessdata_dir, language="eng+deu", dpi=dpi_val)
+                if not fast_mode:
+                    ocr_tp_cache[p_idx] = tp
             ocr_text = page_obj.get_text("text", textpage=tp)
             ocr_blocks = page_obj.get_text("blocks", textpage=tp)
             return ocr_text, ocr_blocks
@@ -705,270 +713,6 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
         except Exception:
             break
 
-    # 2b. Check for IELTS Grammar / Cambridge scanned book structure
-    doc_filename = os.path.basename(getattr(doc, "name", "") or "").lower()
-    sample_ocr = " ".join([get_page_text_and_blocks(p)[0] for p in scan_range[:min(3, len(scan_range))]]).lower()
-
-    if ("ielts" in doc_filename or "grammar for ielts" in sample_ocr or any("ielts" in str(x).lower() for x in (doc.metadata or {}).values())) and total_len >= 260:
-        return [
-            (1, "Contents", 4, 4),
-            (1, "Introduction", 8, 7),
-            (1, "Entry test", 10, 9),
-            (1, "Unit 1: Present tenses", 14, 1),
-            (1, "Unit 2: Past tenses 1", 21, 8),
-            (1, "Unit 3: Present perfect", 31, 18),
-            (1, "Unit 4: Past tenses 2", 40, 27),
-            (1, "Unit 5: Future 1", 51, 38),
-            (1, "Unit 6: Future 2", 61, 48),
-            (1, "Unit 7: Countable and uncountable nouns", 68, 55),
-            (1, "Unit 8: Referring to nouns", 77, 64),
-            (1, "Unit 9: Pronouns and referencing", 86, 73),
-            (1, "Unit 10: Adjectives and adverbs", 93, 80),
-            (1, "Unit 11: Comparing things", 101, 88),
-            (1, "Unit 12: The noun phrase", 110, 97),
-            (1, "Unit 13: Modals 1", 120, 107),
-            (1, "Unit 14: Modals 2", 127, 114),
-            (1, "Unit 15: Reported speech", 136, 123),
-            (1, "Unit 16: Verb + verb patterns", 146, 133),
-            (1, "Unit 17: Likelihood based on conditions 1", 155, 142),
-            (1, "Unit 18: Likelihood based on conditions 2", 167, 154),
-            (1, "Unit 19: Prepositions", 177, 164),
-            (1, "Unit 20: Relative clauses", 186, 173),
-            (1, "Unit 21: Ways of organising texts", 197, 184),
-            (1, "Unit 22: The passive", 205, 192),
-            (1, "Unit 23: Linking ideas", 211, 198),
-            (1, "Unit 24: Showing your position in a text", 223, 209),
-            (1, "Unit 25: Nominalisation in written English", 229, 216),
-            (1, "Key", 235, 222),
-            (1, "Recording scripts", 252, 239),
-            (1, "Appendix 1: Irregular verbs", 268, 255),
-            (1, "Appendix 2: Phrasal verbs", 269, 256),
-            (1, "CD tracklist", 271, 258),
-        ]
-
-    # 2c. Check for "Vocabulary in Use" series (e.g. Pre-Intermediate / Intermediate, 100 units, 2 pages per unit)
-    if ("vocabulary" in doc_filename and "in use" in doc_filename) or ("english vocabulary in use" in sample_ocr and "connecting and linking" in sample_ocr):
-        unit_titles = {}
-        for p in scan_range:
-            raw_t, _ = get_page_text_and_blocks(p)
-            lines_p = [l.strip() for l in raw_t.splitlines() if l.strip()]
-            lines_p = [l for l in lines_p if not l.startswith("English Vocabulary in Use")]
-            if lines_p and lines_p[-1].isdigit():
-                lines_p.pop()
-            i = 0
-            while i < len(lines_p):
-                line = lines_p[i]
-                m = re.match(r"^(\d{1,3})\.?\s+(.+)$", line)
-                if m:
-                    u_num = int(m.group(1))
-                    u_title = m.group(2).strip()
-                    if 1 <= u_num <= 100:
-                        unit_titles[u_num] = u_title
-                        i += 1
-                        continue
-                m_num = re.match(r"^(\d{1,3})\.?$", line)
-                if m_num:
-                    u_num = int(m_num.group(1))
-                    if 1 <= u_num <= 100 and i + 1 < len(lines_p):
-                        next_l = lines_p[i + 1]
-                        if not next_l.isdigit():
-                            unit_titles[u_num] = next_l
-                            i += 2
-                            continue
-                i += 1
-
-        voc_toc = [(1, "Introduction", 7, 4)]
-        for u in range(1, 101):
-            title = unit_titles.get(u, f"Unit {u}")
-            phys_p = 6 + 2 * u + 1
-            printed_p = 4 + 2 * u
-            voc_toc.append((1, f"{u}. {title}", phys_p, printed_p))
-        voc_toc.extend([
-            (1, "Answer key", 209, 206),
-            (1, "Phonetic symbols", 249, 246),
-            (1, "Pronunciation problems", 250, 247),
-            (1, "Index", 251, 248),
-            (1, "Acknowledgements", 269, 266),
-        ])
-        return voc_toc
-
-    # 2d. Check for "Essential Grammar in Use" (115 units, 2 pages per unit)
-    if ("essential" in doc_filename and "grammar" in doc_filename) or ("essential grammar in use" in sample_ocr) or ("to the student" in sample_ocr and "to the teacher" in sample_ocr and "phrasal verbs" in sample_ocr):
-        unit_titles = {}
-        for p in scan_range:
-            raw_t, _ = get_page_text_and_blocks(p)
-            lines_p = [l.strip() for l in raw_t.splitlines() if l.strip()]
-            i = 0
-            while i < len(lines_p):
-                line = lines_p[i]
-                m = re.match(r"^(\d{1,3})\.?\s+(.+)$", line)
-                if m:
-                    u_num = int(m.group(1))
-                    u_title = m.group(2).strip()
-                    if 1 <= u_num <= 115:
-                        unit_titles[u_num] = u_title
-                        i += 1
-                        continue
-                m_num = re.match(r"^(\d{1,3})\.?$", line)
-                if m_num:
-                    u_num = int(m_num.group(1))
-                    if 1 <= u_num <= 115 and i + 1 < len(lines_p):
-                        next_l = lines_p[i + 1]
-                        if not next_l.isdigit():
-                            unit_titles[u_num] = next_l
-                            i += 2
-                            continue
-                i += 1
-
-        eg_toc = [
-            (1, "To the student", 9, 8),
-            (1, "To the teacher", 11, 10),
-        ]
-        for u in range(1, 116):
-            title = unit_titles.get(u, f"Unit {u}")
-            phys_p = 11 + 2 * (u - 1) + 2
-            printed_p = 1 + 2 * (u - 1)
-            eg_toc.append((1, f"{u}. {title}", phys_p, printed_p))
-        eg_toc.extend([
-            (1, "Appendix 1: Active and passive", 242, 243),
-            (1, "Appendix 2: List of irregular verbs", 243, 244),
-            (1, "Appendix 3: Irregular verbs in groups", 244, 245),
-            (1, "Appendix 4: Short forms", 245, 246),
-            (1, "Appendix 5: Spelling", 247, 248),
-            (1, "Appendix 6: Phrasal verbs", 249, 250),
-            (1, "Appendix 7: Phrasal verbs + object", 250, 251),
-            (1, "Additional exercises", 252, 252),
-            (1, "Study guide", 271, 271),
-            (1, "Key to Exercises", 283, 283),
-            (1, "Key to Additional exercises", 310, 310),
-            (1, "Key to Study guide", 313, 313),
-            (1, "Index", 315, 315),
-        ])
-        return eg_toc
-
-    # 2e. Check for "Oxford English Grammar Course" (Advanced / Swan & Walter)
-    if ("oxford" in doc_filename and "grammar" in doc_filename) or ("oxford english grammar course" in sample_ocr) or ("michael swan" in sample_ocr and "catherine walter" in sample_ocr):
-        ox_toc = [
-            (1, "Introduction", 6, 6),
-            (1, "Some useful grammatical terminology", 8, 8),
-            (1, "List of topics", 10, 10),
-            (1, "Part 1: Word and sentence grammar", 14, 2),
-            (2, "Section 1: Basic sentence types", 14, 2),
-            (2, "Section 2: Be, have and do", 28, 16),
-            (2, "Section 3: Present and future", 34, 22),
-            (2, "Section 4: Past and perfect tenses", 52, 40),
-            (2, "Section 5: Modal verbs", 70, 58),
-            (2, "Section 6: Passives", 90, 78),
-            (2, "Section 7: Infinitives and -ing forms", 100, 88),
-            (2, "Section 8: Various structures with verbs", 122, 110),
-            (2, "Section 9: Nouns and pronouns", 136, 124),
-            (2, "Section 10: Determiners (1): articles, demonstratives and possessives", 154, 142),
-            (2, "Section 11: Determiners (2): quantifiers", 168, 156),
-            (2, "Section 12: Adjectives, adverbs and comparison", 184, 172),
-            (2, "Section 13: Prepositions", 204, 192),
-            (2, "Section 14: Conjunctions, clauses and tenses", 212, 200),
-            (2, "Section 15: Adjective (relative) clauses", 220, 208),
-            (2, "Section 16: Noun clauses", 230, 218),
-            (2, "Section 17: Adverb clauses", 245, 232),
-            (1, "Part 2: Grammar beyond the sentence", 262, 250),
-            (1, "Appendices", 309, 296),
-            (1, "Answer key", 325, 312),
-            (1, "Index", 352, 339),
-        ]
-        return ox_toc
-
-    # 2f. Check for "Duden / Cornelsen Physik 7_8"
-    if ("physik" in doc_filename and ("7_8" in doc_filename or "7-8" in doc_filename or "78" in doc_filename)) or (("mechanik" in sample_ocr or "energie" in sample_ocr) and "cornelsen" in sample_ocr and 185 <= total_len <= 210):
-        phys_toc = [
-            (1, "1. Energie", 7, 6),
-            (2, "1.1 Energie ist überall", 9, 8),
-            (3, "Jeder braucht Energie", 9, 8),
-            (3, "Blickpunkt: Energie und Ernährung", 13, 12),
-            (3, "Energie in Natur und Technik", 15, 14),
-            (3, "Blickpunkt: Fossile Energiespeicher", 17, 16),
-            (2, "1.2 Energie kann sich umwandeln", 19, 18),
-            (3, "Energie hat viele Gesichter", 19, 18),
-            (3, "Methode: Das Teilchenmodell", 23, 22),
-            (3, "Die Energie bleibt erhalten", 25, 24),
-            (3, "Methode: Von der Hypothese zum Naturgesetz", 27, 26),
-            (3, "Methode: Das Energiekontenmodell", 29, 28),
-            (2, "1.3 Nutzung von Energie", 31, 30),
-            (3, "Was heißt „Energieverbrauch“?", 31, 30),
-            (3, "Blickpunkt: Verantwortungsvoller Umgang mit Energie", 33, 32),
-            (3, "Blickpunkt: Die Wärmepumpe", 35, 34),
-            (3, "Blickpunkt: Effiziente Anlagen und Geräte", 36, 35),
-            (3, "Die energetische Erneuerung", 37, 36),
-            (3, "Blickpunkt: Energie von der Sonne", 41, 40),
-            (3, "Grundwissen: Energie", 43, 42),
-            (1, "2. Mechanik", 45, 44),
-            (2, "2.1 Körper in Bewegung", 47, 46),
-            (3, "Methode: Messen von physikalischen Größen; Rechnen mit Größen", 47, 46),
-            (3, "Einfache Bewegungen", 49, 48),
-            (3, "Methode: Auswerten einer Messreihe – Ausgleichsgerade", 51, 50),
-            (3, "Die Geschwindigkeit ändert sich", 53, 52),
-            (3, "Blickpunkt: Geschwindigkeitskontrollen", 54, 53),
-            (3, "Methode: t-s-Diagramme erzählen Geschichten", 55, 54),
-            (3, "Die beschleunigte Bewegung", 57, 56),
-            (3, "Methode: Methode der kleinen Schritte", 59, 58),
-            (3, "Methode: Die Tabellenkalkulation", 60, 59),
-            (2, "2.2 Kräfte", 63, 62),
-            (3, "Wir erkennen Kräfte", 63, 62),
-            (3, "Methode: Proportionale Zusammenhänge", 67, 66),
-            (3, "Blickpunkt: Herstellen von Federn", 68, 67),
-            (3, "Körper haben Masse", 69, 68),
-            (3, "Kräfte ändern Bewegungen", 73, 72),
-            (3, "Blickpunkt: Rennen mit hoher Geschwindigkeit", 77, 76),
-            (3, "Methode: Vektoren in der Physik", 78, 77),
-            (3, "Masse ist träge", 79, 78),
-            (3, "Blickpunkt: Schwerelosigkeit", 85, 84),
-            (2, "2.3 Zusammenwirken von Kräften", 91, 90),
-            (3, "Kombinieren von Kräften", 91, 90),
-            (3, "Blickpunkt: Dichte und Schwimmen", 95, 94),
-            (3, "Das Wechselwirkungsprinzip", 101, 100),
-            (2, "2.4 Kraft und Energie", 105, 104),
-            (3, "Energie, Kraft und Strecke", 105, 104),
-            (3, "Blickpunkt: Wozu brauchen Muskeln Energie?", 109, 108),
-            (3, "Blickpunkt: Kräfte und Energie beim Autofahren", 111, 110),
-            (3, "Die mechanische Leistung", 113, 112),
-            (3, "Blickpunkt: Leistung beim Menschen", 117, 116),
-            (3, "Blickpunkt: Hebel und Gangschaltung", 119, 118),
-            (3, "Grundwissen: Mechanik", 121, 120),
-            (1, "3. Elektrostatik und Größen des elektrischen Stromkreises", 123, 122),
-            (3, "Wiederholung: Weißt du es noch?", 125, 124),
-            (2, "3.1 Elektrostatik", 131, 130),
-            (3, "Ladung und Elektron", 131, 130),
-            (3, "Blickpunkt: Woraus bestehen elektrische Leiter?", 133, 132),
-            (3, "Blickpunkt: Technische Anwendungen", 135, 134),
-            (3, "Blickpunkt: Gewitterblitze", 136, 135),
-            (2, "3.2 Größen des elektrischen Stromkreises", 137, 136),
-            (3, "Die elektrische Stromstärke", 137, 136),
-            (3, "Methode: Messung der elektrischen Stromstärke", 139, 138),
-            (3, "Die elektrische Spannung", 141, 140),
-            (3, "Methode: Messung der elektrischen Spannung", 143, 142),
-            (3, "Der elektrische Widerstand", 145, 144),
-            (3, "Methode: Kennlinien", 147, 146),
-            (3, "Blickpunkt: Widerstände in der Technik", 148, 147),
-            (2, "3.3 Gesetze des elektrischen Stromkreises", 151, 150),
-            (3, "Parallel- und Reihenschaltung", 151, 150),
-            (3, "Blickpunkt: Widerstand als Geräteschutz? Vorwiderstand bei Leuchtdioden", 155, 154),
-            (3, "Blickpunkt: Elektroinstallation im Haus", 157, 156),
-            (3, "Grundwissen: Elektrostatik und Größen des elektrischen Stromkreises", 159, 158),
-            (1, "4. Stromkreis und Energieübertragung", 161, 160),
-            (3, "Wiederholung: Weißt du es noch?", 163, 162),
-            (2, "4.1 Elektrische Energieübertragung", 165, 164),
-            (3, "Elektrische Energie und Leistung", 165, 164),
-            (2, "4.2 Elektrische Geräte", 173, 172),
-            (3, "Blickpunkt: Die Lorentzkraft", 173, 172),
-            (3, "Blickpunkt: Aspekte von Wechselspannung und Wechselstrom", 174, 173),
-            (3, "Der Transformator", 175, 174),
-            (3, "Blickpunkt: Anwendungen von Transformatoren", 179, 178),
-            (3, "Blickpunkt: Unterschiede zwischen Gleich- und Wechselspannung", 180, 179),
-            (3, "Transport elektrischer Energie", 181, 180),
-            (3, "Grundwissen: Stromkreis und Energieübertragung", 185, 184),
-            (1, "Tabellenanhang", 187, 186),
-        ]
-        return phys_toc
-
     # 3. Parse entries from all gathered TOC pages
     raw_entries = []
     for p_no in scan_range:
@@ -980,12 +724,14 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
 
             # If page text has multi-column word layout (e.g. left titles, right-aligned page numbers), reconstruct lines by vertical overlap
             try:
-                page_words = doc[p_no].get_text("words")
-                if not page_words and (p_no in ocr_cache):
-                    # Use OCR words if digital text layer has no words
-                    page_words = doc[p_no].get_text("words", textpage=ocr_cache[p_no])
+                page_obj = doc[p_no]
+                page_words = page_obj.get_text("words")
+                if not page_words and tessdata_dir:
+                    # Generate OCR textpage bound directly to page_obj
+                    tp = page_obj.get_textpage_ocr(tessdata=tessdata_dir, language="eng+deu", dpi=150)
+                    page_words = page_obj.get_text("words", textpage=tp)
                 if page_words:
-                    filtered_words = [w for w in page_words if w[1] >= 40 and w[3] <= doc[p_no].rect.height - 40]
+                    filtered_words = [w for w in page_words if w[1] >= 40 and w[3] <= page_obj.rect.height - 40]
                     
                     # Automated multi-column gutter detection (supports 1, 2, or 3 columns)
                     w_page = doc[p_no].rect.width
@@ -1072,6 +818,9 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                 s = raw.strip()
                 if not s or re.match(r'^[\.\s·]+$', s):
                     continue
+                # Discard OCR image noise artifacts (e.g. isolated punctuation '- \', ' is', '| TE')
+                if len(re.sub(r'[^a-zA-ZäöüÄÖÜß0-9]', '', s)) < 2:
+                    continue
                 if any(k in s.lower() for k in ["©", "copyright", "urheberrecht", "bereitgestellt", "powered by", "inhaltsverzeichnis", "inhaltsübersicht", "inhalt", "inhaltserzeichnis"]):
                     continue
                 s_clean = re.sub(r'[\.\s·]{2,}\.?$', '', s).strip()
@@ -1133,14 +882,20 @@ def _extract_printed_toc(doc) -> List[Tuple[int, str, int, int]]:
                     i += 2
                     continue
 
-                # Pattern C: In-line page number (e.g. 'Personenregister ... 165' or 'Title    165')
-                m = re.search(r'^(.*?)(?:\s*[\.\s·]{2,}\.?|\s{2,}|\t+|\.{2,})(\d{1,4}|[ivxlcdm]+)$', line, re.I)
+                # Pattern C: In-line page number (e.g. 'Personenregister ... 165' or 'Title    165' or 'Energie 6')
+                m = re.search(r'^(.*?)(?:\s*[\.\s·_~-]{2,}\.?|\s+)(\d{1,4}|[ivxlcdm]+)$', line, re.I)
                 if m:
                     title = m.group(1).strip()
                     raw_p = m.group(2)
                     p = int(raw_p) if raw_p.isdigit() else 1
-                    lvl = 2 if re.match(r'^\d+\.', title) else 1
-                    raw_entries.append((lvl, title, p))
+                    title_clean = re.sub(r'[\.\s·_~-]+$', '', title).strip()
+                    if len(title_clean) >= 3 and not re.match(r'^[^\w]+$', title_clean):
+                        lvl = 1
+                        if re.match(r'^\d+\.\d+\.\d+', title_clean):
+                            lvl = 3
+                        elif re.match(r'^\d+\.\d+', title_clean) or re.match(r'^(?:blickpunkt|methode|grundwissen|wiederholung)\b', title_clean, re.I):
+                            lvl = 2
+                        raw_entries.append((lvl, title_clean, p))
                     i += 1
                     continue
 
