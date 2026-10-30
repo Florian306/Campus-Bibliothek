@@ -178,16 +178,19 @@ class SyncView(QWidget):
         main_layout.addLayout(header_row)
 
         # -------------------------------------------------------------
-        # 2. Live KPI Metric Strip (4 Compact Telemetry Cards)
+        # 2. Live KPI Metric Strip (5 Compact Telemetry Cards)
         # -------------------------------------------------------------
         kpi_row = QHBoxLayout()
-        kpi_row.setSpacing(12)
+        kpi_row.setSpacing(10)
 
         self.kpi_books_val, self.kpi_books_sub, kpi_card_1 = self._create_kpi_card(
             "library", "#58A6FF", "0 Dokumente", "Indizierte Fachliteratur im Data-Lake"
         )
         self.kpi_pages_val, self.kpi_pages_sub, kpi_card_2 = self._create_kpi_card(
             "book", "#A371F7", "0 Seiten", "Gesamtumfang & Fachkategorien"
+        )
+        self.kpi_study_val, self.kpi_study_sub, kpi_card_study = self._create_kpi_card(
+            "clock", "#F778BA", "0 Std. Lernzeit", "Ø 2 Min/Seite akademisches Lesetempo"
         )
         self.kpi_desk_val, self.kpi_desk_sub, kpi_card_3 = self._create_kpi_card(
             "notes", "#E3B341", "0 aktiv · 0 Notizen", "Schreibtisch & Wissens-Annotationen"
@@ -198,6 +201,7 @@ class SyncView(QWidget):
 
         kpi_row.addWidget(kpi_card_1, stretch=1)
         kpi_row.addWidget(kpi_card_2, stretch=1)
+        kpi_row.addWidget(kpi_card_study, stretch=1)
         kpi_row.addWidget(kpi_card_3, stretch=1)
         kpi_row.addWidget(kpi_card_4, stretch=1)
         main_layout.addLayout(kpi_row)
@@ -762,6 +766,19 @@ class SyncView(QWidget):
 
             self.kpi_pages_val.setText(f"{total_pages:,} Seiten".replace(",", "."))
             self.kpi_pages_sub.setText(f"Verteilt auf {cat_count} Fachbereiche")
+
+            # Calculate realistic academic reading & study time (Ø 2 minutes per page for academic reading/learning)
+            study_hours = int(total_pages * 2.0 / 60.0)
+            study_days_24h = study_hours / 24.0
+            # Daily study tempo: 2 hours/day
+            study_years = study_hours / (2.0 * 365.25)
+            if study_hours >= 100:
+                years_str = f"{study_years:.1f}".replace(".", ",")
+                self.kpi_study_val.setText(f"~{study_hours:,} Std. Lernzeit".replace(",", "."))
+                self.kpi_study_sub.setText(f"~{study_days_24h:.0f} Tage 24/7 · ca. {years_str} Jahre (2h/Tag)")
+            else:
+                self.kpi_study_val.setText(f"{study_hours} Std. Lernzeit")
+                self.kpi_study_sub.setText("Ø 2 Min/Seite akademisches Lesetempo")
 
             self.kpi_desk_val.setText(f"{desk_count} am Tisch · {notes_count} Notizen")
             self.kpi_desk_sub.setText("Lese-Fortschritt & Wissenskarten")
