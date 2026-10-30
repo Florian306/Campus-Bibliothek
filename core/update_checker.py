@@ -10,12 +10,36 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.0.0"
+CURRENT_VERSION = "2.0.8"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.0.0",
+        "version": "2.0.8",
         "date": "Aktuell",
+        "title": "Akademische Lernzeit-Telemetrie & Layout-Feinschliff",
+        "notes": "• Neue Live-Metrik: Echtzeit-Berechnung des Studien- und Lesevolumens (~2 Min/Seite) über alle Fachbereiche\n• Intelligente Null-Seiten-Korrektur bei importierten Dokumenten\n• Optimierte Dashboard-Synchronisation",
+    },
+    {
+        "version": "2.0.7",
+        "date": "30.10.2026",
+        "title": "OCR Dot-Leader Bereinigung & Scan-Inhaltsverzeichnis Patch",
+        "notes": "• Eliminierung von OCR-Punktreihen-Artefakten (z.B. Cambridge IELTS)\n• Exakte Trennung von Unit-Nummern und Seitenzahlen bei Buch-Scans",
+    },
+    {
+        "version": "2.0.6",
+        "date": "30.10.2026",
+        "title": "Inno Setup BMP Fix & Cache-Bereinigung",
+        "notes": "• Behebt 'Bitmap image is not valid' durch saubere 24-Bit BMP Konvertierung\n• Bereinigung von veralteten Logs und ungenutzten Systemdateien",
+    },
+    {
+        "version": "2.0.5",
+        "date": "30.10.2026",
+        "title": "Generischer TOC-Extractor & Codebase-Entschlackung",
+        "notes": "• Vollständige Entfernung hardcodierter Buch-Tabellen (-276 Zeilen)\n• 100% dynamische Erkennung via Projektions-Histogramm und OCR-Filter",
+    },
+    {
+        "version": "2.0.0",
+        "date": "29.10.2026",
         "title": "Turbo CI Build-Pipeline & Instant TOC & Mega-PDF Performance",
         "notes": "• Bis zu 70% schnellere GitHub Actions Builds durch Elimination von 2.700 ungenutzten QML-Dateien\n• Behebt TOC-Parser regex import für alle Scan- und OCR-Inhaltsverzeichnisse\n• Fast-Start für gigantische PDFs (800+ MB öffnen jetzt in Millisekunden)",
     },

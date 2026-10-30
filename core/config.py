@@ -30,7 +30,7 @@ class AppConfig:
     github_token: str = ""
     github_gist_id: str = ""
     github_auto_sync: bool = False
-    app_version: str = "1.0.0"
+    app_version: str = "2.0.8"
     search_engines: list = field(default_factory=lambda: ["bing", "duckduckgo", "openalex", "wikipedia", "crossref"])
     # Mail & Calendar settings (JARVIS)
     mail_enabled: bool = False
