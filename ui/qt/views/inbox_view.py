@@ -755,45 +755,45 @@ class InboxView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
 
-        self.table.setColumnWidth(0, 48)
+        self.table.setColumnWidth(0, 44)
         self.table.setColumnWidth(2, 210)
-        self.table.setColumnWidth(3, 230)
+        self.table.setColumnWidth(3, 210)
         self.table.setColumnWidth(4, 130)
-        self.table.setColumnWidth(5, 115)
+        self.table.setColumnWidth(5, 125)
         self.table.setColumnWidth(6, 175)
 
         self.table.cellClicked.connect(self._on_table_cell_clicked)
 
-        self.table.verticalHeader().setDefaultSectionSize(68)
+        self.table.verticalHeader().setDefaultSectionSize(70)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setStyleSheet("""
             QTableWidget {
-                background-color: #0B0F19;
+                background-color: #0A0E17;
                 color: #C9D1D9;
-                border: 1px solid #1A2436;
-                border-radius: 10px;
-                selection-background-color: #141E33;
+                border: 1px solid #162032;
+                border-radius: 12px;
+                selection-background-color: #131D2F;
                 selection-color: #F0F6FC;
                 font-size: 12px;
                 outline: none;
             }
             QTableWidget::item {
-                border-bottom: 1px solid #141C2B;
-                padding: 6px 8px;
+                border-bottom: 1px solid #131C2B;
+                padding: 4px 6px;
             }
             QTableWidget::item:selected {
-                background-color: #141E33;
+                background-color: #131D2F;
             }
             QHeaderView::section {
-                background-color: #101624;
-                color: #7D8590;
+                background-color: #0E1522;
+                color: #8B949E;
                 border: none;
-                border-bottom: 1px solid #1E2B40;
+                border-bottom: 1px solid #1D2A40;
                 padding: 10px 8px;
                 font-weight: 700;
                 font-size: 10px;
-                letter-spacing: 0.5px;
+                letter-spacing: 0.6px;
             }
         """)
         root.addWidget(self.table, stretch=1)
@@ -914,15 +914,16 @@ class InboxView(QWidget):
 
         title_text = item.get("suggested_title") or os.path.splitext(item.get("filename", ""))[0]
         title_edit = QLineEdit(title_text)
+        title_edit.setCursorPosition(0)
         title_edit.setFont(QFont("Segoe UI", 10, QFont.Bold))
         title_edit.setToolTip(f"Klicke zum Bearbeiten des Titels\nDateiname: {item.get('filename')}")
         title_edit.setStyleSheet("""
             QLineEdit {
-                background: transparent;
+                background-color: transparent;
                 color: #F0F6FC;
                 border: 1px solid transparent;
                 border-radius: 4px;
-                padding: 2px 4px;
+                padding: 1px 4px;
             }
             QLineEdit:hover {
                 background-color: #121A2A;
@@ -1106,6 +1107,7 @@ class InboxView(QWidget):
 
             # Col 2: Author (Editable LineEdit with fixed height & clean cyber obsidian styling)
             author_edit = QLineEdit(it.get("suggested_author") or "Unbekannt")
+            author_edit.setCursorPosition(0)
             author_edit.setFixedHeight(34)
             author_edit.setStyleSheet("""
                 QLineEdit {
@@ -1326,6 +1328,7 @@ class InboxView(QWidget):
                         if title_edits:
                             title_edits[0].blockSignals(True)
                             title_edits[0].setText(data["suggested_title"])
+                            title_edits[0].setCursorPosition(0)
                             title_edits[0].blockSignals(False)
 
                 # Update author edit
@@ -1334,6 +1337,7 @@ class InboxView(QWidget):
                     if isinstance(auth_w, QLineEdit):
                         auth_w.blockSignals(True)
                         auth_w.setText(data["suggested_author"])
+                        auth_w.setCursorPosition(0)
                         auth_w.blockSignals(False)
 
                 # Update category combo
