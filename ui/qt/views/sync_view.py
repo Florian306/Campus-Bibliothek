@@ -770,15 +770,19 @@ class SyncView(QWidget):
             # Calculate realistic academic reading & study time (Ø 2 minutes per page for academic reading/learning)
             study_hours = int(total_pages * 2.0 / 60.0)
             study_days_24h = study_hours / 24.0
-            # Daily study tempo: 2 hours/day
+            # Daily study tempo: 2 hours/day (~60 pages/day)
             study_years = study_hours / (2.0 * 365.25)
+            # Daily pages target: e.g. 50 pages/day -> days to complete
+            days_at_50_pages = int(total_pages / 50.0) if total_pages > 0 else 0
+            pages_per_h = 30  # ~2 min per page
+
             if study_hours >= 100:
                 years_str = f"{study_years:.1f}".replace(".", ",")
-                self.kpi_study_val.setText(f"~{study_hours:,} Std. Lernzeit".replace(",", "."))
-                self.kpi_study_sub.setText(f"~{study_days_24h:.0f} Tage 24/7 · ca. {years_str} Jahre (2h/Tag)")
+                self.kpi_study_val.setText(f"~{study_hours:,} Std. ({total_pages:,} S.)".replace(",", "."))
+                self.kpi_study_sub.setText(f"~30 S./Std. · {days_at_50_pages:,} Tage bei 50 S./Tag (ca. {years_str} J.)".replace(",", "."))
             else:
-                self.kpi_study_val.setText(f"{study_hours} Std. Lernzeit")
-                self.kpi_study_sub.setText("Ø 2 Min/Seite akademisches Lesetempo")
+                self.kpi_study_val.setText(f"{study_hours} Std. ({total_pages} S.)")
+                self.kpi_study_sub.setText("Ø 30 Seiten/Std. akademisches Lesetempo")
 
             self.kpi_desk_val.setText(f"{desk_count} am Tisch · {notes_count} Notizen")
             self.kpi_desk_sub.setText("Lese-Fortschritt & Wissenskarten")

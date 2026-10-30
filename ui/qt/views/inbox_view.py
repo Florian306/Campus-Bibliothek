@@ -842,6 +842,29 @@ class InboxView(QWidget):
         if imported_count > 0:
             self.sync_filesystem_with_db()
 
+    def refresh_inbox_view(self) -> None:
+        """Instant UI rendering from cache/DB, then non-blocking background folder sync."""
+        self._reload_table_data()
+        threading.Thread(target=self._background_fs_reconcile, daemon=True).start()
+
+    def _background_fs_reconcile(self) -> None:
+        """Scans disk folder in thread so UI thread never blocks."""
+        if not os.path.exists(self.inbox_dir):
+            return
+        try:
+            existing_in_db = {item["file_path"].lower(): item for item in get_inbox_queue()}
+            new_found = False
+            for entry in os.listdir(self.inbox_dir):
+                if entry.lower().endswith(".pdf"):
+                    full_p = os.path.abspath(os.path.join(self.inbox_dir, entry))
+                    if full_p.lower() not in existing_in_db:
+                        add_to_inbox_queue(file_path=full_p, status="pending")
+                        new_found = True
+            if new_found:
+                QTimer.singleShot(0, self.sync_filesystem_with_db)
+        except Exception:
+            pass
+
     def sync_filesystem_with_db(self, force_reanalyze: bool = False) -> None:
         """Scans the physical _Inbox directory on disk and reconciles with SQLite queue."""
         if not os.path.exists(self.inbox_dir):
@@ -926,6 +949,7 @@ class InboxView(QWidget):
         title_text = item.get("suggested_title") or os.path.splitext(item.get("filename", ""))[0]
         title_edit = QLineEdit(title_text)
         title_edit.setCursorPosition(0)
+        title_edit.setFocusPolicy(Qt.ClickFocus)
         title_edit.setFont(QFont("Segoe UI", 10, QFont.Bold))
         title_edit.setToolTip(f"Klicke zum Bearbeiten des Titels\nDateiname: {item.get('filename')}")
         title_edit.setStyleSheet("""
@@ -1189,6 +1213,7 @@ class InboxView(QWidget):
             author_edit = QLineEdit(it.get("suggested_author") or "Unbekannt")
             author_edit.setCursorPosition(0)
             author_edit.setFixedHeight(34)
+            author_edit.setFocusPolicy(Qt.ClickFocus)
             author_edit.setStyleSheet("""
                 QLineEdit {
                     background-color: #101625;

@@ -101,10 +101,10 @@ class PdfSelectionOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setPen(Qt.NoPen)
-        # Clean modern selection highlight (standard OS blue with smooth opacity)
-        painter.setBrush(QBrush(QColor(41, 128, 255, 95)))
+        # Modern translucent text highlight with soft rounded edges
+        painter.setBrush(QBrush(QColor(56, 139, 253, 90)))
         for rect in mapped:
-            painter.drawRoundedRect(rect.adjusted(-1.0, 0.0, 1.0, 0.0), 3.0, 3.0)
+            painter.drawRoundedRect(rect.adjusted(-1.0, 0.5, 1.0, -0.5), 2.5, 2.5)
 
     def _update_selection(self, pos: QPoint) -> None:
         dlg = self.window()
@@ -2328,18 +2328,29 @@ class PdfReaderDialog(QDialog):
         # Step 2: Cluster adjacent character bounding boxes into visual text lines
         line_clusters: List[Dict[str, Any]] = []
         for br in valid_boxes:
+            br_h = max(br.height(), 8.0)
             cy = (br.top() + br.bottom()) / 2.0
-            matched = False
-            for cl in line_clusters:
+            matched_idx = -1
+            best_diff = 9999.0
+            for idx, cl in enumerate(line_clusters):
                 cl_cy = (cl["top"] + cl["bottom"]) / 2.0
-                # If vertical midpoint is within typical line height threshold (4.5 pt)
-                if abs(cy - cl_cy) <= 4.5:
-                    cl["rects"].append(br)
-                    cl["top"] = min(cl["top"], br.top())
-                    cl["bottom"] = max(cl["bottom"], br.bottom())
-                    matched = True
-                    break
-            if not matched:
+                cl_h = max(cl["bottom"] - cl["top"], 8.0)
+                # Adaptive vertical line threshold: proportional to text font size (65% of line height)
+                thresh = max(cl_h, br_h) * 0.65
+                diff = abs(cy - cl_cy)
+                if diff <= thresh and diff < best_diff:
+                    # Also check vertical overlap
+                    overlap = min(br.bottom(), cl["bottom"]) - max(br.top(), cl["top"])
+                    if overlap > 0.0 or diff <= 5.0:
+                        best_diff = diff
+                        matched_idx = idx
+
+            if matched_idx >= 0:
+                cl = line_clusters[matched_idx]
+                cl["rects"].append(br)
+                cl["top"] = min(cl["top"], br.top())
+                cl["bottom"] = max(cl["bottom"], br.bottom())
+            else:
                 line_clusters.append({"top": br.top(), "bottom": br.bottom(), "rects": [br]})
 
         # Step 3: Within each line, sort boxes horizontally and merge contiguous segments
@@ -2348,21 +2359,24 @@ class PdfReaderDialog(QDialog):
             cl["rects"].sort(key=lambda r: r.left())
             cl_top = cl["top"]
             cl_bottom = cl["bottom"]
-            # Ensure a balanced typographic ascender/descender visual height
             cl_h = max(cl_bottom - cl_top, 8.0)
-            pad_v = cl_h * 0.12
+            # Gentle vertical padding (6%) so text lines don't bleed into each other
+            pad_v = cl_h * 0.06
             cl_top_padded = cl_top - pad_v
             cl_bottom_padded = cl_bottom + pad_v
+            line_height = cl_bottom_padded - cl_top_padded
 
             merged_line_boxes: List[QRectF] = []
             for r in cl["rects"]:
-                norm_r = QRectF(r.left(), cl_top_padded, r.width(), cl_bottom_padded - cl_top_padded)
+                norm_r = QRectF(r.left(), cl_top_padded, r.width(), line_height)
                 if not merged_line_boxes:
                     merged_line_boxes.append(norm_r)
                 else:
                     prev = merged_line_boxes[-1]
-                    # Merge if adjacent with small inter-word gap (< 5.0 pt)
-                    if norm_r.left() <= prev.right() + 5.0:
+                    # Dynamic inter-word gap bridge: proportional to line font size (up to 75% of line height, e.g. 8-12 pt)
+                    # This cleanly bridges spaces in justifications, tables of contents, and glossaries without creating gaps
+                    max_word_gap = max(10.0, line_height * 0.75)
+                    if norm_r.left() <= prev.right() + max_word_gap:
                         merged_line_boxes[-1] = prev.united(norm_r)
                     else:
                         merged_line_boxes.append(norm_r)

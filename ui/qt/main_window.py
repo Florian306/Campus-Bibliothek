@@ -405,7 +405,10 @@ class CampusMainWindow(QMainWindow):
             if hasattr(view, "master_books") and not view.master_books:
                 view.load_data()
         elif idx == 3:
-            if hasattr(view, "sync_filesystem_with_db"):
+            # Load inbox instantly from cache/DB without disk stalls; scan in background
+            if hasattr(view, "refresh_inbox_view"):
+                view.refresh_inbox_view()
+            elif hasattr(view, "sync_filesystem_with_db"):
                 view.sync_filesystem_with_db()
         elif idx in (4, 5, 6, 8, 9):
             if hasattr(view, "load_data"):

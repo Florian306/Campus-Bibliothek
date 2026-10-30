@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.1.1"
+CURRENT_VERSION = "2.1.2"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.1",
+        "version": "2.1.2",
         "date": "Aktuell",
+        "title": "Präzisions-Texthighlight im PDF-Reader, Instant-Inbox & Greifbare Lernzeit",
+        "notes": "• Perfekt linientreues Texthighlight im PDF-Reader mit dynamischer Wortabstandsbrücke für Blocksatz, Inhaltsverzeichnisse & Glossare\n• Sofortiges Öffnen des Posteingangs ohne Verzögerung (Hintergrund-Dateisystemabgleich)\n• Klick-Fokus für Autoren- & Titelzeilen in der Warteschlange (kein versehentlicher Schreibmodus bei Maus-Hover)\n• Greifbare Lernzeit-Telemetrie mit exakter Seitenzahl und realistischen Lesezielen (50 S./Tag)",
+    },
+    {
+        "version": "2.1.1",
+        "date": "30.10.2026",
         "title": "Vollwertige Fach-Websuche, Live-Suchvorschläge & Inbox Stabilität",
         "notes": "• Entfesselte Fach-Websuche ohne künstliche Ausschlussfilter; Presets steuern intelligentes Relevanz-Scoring\n• Live-Autocomplete & Suchvorschläge in Echtzeit direkt bei der Eingabe\n• Behoben: Klickbarkeit und Initialisierung der Posteingangs-Ansicht wiederhergestellt",
     },
