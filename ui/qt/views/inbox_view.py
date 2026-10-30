@@ -1046,7 +1046,11 @@ class InboxView(QWidget):
                     color: #FFFFFF;
                 }
             """)
-            author_edit.textChanged.connect(lambda txt, iid=item_id: update_inbox_item(iid, suggested_author=txt))
+            def _on_author_changed(txt: str, iid: int = item_id, item_dict: Dict = it) -> None:
+                item_dict["suggested_author"] = txt
+                update_inbox_item(iid, suggested_author=txt)
+
+            author_edit.textChanged.connect(_on_author_changed)
             self.table.setCellWidget(row, 2, author_edit)
 
             # Col 3: Category Combobox (fixed height & clean styling)
@@ -1080,7 +1084,12 @@ class InboxView(QWidget):
             idx = combo_cat.findText(cur_cat)
             if idx >= 0:
                 combo_cat.setCurrentIndex(idx)
-            combo_cat.currentTextChanged.connect(lambda txt, iid=item_id: update_inbox_item(iid, suggested_category=txt))
+
+            def _on_cat_changed(txt: str, iid: int = item_id, item_dict: Dict = it) -> None:
+                item_dict["suggested_category"] = txt
+                update_inbox_item(iid, suggested_category=txt)
+
+            combo_cat.currentTextChanged.connect(_on_cat_changed)
             self.table.setCellWidget(row, 3, combo_cat)
 
             # Col 4: Status / Duplicate Warning Badge
@@ -1287,9 +1296,15 @@ class InboxView(QWidget):
 
     def _file_single_book(self, item_id: int) -> bool:
         """Moves the book into the target library directory and adds it to the SQLite catalog."""
+        # Read the latest state from database or table cells to ensure manually edited authors/categories are preserved
+        db_item = next((it for it in get_inbox_queue() if it["id"] == item_id), None)
         item = next((it for it in self._items if it["id"] == item_id), None)
-        if not item:
+        if not item and not db_item:
             return False
+        if db_item and item:
+            item.update(db_item)
+        elif db_item:
+            item = db_item
 
         src_path = item["file_path"]
         if not os.path.exists(src_path):

@@ -120,6 +120,16 @@ def run_qt_app() -> None:
     window.update_sidebar_stats()
     app.processEvents()
 
+    # Pre-warm Chromium WebEngine core in background to eliminate first-use window flicker/freeze
+    def _prewarm_webengine():
+        try:
+            from PySide6.QtWebEngineCore import QWebEngineProfile
+            _ = QWebEngineProfile.defaultProfile()
+        except Exception:
+            pass
+
+    QTimer.singleShot(250, _prewarm_webengine)
+
     # Step 4: Finalize & Reveal Main Window
     splash.set_progress(100, "Bereit!")
     app.processEvents()

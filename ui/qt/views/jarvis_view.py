@@ -2214,7 +2214,9 @@ class JarvisView(QWidget):
             mail_data["is_unread"] = False
             threading.Thread(target=mark_email_as_read, args=(mid,), daemon=True).start()
 
-        dlg = JarvisMailReaderDialog(self, mail_data=mail_data)
+        # Pass top-level window as parent to ensure stable window management and prevent desktop focus flicker
+        parent_window = self.window() if self.window() else self
+        dlg = JarvisMailReaderDialog(parent_window, mail_data=mail_data)
         dlg.exec()
         if getattr(dlg, "was_deleted", False):
             deleted_id = mail_data.get("id")
