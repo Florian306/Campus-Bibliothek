@@ -412,6 +412,26 @@ class InboxTableDelegate(QStyledItemDelegate):
             super().paint(painter, opt, index)
 
 
+class ClickToEditLineEdit(QLineEdit):
+    """Clean Cyber-Obsidian LineEdit that shows normal ArrowCursor and only switches to editable IBeam upon mouse click."""
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setReadOnly(True)
+        self.setCursor(Qt.ArrowCursor)
+
+    def mousePressEvent(self, ev: QMouseEvent) -> None:
+        if self.isReadOnly() and ev.button() == Qt.LeftButton:
+            self.setReadOnly(False)
+            self.setCursor(Qt.IBeamCursor)
+        super().mousePressEvent(ev)
+
+    def focusOutEvent(self, ev) -> None:
+        super().focusOutEvent(ev)
+        self.setReadOnly(True)
+        self.setCursor(Qt.ArrowCursor)
+        self.deselect()
+
+
 class InboxView(QWidget):
     """Staging and Intake Hub for new books."""
     queue_updated = Signal(int)  # emits count of remaining items
@@ -947,9 +967,8 @@ class InboxView(QWidget):
         info_box.setAlignment(Qt.AlignVCenter)
 
         title_text = item.get("suggested_title") or os.path.splitext(item.get("filename", ""))[0]
-        title_edit = QLineEdit(title_text)
+        title_edit = ClickToEditLineEdit(title_text)
         title_edit.setCursorPosition(0)
-        title_edit.setFocusPolicy(Qt.ClickFocus)
         title_edit.setFont(QFont("Segoe UI", 10, QFont.Bold))
         title_edit.setToolTip(f"Klicke zum Bearbeiten des Titels\nDateiname: {item.get('filename')}")
         title_edit.setStyleSheet("""
@@ -1209,11 +1228,10 @@ class InboxView(QWidget):
             title_widget = self._create_title_widget(it)
             self.table.setCellWidget(row, 1, title_widget)
 
-            # Col 2: Author (Editable LineEdit with fixed height & clean cyber obsidian styling)
-            author_edit = QLineEdit(it.get("suggested_author") or "Unbekannt")
+            # Col 2: Author (ClickToEdit LineEdit with fixed height & clean cyber obsidian styling)
+            author_edit = ClickToEditLineEdit(it.get("suggested_author") or "Unbekannt")
             author_edit.setCursorPosition(0)
             author_edit.setFixedHeight(34)
-            author_edit.setFocusPolicy(Qt.ClickFocus)
             author_edit.setStyleSheet("""
                 QLineEdit {
                     background-color: #101625;

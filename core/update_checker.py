@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.1.2"
+CURRENT_VERSION = "2.1.3"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.2",
+        "version": "2.1.3",
         "date": "Aktuell",
+        "title": "Click-To-Edit Eingabefelder im Posteingang & Ruhiger Mauszeiger",
+        "notes": "• Neue ClickToEditLineEdit-Komponente für Autor und Titel: Kein Schreibcursor oder Aktivierung beim reinen Maus-Hover\n• Cursor wechselt erst bei explizitem Linksklick in den Schreibmodus\n• Automatisches Zurücksetzen in den gesicherten Ruhemodus bei Fokusverlust",
+    },
+    {
+        "version": "2.1.2",
+        "date": "30.10.2026",
         "title": "Präzisions-Texthighlight im PDF-Reader, Instant-Inbox & Greifbare Lernzeit",
         "notes": "• Perfekt linientreues Texthighlight im PDF-Reader mit dynamischer Wortabstandsbrücke für Blocksatz, Inhaltsverzeichnisse & Glossare\n• Sofortiges Öffnen des Posteingangs ohne Verzögerung (Hintergrund-Dateisystemabgleich)\n• Klick-Fokus für Autoren- & Titelzeilen in der Warteschlange (kein versehentlicher Schreibmodus bei Maus-Hover)\n• Greifbare Lernzeit-Telemetrie mit exakter Seitenzahl und realistischen Lesezielen (50 S./Tag)",
     },
