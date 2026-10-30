@@ -3044,6 +3044,7 @@ def update_inbox_item(
     year: Optional[int] = None,
     page_count: Optional[int] = None,
     confidence: Optional[int] = None,
+    duplicate_warning: Optional[str] = None,
 ) -> bool:
     """Updates metadata or state of an item in the Inbox queue."""
     conn = get_db_connection()
@@ -3081,6 +3082,9 @@ def update_inbox_item(
             if confidence is not None:
                 updates.append("confidence = ?")
                 params.append(confidence)
+            if duplicate_warning is not None:
+                updates.append("duplicate_warning = ?")
+                params.append(duplicate_warning)
 
             if not updates:
                 return True
@@ -3117,30 +3121,71 @@ def delete_inbox_item(item_id: int, delete_file: bool = False) -> bool:
             return False
 
 
-def check_inbox_duplicate(title: str, filename: str) -> str:
-    """Checks if a book with a similar title or filename already exists in the library.
+def check_inbox_duplicate(
+    title: str,
+    filename: str,
+    author: Optional[str] = None,
+    isbn: Optional[str] = None,
+    file_size: Optional[int] = None,
+) -> str:
+    """Checks if a book already exists in the library based on ISBN, Author, Title, or File size.
     Returns empty string if unique, or a descriptive warning message if duplicate.
     """
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        t_clean = title.strip().lower()
-        fn_clean = filename.strip().lower()
+        t_clean = (title or "").strip().lower()
+        fn_clean = (filename or "").strip().lower()
+        a_clean = (author or "").strip().lower()
+        if a_clean == "unbekannt":
+            a_clean = ""
+        isbn_clean = (isbn or "").replace("-", "").replace(" ", "").strip()
 
-        # Check exact filename
-        cur.execute("SELECT id, title, edition FROM books WHERE LOWER(filename) = ? LIMIT 1;", (fn_clean,))
-        row = cur.fetchone()
-        if row:
-            return f"Bereits im Katalog ({row['title']})"
-
-        # Check title match
-        if len(t_clean) > 4:
-            cur.execute("SELECT id, title, edition FROM books WHERE LOWER(title) = ? LIMIT 1;", (t_clean,))
+        # 1. Check exact ISBN match (authoritative 1:1 identifier)
+        if isbn_clean and len(isbn_clean) in (10, 13):
+            cur.execute(
+                "SELECT id, title, author, edition FROM books WHERE REPLACE(REPLACE(isbn, '-', ''), ' ', '') = ? LIMIT 1;",
+                (isbn_clean,)
+            )
             row = cur.fetchone()
             if row:
+                b_auth = f" von {row['author']}" if row['author'] and row['author'] != 'Unbekannt' else ""
+                return f"Identische ISBN ({row['title']}{b_auth})"
+
+        # 2. Check exact filename
+        if fn_clean:
+            cur.execute("SELECT id, title, author, edition FROM books WHERE LOWER(filename) = ? LIMIT 1;", (fn_clean,))
+            row = cur.fetchone()
+            if row:
+                return f"Identischer Dateiname ({row['title']})"
+
+        # 3. Check exact file size match (if provided)
+        if file_size and file_size > 0:
+            cur.execute("SELECT id, title, author FROM books WHERE file_size = ? LIMIT 1;", (file_size,))
+            row = cur.fetchone()
+            if row and len(t_clean) > 3 and t_clean in (row['title'] or "").lower():
+                return f"Identische Datei ({row['title']})"
+
+        # 4. Check Title + Author combination
+        if len(t_clean) > 4:
+            cur.execute("SELECT id, title, author, edition FROM books WHERE LOWER(title) = ?;", (t_clean,))
+            matches = cur.fetchall()
+            for row in matches:
+                existing_auth = (row['author'] or "").strip().lower()
+                
+                # If both have authors, require an author overlap to consider it a duplicate!
+                if a_clean and existing_auth and existing_auth != "unbekannt":
+                    # Check if surnames or parts match (e.g. "Martin Lay" vs "Stefan Pollmann" -> NOT duplicate)
+                    a_parts = {p for p in a_clean.replace(",", " ").split() if len(p) > 2}
+                    ex_parts = {p for p in existing_auth.replace(",", " ").split() if len(p) > 2}
+                    if not (a_parts & ex_parts):
+                        # Different authors for the same title! This is NOT a duplicate (e.g. different textbooks)
+                        continue
+
                 ed = row['edition']
                 ed_str = f", {ed}. Auflage" if ed and ed > 1 else ""
-                return f"Existiert bereits ({row['title']}{ed_str})"
+                auth_str = f" ({row['author']})" if row['author'] and row['author'] != 'Unbekannt' else ""
+                return f"Existiert bereits{auth_str}: {row['title']}{ed_str}"
 
         return ""
     except Exception:

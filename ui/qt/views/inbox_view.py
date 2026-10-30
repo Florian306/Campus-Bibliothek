@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QLayout,
 )
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
@@ -176,8 +177,14 @@ class InboxAnalysisWorker(QThread):
                     title=extracted_title
                 )
 
-            # 5. Check for duplicates
-            dup_warning = check_inbox_duplicate(extracted_title, fn)
+            # 5. Check for duplicates (using authoritative ISBN, Author, Title, and File Size)
+            dup_warning = check_inbox_duplicate(
+                title=extracted_title,
+                filename=fn,
+                author=extracted_author,
+                isbn=isbn_str,
+                file_size=file_size,
+            )
 
             analysis_result = {
                 "suggested_title": extracted_title,
@@ -206,6 +213,7 @@ class InboxAnalysisWorker(QThread):
                 year=pub_year,
                 page_count=page_count,
                 confidence=int(confidence * 100) if confidence <= 1.0 else int(confidence),
+                duplicate_warning=dup_warning,
             )
 
             self.item_analyzed.emit(item_id, analysis_result)
@@ -901,20 +909,77 @@ class InboxView(QWidget):
         lay.addWidget(cover_lbl)
 
         info_box = QVBoxLayout()
-        info_box.setSpacing(2)
+        info_box.setSpacing(4)
         info_box.setAlignment(Qt.AlignVCenter)
 
         title_text = item.get("suggested_title") or os.path.splitext(item.get("filename", ""))[0]
-        lbl_t = QLabel(title_text)
-        lbl_t.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        lbl_t.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
-        lbl_t.setToolTip(f"Klicke zum Bearbeiten\nDateiname: {item.get('filename')}")
-        info_box.addWidget(lbl_t)
+        title_edit = QLineEdit(title_text)
+        title_edit.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        title_edit.setToolTip(f"Klicke zum Bearbeiten des Titels\nDateiname: {item.get('filename')}")
+        title_edit.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                color: #F0F6FC;
+                border: 1px solid transparent;
+                border-radius: 4px;
+                padding: 2px 4px;
+            }
+            QLineEdit:hover {
+                background-color: #121A2A;
+                border-color: #23314A;
+            }
+            QLineEdit:focus {
+                background-color: #17243B;
+                border-color: #58A6FF;
+                color: #FFFFFF;
+            }
+        """)
 
+        def _on_title_changed(new_title: str, iid: int = item_id, it_dict: Dict = item):
+            t_str = new_title.strip()
+            it_dict["suggested_title"] = t_str
+            # Live re-evaluate duplicate status when user changes title
+            new_dup = check_inbox_duplicate(
+                title=t_str,
+                filename=it_dict.get("filename", ""),
+                author=it_dict.get("suggested_author"),
+                isbn=it_dict.get("isbn"),
+                file_size=it_dict.get("file_size"),
+            )
+            it_dict["duplicate_warning"] = new_dup
+            update_inbox_item(iid, suggested_title=t_str, duplicate_warning=new_dup)
+
+            # Update status badge in table
+            for r in range(self.table.rowCount()):
+                if r < len(self._items) and self._items[r]["id"] == iid:
+                    self._update_status_cell(r, it_dict)
+                    break
+
+        title_edit.textChanged.connect(_on_title_changed)
+        info_box.addWidget(title_edit)
+
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(8)
         lbl_fn = QLabel(item.get("filename", ""))
         lbl_fn.setFont(QFont("Segoe UI", 8))
         lbl_fn.setStyleSheet("color: #6E7681; border: none; background: transparent;")
-        info_box.addWidget(lbl_fn)
+        meta_row.addWidget(lbl_fn)
+
+        isbn_val = item.get("isbn")
+        if isbn_val:
+            lbl_isbn = QLabel(f"ISBN: {isbn_val}")
+            lbl_isbn.setFont(QFont("Segoe UI", 7, QFont.Bold))
+            lbl_isbn.setStyleSheet("""
+                color: #79C0FF;
+                background-color: #0E1E38;
+                border: 1px solid #1D3B6A;
+                border-radius: 3px;
+                padding: 1px 4px;
+            """)
+            meta_row.addWidget(lbl_isbn)
+
+        meta_row.addStretch()
+        info_box.addLayout(meta_row)
 
         lay.addLayout(info_box)
         lay.addStretch()
@@ -995,6 +1060,17 @@ class InboxView(QWidget):
         valid_items = []
         for it in self._items:
             if os.path.exists(it["file_path"]):
+                # Always ensure duplicate warnings are fresh and accurate
+                dup_now = check_inbox_duplicate(
+                    title=it.get("suggested_title", ""),
+                    filename=it.get("filename", ""),
+                    author=it.get("suggested_author"),
+                    isbn=it.get("isbn"),
+                    file_size=it.get("file_size"),
+                )
+                if it.get("duplicate_warning") != dup_now:
+                    it["duplicate_warning"] = dup_now
+                    update_inbox_item(it["id"], duplicate_warning=dup_now)
                 valid_items.append(it)
             else:
                 delete_inbox_item(it["id"])
@@ -1048,7 +1124,21 @@ class InboxView(QWidget):
             """)
             def _on_author_changed(txt: str, iid: int = item_id, item_dict: Dict = it) -> None:
                 item_dict["suggested_author"] = txt
-                update_inbox_item(iid, suggested_author=txt)
+                new_dup = check_inbox_duplicate(
+                    title=item_dict.get("suggested_title", ""),
+                    filename=item_dict.get("filename", ""),
+                    author=txt,
+                    isbn=item_dict.get("isbn"),
+                    file_size=item_dict.get("file_size"),
+                )
+                item_dict["duplicate_warning"] = new_dup
+                update_inbox_item(iid, suggested_author=txt, duplicate_warning=new_dup)
+
+                # Live re-render status cell
+                for r in range(self.table.rowCount()):
+                    if r < len(self._items) and self._items[r]["id"] == iid:
+                        self._update_status_cell(r, item_dict)
+                        break
 
             author_edit.textChanged.connect(_on_author_changed)
             self.table.setCellWidget(row, 2, author_edit)
@@ -1093,57 +1183,17 @@ class InboxView(QWidget):
             self.table.setCellWidget(row, 3, combo_cat)
 
             # Col 4: Status / Duplicate Warning Badge
-            dup = it.get("duplicate_warning", "")
-            conf = it.get("confidence", 0)
-            status = it.get("status", "pending")
             status_box = QWidget()
             s_lay = QHBoxLayout(status_box)
             s_lay.setContentsMargins(6, 4, 6, 4)
             s_lay.setAlignment(Qt.AlignCenter)
-
-            if dup:
-                lbl_dup = QLabel("⚠️ Duplikat")
-                lbl_dup.setToolTip(dup)
-                lbl_dup.setStyleSheet("""
-                    color: #FFA657;
-                    font-weight: bold;
-                    background: #2D1A10;
-                    border: 1px solid #633616;
-                    border-radius: 6px;
-                    padding: 4px 8px;
-                    font-size: 10px;
-                """)
-                s_lay.addWidget(lbl_dup)
-            elif status == "ready":
-                lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
-                lbl_ready.setStyleSheet("""
-                    color: #3FB950;
-                    font-weight: bold;
-                    background: #0D2616;
-                    border: 1px solid #1E542C;
-                    border-radius: 6px;
-                    padding: 4px 8px;
-                    font-size: 10px;
-                """)
-                s_lay.addWidget(lbl_ready)
-            else:
-                lbl_pend = QLabel("⏳ Analysiere...")
-                lbl_pend.setStyleSheet("""
-                    color: #8B949E;
-                    background: #141C2B;
-                    border: 1px solid #222F47;
-                    border-radius: 6px;
-                    padding: 4px 8px;
-                    font-size: 10px;
-                """)
-                s_lay.addWidget(lbl_pend)
-
             self.table.setCellWidget(row, 4, status_box)
+            self._render_status_badge(s_lay, it)
 
-            # Col 5: File Size & Pages
+            # Col 5: File Size & Pages (Styled cyber pill)
             sz_mb = it.get("file_size", 0) / (1024 * 1024)
             p_cnt = it.get("page_count", 0)
-            sz_txt = f"{sz_mb:.1f} MB\n{p_cnt} Seiten" if p_cnt > 0 else f"{sz_mb:.1f} MB"
+            sz_txt = f"{sz_mb:.1f} MB • {p_cnt} S." if p_cnt > 0 else f"{sz_mb:.1f} MB"
             item_sz = QTableWidgetItem(sz_txt)
             item_sz.setTextAlignment(Qt.AlignCenter)
             item_sz.setFlags(item_sz.flags() & ~Qt.ItemIsEditable)
@@ -1209,6 +1259,61 @@ class InboxView(QWidget):
         self._analysis_thread.all_finished.connect(self._on_all_analyzed)
         self._analysis_thread.start()
 
+    def _render_status_badge(self, lay: QLayout, item: Dict) -> None:
+        """Renders modern cyber-obsidian status pill into the given layout."""
+        while lay.count():
+            w = lay.takeAt(0).widget()
+            if w:
+                w.deleteLater()
+
+        dup = item.get("duplicate_warning", "")
+        conf = item.get("confidence", 0)
+        status = item.get("status", "pending")
+
+        if dup:
+            lbl_dup = QLabel("⚠️ Duplikat")
+            lbl_dup.setToolTip(f"Mögliches Duplikat:\n{dup}")
+            lbl_dup.setStyleSheet("""
+                color: #FFA657;
+                font-weight: 700;
+                background: #2D1A10;
+                border: 1px solid #7C3D18;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+            """)
+            lay.addWidget(lbl_dup)
+        elif status == "ready":
+            lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
+            lbl_ready.setStyleSheet("""
+                color: #3FB950;
+                font-weight: 700;
+                background: #0D2616;
+                border: 1px solid #1E542C;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+            """)
+            lay.addWidget(lbl_ready)
+        else:
+            lbl_pend = QLabel("⏳ Analysiere...")
+            lbl_pend.setStyleSheet("""
+                color: #8B949E;
+                font-weight: 600;
+                background: #141C2B;
+                border: 1px solid #222F47;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 11px;
+            """)
+            lay.addWidget(lbl_pend)
+
+    def _update_status_cell(self, row: int, item: Dict) -> None:
+        """Updates the status cell widget at the specified row."""
+        stat_box = self.table.cellWidget(row, 4)
+        if stat_box and stat_box.layout():
+            self._render_status_badge(stat_box.layout(), item)
+
     def _on_item_analyzed(self, item_id: int, data: dict) -> None:
         # Update table row with analysis result
         for r in range(self.table.rowCount()):
@@ -1217,9 +1322,11 @@ class InboxView(QWidget):
                 if data.get("suggested_title"):
                     title_w = self.table.cellWidget(r, 1)
                     if title_w:
-                        lbls = title_w.findChildren(QLabel)
-                        if len(lbls) >= 2:
-                            lbls[1].setText(data["suggested_title"])
+                        title_edits = title_w.findChildren(QLineEdit)
+                        if title_edits:
+                            title_edits[0].blockSignals(True)
+                            title_edits[0].setText(data["suggested_title"])
+                            title_edits[0].blockSignals(False)
 
                 # Update author edit
                 if data.get("suggested_author"):
@@ -1238,44 +1345,9 @@ class InboxView(QWidget):
                         combo.setCurrentIndex(idx)
                         combo.blockSignals(False)
 
-                # Update status box
-                stat_box = self.table.cellWidget(r, 4)
-                if stat_box:
-                    dup = data.get("duplicate_warning", "")
-                    conf = data.get("confidence", 0)
-                    lay = stat_box.layout()
-                    while lay.count():
-                        w = lay.takeAt(0).widget()
-                        if w:
-                            w.deleteLater()
-                    if dup:
-                        lbl_dup = QLabel("⚠️ Duplikat")
-                        lbl_dup.setToolTip(dup)
-                        lbl_dup.setStyleSheet("""
-                            color: #FFA657;
-                            font-weight: bold;
-                            background: #2D1A10;
-                            border: 1px solid #633616;
-                            border-radius: 6px;
-                            padding: 4px 8px;
-                            font-size: 10px;
-                        """)
-                        lay.addWidget(lbl_dup)
-                    else:
-                        lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
-                        lbl_ready.setStyleSheet("""
-                            color: #3FB950;
-                            font-weight: bold;
-                            background: #0D2616;
-                            border: 1px solid #1E542C;
-                            border-radius: 6px;
-                            padding: 4px 8px;
-                            font-size: 10px;
-                        """)
-                        lay.addWidget(lbl_ready)
-
-                # Update in-memory item dict immediately so filing right away has all extracted fields
+                # Update status box via unified badge renderer
                 self._items[r].update(data)
+                self._update_status_cell(r, self._items[r])
 
                 # Update size/pages
                 p_cnt = data.get("page_count", 0)
