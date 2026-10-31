@@ -110,7 +110,15 @@ DDC_MAP: Dict[str, str] = {
     "332": "Wirtschaftswissenschaften",
     "336": "Wirtschaftswissenschaften",
     "338": "Wirtschaftswissenschaften",
+    "65": "Wirtschaftswissenschaften",
+    "650": "Wirtschaftswissenschaften",
+    "657": "Wirtschaftswissenschaften",
     "658": "Wirtschaftswissenschaften",
+    "659": "Wirtschaftswissenschaften",
+    "35": "Geschichte & Politik",
+    "350": "Geschichte & Politik",
+    "351": "Geschichte & Politik",
+    "352": "Geschichte & Politik",
     "34": "Rechtswissenschaften & Jura",
     "340": "Rechtswissenschaften & Jura",
     "341": "Rechtswissenschaften & Jura",
@@ -291,95 +299,143 @@ def query_openlibrary(isbn: str) -> Optional[dict]:
 
 def map_ddc_to_faculty(ddc_codes: List[str]) -> Optional[str]:
     """Maps DDC decimal codes to our standard academic faculties."""
+    facs = map_all_ddc_to_faculties(ddc_codes)
+    return facs[0] if facs else None
+
+
+def map_all_ddc_to_faculties(ddc_codes: List[str]) -> List[str]:
+    """Maps DDC decimal codes to all matching unique academic faculties preserving order."""
+    matched = []
     for code in ddc_codes:
         clean_code = re.sub(r'[^0-9]', '', str(code))
         for prefix_len in [3, 2]:
             prefix = clean_code[:prefix_len]
             if prefix in DDC_MAP:
-                return DDC_MAP[prefix]
-    return None
+                fac = DDC_MAP[prefix]
+                if fac not in matched:
+                    matched.append(fac)
+                break
+    return matched
 
 
 def map_subjects_to_faculty(subjects: List[str], existing_folders: Optional[List[str]] = None) -> Optional[str]:
     """Maps BISAC / Library of Congress text categories to academic faculties."""
+    facs = map_all_subjects_to_faculties(subjects, existing_folders)
+    return facs[0] if facs else None
+
+
+def map_all_subjects_to_faculties(subjects: List[str], existing_folders: Optional[List[str]] = None) -> List[str]:
+    """Maps BISAC / Library of Congress text categories to all matching academic faculties."""
     joined = " ".join([s.lower() for s in subjects])
+    matched: List[str] = []
 
     # 1. Animal / Veterinary Disambiguation (Must be evaluated BEFORE human medicine)
     if any(k in joined for k in ["veterinär", "tiermedizin", "tierhaltung", "haustier", "hund", "katze", "kynologie", "zoolog"]):
         if existing_folders:
             for ef in existing_folders:
                 if any(k in ef.lower() for k in ["tiermedizin", "tier", "hund"]):
-                    return ef
-        return "Biologie & Lebenswissenschaften"
+                    if ef not in matched:
+                        matched.append(ef)
+                    break
+        if "Biologie & Lebenswissenschaften" not in matched:
+            matched.append("Biologie & Lebenswissenschaften")
 
     if any(k in joined for k in ["mathematic", "algebra", "calculus", "geometry", "stochast"]):
-        return "Mathematik"
+        if "Mathematik" not in matched:
+            matched.append("Mathematik")
     if any(k in joined for k in ["physic", "quantum", "astronom", "thermodynamic", "mechanic"]):
-        return "Physik & Astronomie"
+        if "Physik & Astronomie" not in matched:
+            matched.append("Physik & Astronomie")
     if any(k in joined for k in ["chemist", "organic", "inorganic", "biochem"]):
-        return "Chemie"
+        if "Chemie" not in matched:
+            matched.append("Chemie")
     if any(k in joined for k in ["biolog", "genetics", "cellular", "botany", "microbiol"]):
-        return "Biologie & Lebenswissenschaften"
+        if "Biologie & Lebenswissenschaften" not in matched:
+            matched.append("Biologie & Lebenswissenschaften")
     if any(k in joined for k in ["geolog", "earth", "oceanograph", "mineral", "geograph"]):
-        return "Geowissenschaften & Geologie"
+        if "Geowissenschaften & Geologie" not in matched:
+            matched.append("Geowissenschaften & Geologie")
     if any(k in joined for k in ["computer", "program", "software", "algorithm", "network", "data"]):
-        return "Informatik & Programmierung"
+        if "Informatik & Programmierung" not in matched:
+            matched.append("Informatik & Programmierung")
     if any(k in joined for k in ["medic", "pharmac", "patholog", "anatom", "surger", "clinic", "gesundheit", "humanmedizin"]) or (r"\bmedizin\b" in joined and "veterinär" not in joined):
-        return "Medizin & Pharmazie"
+        if "Medizin & Pharmazie" not in matched:
+            matched.append("Medizin & Pharmazie")
     if any(k in joined for k in ["psycholog", "sociolog", "cognit", "behavior", "mental"]):
-        return "Psychologie & Soziologie"
+        if "Psychologie & Soziologie" not in matched:
+            matched.append("Psychologie & Soziologie")
     if any(k in joined for k in ["econom", "business", "financ", "account", "manag", "market", "wirtschaft"]):
-        return "Wirtschaftswissenschaften"
+        if "Wirtschaftswissenschaften" not in matched:
+            matched.append("Wirtschaftswissenschaften")
     if any(k in joined for k in ["law", "jurispruden", "legal", "recht", "strafrecht"]):
-        return "Rechtswissenschaften & Jura"
+        if "Rechtswissenschaften & Jura" not in matched:
+            matched.append("Rechtswissenschaften & Jura")
     if any(k in joined for k in ["engineer", "mechanic", "electr", "civil engineer", "ingenieur"]):
-        return "Ingenieurwissenschaften & Technik"
+        if "Ingenieurwissenschaften & Technik" not in matched:
+            matched.append("Ingenieurwissenschaften & Technik")
     if any(k in joined for k in ["histor", "polit", "world war", "archaeol", "geschichte"]):
-        return "Geschichte & Politik"
+        if "Geschichte & Politik" not in matched:
+            matched.append("Geschichte & Politik")
     if any(k in joined for k in ["philosoph", "relig", "theolog"]):
-        return "Philosophie & Religion"
+        if "Philosophie & Religion" not in matched:
+            matched.append("Philosophie & Religion")
     if any(k in joined for k in ["educat", "pedagog", "school", "teach", "pädagogik"]):
-        return "Pädagogik & Schule"
+        if "Pädagogik & Schule" not in matched:
+            matched.append("Pädagogik & Schule")
     if any(k in joined for k in ["linguistic", "literat", "language", "grammar", "germanistik"]):
-        return "Sprach- & Literaturwissenschaft"
-    return None
+        if "Sprach- & Literaturwissenschaft" not in matched:
+            matched.append("Sprach- & Literaturwissenschaft")
+
+    return matched
 
 
 def resolve_isbn_catalog(text_or_metadata: str, existing_folders: Optional[List[str]] = None) -> Optional[Tuple[str, str, str, str]]:
     """Tries to find verified ISBN and resolve official metadata via Google Books, DNB, or OpenLibrary.
     Cached locally in SQLite for instant 0ms retrieval and negative cache protection.
     """
+    res = resolve_isbn_catalog_multi(text_or_metadata, existing_folders)
+    if not res:
+        return None
+    cats, auth, title, reason = res
+    primary_cat = cats[0] if cats else ""
+    return primary_cat, auth, title, reason
+
+
+def resolve_isbn_catalog_multi(text_or_metadata: str, existing_folders: Optional[List[str]] = None) -> Optional[Tuple[List[str], str, str, str]]:
+    """Tries to find verified ISBN and resolve official metadata with ALL matching categories."""
     isbns = extract_isbns(text_or_metadata)
     if not isbns:
         return None
 
     # Title-only hit (catalog found book but no faculty mapping)
-    partial: Optional[Tuple[str, str, str, str]] = None
+    partial: Optional[Tuple[List[str], str, str, str]] = None
 
     for isbn in isbns[:2]:
         cached = get_cached_identifier(isbn)
         if cached:
-            cat, auth, title, reason = cached
+            cat_str, auth, title, reason = cached
             # Retry stale negative entries (may stem from former timeouts)
-            if cat != "NOT_FOUND":
-                return cat, auth, title, reason
+            if cat_str != "NOT_FOUND":
+                cached_cats = [c.strip() for c in cat_str.split(",") if c.strip()]
+                return cached_cats, auth, title, reason
 
         # 1. Google Books (fastest API response ~150ms, richest metadata)
         gb_info = query_google_books(isbn)
         if gb_info and gb_info.get("title") and not partial:
             _a = gb_info.get("authors", [])
             _auth = _a[0] if len(_a) == 1 else (f"{_a[0]} et al." if len(_a) > 1 else "Unbekannt")
-            partial = ("", _auth, gb_info["title"], f"🏛️ ISBN {isbn} (Google Books, ohne Fachgebiet)")
+            partial = ([], _auth, gb_info["title"], f"🏛️ ISBN {isbn} (Google Books, ohne Fachgebiet)")
         if gb_info:
             title = gb_info.get("title", "")
             authors = gb_info.get("authors", [])
             author_str = authors[0] if len(authors) == 1 else (f"{authors[0]} et al." if len(authors) > 1 else "Unbekannt")
             categories = gb_info.get("categories", [])
-            cat = map_subjects_to_faculty(categories, existing_folders)
-            if cat and title:
+            cats = map_all_subjects_to_faculties(categories, existing_folders)
+            if cats and title:
                 reason = f"🏛️ ISBN {isbn} (Google Books Katalog)"
-                save_cached_identifier(isbn, "ISBN", cat, author_str, title, reason)
-                return cat, author_str, title, reason
+                joined_cat = ", ".join(cats)
+                save_cached_identifier(isbn, "ISBN", joined_cat, author_str, title, reason)
+                return cats, author_str, title, reason
 
         # 2 & 3: Run DNB and OpenLibrary concurrently if Google Books was inconclusive
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -393,19 +449,34 @@ def resolve_isbn_catalog(text_or_metadata: str, existing_folders: Optional[List[
             title = dnb_info["title"]
             author = dnb_info["creator"]
             if not partial:
-                partial = ("", author, title, f"🏛️ ISBN {isbn} (DNB, ohne Fachgebiet)")
+                partial = ([], author, title, f"🏛️ ISBN {isbn} (DNB, ohne Fachgebiet)")
             subjects = dnb_info.get("subjects", [])
-            cat = map_ddc_to_faculty(subjects) or map_subjects_to_faculty(subjects, existing_folders)
-            if cat == "Biologie & Lebenswissenschaften" and existing_folders:
+            cats = map_all_ddc_to_faculties(subjects)
+            for sub_cat in map_all_subjects_to_faculties(subjects, existing_folders):
+                if sub_cat not in cats:
+                    cats.append(sub_cat)
+
+            # Contextual fine-tuning of primary category based on title signals
+            t_lower = title.lower()
+            if "bindung" in t_lower and "Psychologie & Soziologie" in cats:
+                cats.remove("Psychologie & Soziologie")
+                cats.insert(0, "Psychologie & Soziologie")
+            elif any(w in t_lower for w in ["haushalt", "finanz", "rechnungswesen", "buchführung"]) and "Wirtschaftswissenschaften" in cats:
+                cats.remove("Wirtschaftswissenschaften")
+                cats.insert(0, "Wirtschaftswissenschaften")
+
+            if "Biologie & Lebenswissenschaften" in cats and existing_folders:
                 for ef in existing_folders:
                     if any(k in ef.lower() for k in ["tiermedizin", "tier", "hund"]):
-                        cat = ef
+                        idx = cats.index("Biologie & Lebenswissenschaften")
+                        cats[idx] = ef
                         break
 
-            if cat and title:
+            if cats and title:
                 reason = f"🏛️ ISBN {isbn} (Deutsche Nationalbibliothek DNB)"
-                save_cached_identifier(isbn, "ISBN", cat, author, title, reason)
-                return cat, author, title, reason
+                joined_cat = ", ".join(cats)
+                save_cached_identifier(isbn, "ISBN", joined_cat, author, title, reason)
+                return cats, author, title, reason
 
         # Check OpenLibrary DDC classifications
         if ol_info:
@@ -413,21 +484,26 @@ def resolve_isbn_catalog(text_or_metadata: str, existing_folders: Optional[List[
             authors = [a.get("name", "") for a in ol_info.get("authors", [])]
             author_str = authors[0] if len(authors) == 1 else (f"{authors[0]} et al." if len(authors) > 1 else "Unbekannt")
             if title and not partial:
-                partial = ("", author_str, title, f"🏛️ ISBN {isbn} (OpenLibrary, ohne Fachgebiet)")
+                partial = ([], author_str, title, f"🏛️ ISBN {isbn} (OpenLibrary, ohne Fachgebiet)")
             classifications = ol_info.get("classifications", {})
             ddc_list = classifications.get("dewey_decimal_class", [])
-            cat = map_ddc_to_faculty(ddc_list)
-            if not cat:
-                subjects = [s.get("name", "") if isinstance(s, dict) else str(s) for s in ol_info.get("subjects", [])]
-                cat = map_subjects_to_faculty(subjects, existing_folders)
-            if cat and title:
+            cats = map_all_ddc_to_faculties(ddc_list)
+            subjects = [s.get("name", "") if isinstance(s, dict) else str(s) for s in ol_info.get("subjects", [])]
+            for sub_cat in map_all_subjects_to_faculties(subjects, existing_folders):
+                if sub_cat not in cats:
+                    cats.append(sub_cat)
+
+            if cats and title:
                 reason = f"🏛️ ISBN {isbn} (OpenLibrary DDC-Klassifikation)"
-                save_cached_identifier(isbn, "ISBN", cat, author_str, title, reason)
-                return cat, author_str, title, reason
+                joined_cat = ", ".join(cats)
+                save_cached_identifier(isbn, "ISBN", joined_cat, author_str, title, reason)
+                return cats, author_str, title, reason
 
         # Negative cache only if a catalog actually answered (no caching on timeouts/offline)
         if gb_info is not None or dnb_info is not None or ol_info is not None:
             if not partial:
                 save_cached_identifier(isbn, "ISBN", "NOT_FOUND", "", "", "Nicht im Katalog")
+
+    return partial
 
     return partial

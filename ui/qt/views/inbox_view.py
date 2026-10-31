@@ -56,8 +56,8 @@ from ai.pdf_extractor import (
     sanitize_author_string,
     extract_publication_year,
 )
-from ai.isbn_lookup import extract_isbns, resolve_isbn_catalog
-from ai.classifier import classify_textbook
+from ai.isbn_lookup import extract_isbns, resolve_isbn_catalog, resolve_isbn_catalog_multi
+from ai.classifier import classify_textbook, classify_textbook_multi
 from ai.categories import STANDARD_CATEGORIES
 from core.delta_scanner import extract_edition_number
 from core.cover_manager import extract_and_cache_cover
@@ -142,23 +142,25 @@ class InboxAnalysisWorker(QThread):
             # 3. Check bibliographic catalog via ISBN
             catalog_match = None
             try:
-                catalog_match = resolve_isbn_catalog(combined_lookup_text, self.existing_categories)
+                catalog_match = resolve_isbn_catalog_multi(combined_lookup_text, self.existing_categories)
             except Exception:
                 pass
 
             suggested_cat = None
+            suggested_cats_list: List[str] = []
             confidence = 0.5
             reason = ""
 
             if catalog_match:
-                cat_cat, cat_auth, cat_title, cat_reason = catalog_match
+                cat_cats, cat_auth, cat_title, cat_reason = catalog_match
                 # Official catalog title is the authoritative bibliographic title
                 if cat_title and len(cat_title) >= 3:
                     extracted_title = cat_title
                 if cat_auth and (not extracted_author or extracted_author == "Unbekannt" or (cat_title and cat_auth.lower() in extracted_title.lower())):
                     extracted_author = cat_auth
-                if cat_cat:
-                    suggested_cat = cat_cat
+                if cat_cats:
+                    suggested_cats_list = cat_cats
+                    suggested_cat = cat_cats[0]
                     confidence = 0.98
                     reason = cat_reason
 
@@ -173,12 +175,21 @@ class InboxAnalysisWorker(QThread):
 
             # 4. Classify textbook category if not already resolved by catalog
             if not suggested_cat:
-                suggested_cat, confidence, reason = classify_textbook(
+                multi_cats, confidence, reason = classify_textbook_multi(
                     filename=fn,
                     text=text_snippet or front_text,
                     existing_folders=self.existing_categories,
                     title=extracted_title
                 )
+                if multi_cats:
+                    suggested_cats_list = multi_cats
+                    suggested_cat = multi_cats[0]
+
+            if not suggested_cats_list:
+                suggested_cats_list = [suggested_cat or "Sonstiges"]
+
+            # Store joined categories string so multiple faculties are visible & editable
+            joined_categories = ", ".join(suggested_cats_list)
 
             # 5. Check for duplicates (using authoritative ISBN, Author, Title, and File Size)
             dup_warning = check_inbox_duplicate(
@@ -192,7 +203,8 @@ class InboxAnalysisWorker(QThread):
             analysis_result = {
                 "suggested_title": extracted_title,
                 "suggested_author": extracted_author or "Unbekannt",
-                "suggested_category": suggested_cat or "Sonstiges",
+                "suggested_category": joined_categories,
+                "suggested_categories": suggested_cats_list,
                 "confidence": confidence,
                 "page_count": page_count,
                 "isbn": isbn_str,
@@ -208,7 +220,7 @@ class InboxAnalysisWorker(QThread):
                 item_id=item_id,
                 suggested_title=extracted_title,
                 suggested_author=extracted_author or "Unbekannt",
-                suggested_category=suggested_cat,
+                suggested_category=joined_categories,
                 status="ready",
                 isbn=isbn_str,
                 edition=ed_num,
@@ -1272,9 +1284,11 @@ class InboxView(QWidget):
             author_edit.textChanged.connect(_on_author_changed)
             self.table.setCellWidget(row, 2, author_edit)
 
-            # Col 3: Category Combobox (fixed height & clean styling)
+            # Col 3: Category Combobox (with editable multi-category support)
             combo_cat = QComboBox()
+            combo_cat.setEditable(True)
             combo_cat.setFixedHeight(34)
+            combo_cat.setToolTip("Fachbereich(e) für dieses Buch. Bei interdisziplinären Werken können mehrere Kategorien mit Komma getrennt angegeben werden.")
             combo_cat.setStyleSheet("""
                 QComboBox {
                     background-color: #121A2A;
@@ -1288,7 +1302,18 @@ class InboxView(QWidget):
                 QComboBox:hover {
                     border-color: #58A6FF;
                 }
-                QComboBox::drop-down { border: none; }
+                QComboBox QLineEdit {
+                    background: transparent;
+                    color: #58A6FF;
+                    font-size: 11px;
+                    font-weight: 600;
+                    border: none;
+                    padding: 0;
+                }
+                QComboBox QLineEdit:focus {
+                    color: #FFFFFF;
+                }
+                QComboBox::drop-down { border: none; width: 20px; }
                 QComboBox QAbstractItemView {
                     background-color: #121A2A;
                     color: #C9D1D9;
@@ -1300,13 +1325,17 @@ class InboxView(QWidget):
             """)
             combo_cat.addItems(all_cats)
             cur_cat = it.get("suggested_category", "Sonstiges")
-            idx = combo_cat.findText(cur_cat)
-            if idx >= 0:
-                combo_cat.setCurrentIndex(idx)
+            if cur_cat:
+                combo_cat.setEditText(cur_cat)
+            else:
+                idx = combo_cat.findText("Sonstiges")
+                if idx >= 0:
+                    combo_cat.setCurrentIndex(idx)
 
             def _on_cat_changed(txt: str, iid: int = item_id, item_dict: Dict = it) -> None:
-                item_dict["suggested_category"] = txt
-                update_inbox_item(iid, suggested_category=txt)
+                cleaned_txt = txt.strip()
+                item_dict["suggested_category"] = cleaned_txt
+                update_inbox_item(iid, suggested_category=cleaned_txt)
 
             combo_cat.currentTextChanged.connect(_on_cat_changed)
             self.table.setCellWidget(row, 3, combo_cat)
@@ -1470,11 +1499,10 @@ class InboxView(QWidget):
                 # Update category combo
                 combo = self.table.cellWidget(r, 3)
                 if isinstance(combo, QComboBox) and data.get("suggested_category"):
-                    idx = combo.findText(data["suggested_category"])
-                    if idx >= 0:
-                        combo.blockSignals(True)
-                        combo.setCurrentIndex(idx)
-                        combo.blockSignals(False)
+                    new_cat_txt = data["suggested_category"]
+                    combo.blockSignals(True)
+                    combo.setEditText(new_cat_txt)
+                    combo.blockSignals(False)
 
                 # Update status box via unified badge renderer
                 self._items[r].update(data)
@@ -1622,7 +1650,11 @@ class InboxView(QWidget):
 
         title = item.get("suggested_title") or item.get("filename", "")
         author = item.get("suggested_author") or "Unbekannt"
-        category = item.get("suggested_category") or "Sonstiges"
+        raw_category = item.get("suggested_category") or "Sonstiges"
+        categories_list = [c.strip() for c in raw_category.split(",") if c.strip()]
+        if not categories_list:
+            categories_list = ["Sonstiges"]
+        primary_category = categories_list[0]
         page_count = item.get("page_count", 0)
         file_size = item.get("file_size", 0)
         isbn = item.get("isbn")
@@ -1633,7 +1665,7 @@ class InboxView(QWidget):
         # 1. Target directory: subfolder only if user explicitly enabled it
         create_subfolders = getattr(self, "chk_subfolders", None) and self.chk_subfolders.isChecked()
         if create_subfolders:
-            target_dir = os.path.join(self.storage_dir, category)
+            target_dir = os.path.join(self.storage_dir, primary_category)
             try:
                 os.makedirs(target_dir, exist_ok=True)
             except Exception:
@@ -1693,13 +1725,13 @@ class InboxView(QWidget):
             except Exception:
                 pass
 
-        # 4. Insert into main library database
+        # 4. Insert into main library database with all assigned faculties
         book_id = upsert_book(
             file_path=target_path,
             filename=target_filename,
             title=title,
             author=author,
-            categories=[category],
+            categories=categories_list,
             isbn=isbn,
             edition=edition,
             edition_str=edition_str,
@@ -1718,7 +1750,7 @@ class InboxView(QWidget):
                 file_path=target_path,
                 title=title,
                 author=author,
-                category=category,
+                category=primary_category,
                 isbn=isbn
             )
         except Exception:
@@ -1728,7 +1760,7 @@ class InboxView(QWidget):
         delete_inbox_item(item_id)
         self._reload_table_data()
         self.book_filed.emit()
-        self._show_toast("✓ Buch einsortiert", f"'{title[:38]}' ➔ {category}", is_success=True)
+        self._show_toast("✓ Buch einsortiert", f"'{title[:38]}' ➔ {', '.join(categories_list)}", is_success=True)
         return True
 
     def _file_all_ready(self) -> None:

@@ -171,6 +171,107 @@ def classify_textbook(
     return best_faculty, confidence, explanation
 
 
+def classify_textbook_multi(
+    filename: str,
+    text: str,
+    existing_folders: Optional[List[str]] = None,
+    title: Optional[str] = None
+) -> Tuple[List[str], int, str]:
+    """Scores academic faculties and returns all highly relevant matching faculties.
+    
+    Returns:
+        (matching_faculties_list, confidence_percent, explanation)
+    """
+    scoring_name = f"{filename} {title}" if title else filename
+    clean_fn = clean_text_for_scoring(scoring_name)
+    clean_text = text.lower() if text else ""
+
+    # 1. Existing user folder matching
+    matched_existing = []
+    if existing_folders:
+        for ef in existing_folders:
+            ef_clean = ef.strip().lower()
+            if len(ef_clean) > 3:
+                pattern = r'\b' + re.escape(ef_clean) + r'\b'
+                if re.search(pattern, clean_fn):
+                    matched_existing.append(ef.strip())
+        if matched_existing:
+            return matched_existing, 98, f"Übereinstimmung mit Ordner(n) {', '.join(matched_existing)}"
+
+    # 2. Extract Table of Contents / chapter chunk if present
+    toc_chunk = ""
+    if "--- inhaltsverzeichnis" in clean_text or "--- inhalt" in clean_text:
+        match = re.search(r'---\s*inhalt[^\n]*---\n(.*?)(?:---|\Z)', clean_text, re.DOTALL)
+        if match:
+            toc_chunk = match.group(1)
+
+    scores: Dict[str, float] = {cat: 0.0 for cat in STANDARD_CATEGORIES if cat != "Sonstiges"}
+    matched_anchors: Dict[str, List[str]] = {cat: [] for cat in scores}
+
+    # 3. Score each academic faculty
+    for faculty, c_data in COMPILED_FACULTY_KNOWLEDGE.items():
+        union_regex = COMPILED_FACULTY_UNION.get(faculty)
+        if union_regex and not (
+            union_regex.search(clean_fn)
+            or (toc_chunk and union_regex.search(toc_chunk))
+            or (clean_text and union_regex.search(clean_text))
+        ):
+            continue
+
+        for pat_str, regex in c_data.get("anchors", []):
+            pat_clean = pat_str.replace(r"\b", "")
+            if regex.search(clean_fn):
+                scores[faculty] += 12.0
+                matched_anchors[faculty].append(f"Titel: {pat_clean}")
+            elif toc_chunk and regex.search(toc_chunk):
+                scores[faculty] += 8.0
+                matched_anchors[faculty].append(f"Inhalt: {pat_clean}")
+            elif clean_text and regex.search(clean_text):
+                scores[faculty] += 2.5
+                matched_anchors[faculty].append(f"Text: {pat_clean}")
+
+        for _, regex in c_data.get("keywords", []):
+            if regex.search(clean_fn):
+                scores[faculty] += 4.0
+            elif toc_chunk and regex.search(toc_chunk):
+                scores[faculty] += 2.0
+            elif clean_text and regex.search(clean_text):
+                scores[faculty] += 0.5
+
+    # 4. Disambiguation overrides
+    if any(m in clean_fn for m in ["höhlenmenschen", "steinzeit"]):
+        if scores["Mathematik"] >= 10.0 and scores["Geschichte & Politik"] < 20.0:
+            scores["Geschichte & Politik"] = 0.0
+
+    if scores["Biologie & Lebenswissenschaften"] > 0 and scores["Chemie"] > 0:
+        if any(w in clean_fn or w in clean_text for w in ["pflanze", "tier", "zelle", "genom", "organismus", "evolution"]):
+            scores["Biologie & Lebenswissenschaften"] += 5.0
+        elif any(w in clean_fn or w in clean_text for w in ["synthese", "reaktionsmechanismus", "katalysator"]):
+            scores["Chemie"] += 5.0
+
+    if any(w in clean_fn or w in clean_text for w in ["polarforschung", "meereis", "arktis", "antarktis", "ozeanographie", "gletscher"]):
+        scores["Geowissenschaften & Geologie"] += 10.0
+
+    # 5. Extract top categories with significance threshold
+    sorted_faculties = sorted([(k, v) for k, v in scores.items() if v >= 6.0], key=lambda x: x[1], reverse=True)
+    if not sorted_faculties:
+        return ["Sonstiges"], 50, "Allgemeine Zuordnung"
+
+    top_cat = sorted_faculties[0][0]
+    top_score = sorted_faculties[0][1]
+    res_cats = [top_cat]
+
+    for fac, sc in sorted_faculties[1:]:
+        # Secondary faculty must have solid anchor support (>= 10.0 pts or within 60% of top score)
+        if sc >= 10.0 or (sc >= 6.0 and sc >= top_score * 0.6):
+            if fac not in res_cats:
+                res_cats.append(fac)
+
+    conf = 98 if top_score >= 18.0 else (90 if top_score >= 12.0 else 75)
+    expl = f"Zuordnung: {', '.join(res_cats)}"
+    return res_cats, conf, expl
+
+
 def cross_validate_with_classifier(
     original_filename: str,
     pdf_text: str,

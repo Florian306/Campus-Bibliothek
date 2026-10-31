@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.1.4"
+CURRENT_VERSION = "2.1.5"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.4",
+        "version": "2.1.5",
         "date": "Aktuell",
+        "title": "Verfeinerte Multi-Kategorien-Zuordnung & Interdisziplinäre Fächer",
+        "notes": "• Vollständige Multi-Kategorie-Erkennung für interdisziplinäre Bücher (DNB-Katalog, OpenLibrary & Inhaltsverzeichnis-Heuristik)\n• Editierbare Mehrfach-Auswahl in der Posteingangs-Tabelle mit automatischer Primärfach-Gewichtung\n• Saubere Übernahme aller zugewiesenen Fachbereiche in den Bibliothekskatalog",
+    },
+    {
+        "version": "2.1.4",
+        "date": "31.10.2026",
         "title": "Posteingang KI-Analyse Patch",
         "notes": "• Behoben: NameError bei der Duplikatsprüfung im Hintergrund-Analyse-Thread des Posteingangs gefixt\n• Schnelle automatische Extraktion von Metadaten, Autoren und Kategorien für neue PDFs in der Warteschlange",
     },

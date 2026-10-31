@@ -179,13 +179,14 @@ FACULTY_KNOWLEDGE: Dict[str, Dict[str, List[str]]] = {
             r"\bklinische psychologie\b", r"\bclinical psychology\b",
             r"\bpersönlichkeitspsychologie\b", r"\bpersonality psychology\b",
             r"\bgesellschaftswissenschaft(en)?\b", r"\bsozialstruktur\b", r"\bsozialisation\b",
-            r"\bneurowissenschaft(en)?\b", r"\bneuropsychologie\b", r"\bneuropsychology\b"
+            r"\bneurowissenschaft(en)?\b", r"\bneuropsychologie\b", r"\bneuropsychology\b",
+            r"\bbindungstheorie\b", r"\bbindung\b", r"\bsoziale arbeit\b", r"\bsozialpädagogik\b"
         ],
         "keywords": [
             r"\bkognition\b", r"\bwahrnehmung\b", r"\bgedächtnis\b", r"\bemotion(en)?\b",
             r"\bverhalten\b", r"\bpsyche\b", r"\bmotivation\b", r"\bbewusstsein\b",
             r"\bpersönlichkeit\b", r"\binteraktion\b", r"\btrauma\b",
-            r"\bgesellschaft(en)?\b", r"\bsozialer wandel\b"
+            r"\bgesellschaft(en)?\b", r"\bsozialer wandel\b", r"\bkindheit\b", r"\beltern\b"
         ]
     },
     "Wirtschaftswissenschaften": {
@@ -198,12 +199,13 @@ FACULTY_KNOWLEDGE: Dict[str, Dict[str, List[str]]] = {
             r"\bfinanzierung\b", r"\bcorporate finance\b",
             r"\brechnungswesen\b", r"\bfinancial accounting\b", r"\bcontrolling\b",
             r"\bmarketing\b", r"\bunternehmensführung\b", r"\bwirtschaftspolitik\b",
-            r"\bgeldpolitik\b"
+            r"\bgeldpolitik\b", r"\bbuchführung\b", r"\bbuchhaltung\b", r"\bhaushalt\b",
+            r"\bstaatsfinanzen\b", r"\böffentliche finanzen\b", r"\bsteuerlehre\b"
         ],
         "keywords": [
             r"\bbilanzen?\b", r"\binflation\b", r"\bkapitalmarkt\b", r"\binvestition(en)?\b",
             r"\bkostenrechnung\b", r"\bwertschöpfung\b", r"\barbeitsmarkt\b", r"\bsteuern?\b",
-            r"\bmanagement\b"
+            r"\bmanagement\b", r"\bkosten\b", r"\berlös(e)?\b", r"\bfinanz\b"
         ]
     },
     "Rechtswissenschaften & Jura": {
@@ -258,14 +260,15 @@ FACULTY_KNOWLEDGE: Dict[str, Dict[str, List[str]]] = {
             r"\bmilitärgeschichte\b", r"\bmilitary history\b",
             r"\bpolitisches system\b", r"\bpolitical system\b",
             r"\bextremismusforschung\b", r"\bislamismus\b",
-            r"\beuropäische union\b", r"\barchäologie\b", r"\barchaeology\b",
-            r"\bburgenkunde\b", r"\bburgenbuch\b"
+            r"\beuropäische(n)? union\b", r"\beuropapolitik\b", r"\binternationale beziehungen\b",
+            r"\barchäologie\b", r"\barchaeology\b",
+            r"\bburgenkunde\b", r"\bburgenbuch\b", r"\bstaatslehre\b", r"\bparlamentarismus\b"
         ],
         "keywords": [
             r"\bhistorisch(e|er|es)?\b", r"\bgeschichte\b", r"\bpolitik\b", r"\bverfassung\b",
             r"\bdiplomatie\b", r"\breich\b", r"\bkaiser(reich)?\b", r"\bkonflikt(e)?\b",
             r"\bepoche\b", r"\brevolution\b", r"\bideologie\b", r"\bbesatzung\b",
-            r"\bdeportation(en)?\b", r"\barchiv(e)?\b"
+            r"\bdeportation(en)?\b", r"\barchiv(e)?\b", r"\beuropa\b", r"\beu\b"
         ]
     },
     "Philosophie & Religion": {
@@ -287,11 +290,13 @@ FACULTY_KNOWLEDGE: Dict[str, Dict[str, List[str]]] = {
             r"\bdidaktik\b", r"\bdidactics\b", r"\bschulpädagogik\b",
             r"\bunterrichtsgestaltung\b", r"\blehrplan\b", r"\blernpsychologie\b",
             r"\bbildungswissenschaft(en)?\b", r"\bschuldidaktik\b",
-            r"\bwissenschaftlich(es)? arbeiten\b"
+            r"\bwissenschaftlich(es)? arbeiten\b", r"\bbildungsungleichheit\b",
+            r"\berziehung\b", r"\bkindheitsforschung\b", r"\bfrühpädagogik\b"
         ],
         "keywords": [
             r"\blernen\b", r"\bkompetenz(en)?\b", r"\blehrer\b", r"\bschüler\b",
-            r"\bförderung\b", r"\bmethodik\b", r"\bunterrichten\b", r"\bschule\b"
+            r"\bförderung\b", r"\bmethodik\b", r"\bunterrichten\b", r"\bschule\b",
+            r"\bbildung\b", r"\bunterricht\b", r"\bförderprogramm(e)?\b"
         ]
     },
     "Sprach- & Literaturwissenschaft": {
