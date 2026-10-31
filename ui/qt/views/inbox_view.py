@@ -89,6 +89,7 @@ class InboxAnalysisWorker(QThread):
             item_id = item["id"]
             file_path = item["file_path"]
             fn = item["filename"]
+            file_size = item.get("file_size") or (os.path.getsize(file_path) if os.path.exists(file_path) else 0)
 
             if not os.path.exists(file_path):
                 continue

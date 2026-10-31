@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.1.3"
+CURRENT_VERSION = "2.1.4"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.3",
+        "version": "2.1.4",
         "date": "Aktuell",
+        "title": "Posteingang KI-Analyse Patch",
+        "notes": "• Behoben: NameError bei der Duplikatsprüfung im Hintergrund-Analyse-Thread des Posteingangs gefixt\n• Schnelle automatische Extraktion von Metadaten, Autoren und Kategorien für neue PDFs in der Warteschlange",
+    },
+    {
+        "version": "2.1.3",
+        "date": "30.10.2026",
         "title": "Click-To-Edit Eingabefelder im Posteingang & Ruhiger Mauszeiger",
         "notes": "• Neue ClickToEditLineEdit-Komponente für Autor und Titel: Kein Schreibcursor oder Aktivierung beim reinen Maus-Hover\n• Cursor wechselt erst bei explizitem Linksklick in den Schreibmodus\n• Automatisches Zurücksetzen in den gesicherten Ruhemodus bei Fokusverlust",
     },
