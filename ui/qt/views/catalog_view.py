@@ -600,7 +600,8 @@ class CatalogView(QWidget):
                 self.shelf_grid.takeAt(0)
 
             self._shelf_render_idx = 0
-            self._render_next_shelf_batch(batch_size=36)
+            # Instant initial burst: fill 60 cards (~3 full viewports) immediately before starting background timer
+            self._render_next_shelf_batch(batch_size=60)
         finally:
             self.shelf_container.setUpdatesEnabled(True)
 
@@ -623,7 +624,7 @@ class CatalogView(QWidget):
         side_margin = max(8, (leftover + 24) // 2)
         return cols, gap, side_margin
 
-    def _render_next_shelf_batch(self, batch_size: int = 48) -> None:
+    def _render_next_shelf_batch(self, batch_size: int = 60) -> None:
         if not self.filtered_books:
             return
 

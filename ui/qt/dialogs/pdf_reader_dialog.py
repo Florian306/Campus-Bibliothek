@@ -1618,7 +1618,7 @@ class PdfReaderDialog(QDialog):
             self._thumb_thread.wait(200)
 
         self.list_thumbnails.clear()
-        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=None, parent=None)
+        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=80, parent=None)
         _retain_worker(self._thumb_thread)
         self._thumb_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_thread.finished.connect(self._thumb_thread.deleteLater)
