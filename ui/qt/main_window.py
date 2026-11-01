@@ -426,6 +426,13 @@ class CampusMainWindow(QMainWindow):
 
         self._update_inbox_badge(get_inbox_count())
 
+        # Keep Scan & Sync KPI telemetry cards fresh whenever book counts change
+        if "sync" in self._views_cache:
+            try:
+                self.view_sync.load_data()
+            except Exception:
+                pass
+
     def _update_inbox_badge(self, count: int) -> None:
         btn_inbox = self._nav_buttons.get("inbox")
         if btn_inbox:
@@ -592,6 +599,11 @@ class CampusMainWindow(QMainWindow):
             self.view_catalog.load_data()
         if "scripts" in self._views_cache:
             self.view_scripts.load_data()
+        if "sync" in self._views_cache:
+            try:
+                self.view_sync.load_data()
+            except Exception:
+                pass
 
     def _on_space_pressed(self) -> None:
         # Space shortcut is for Catalog and Studienbriefe

@@ -566,7 +566,14 @@ class CatalogView(QWidget):
 
     def _calculate_shelf_geometry(self) -> tuple[int, int, int]:
         """Calculates optimal column count, horizontal gap, and side margin to fill width evenly."""
-        avail_w = max(400, self.shelf_scroll.viewport().width() - 24)
+        # Use real viewport width if active, or query parent QStackedWidget width to prevent 2-column flicker on startup
+        vp_w = self.shelf_scroll.viewport().width()
+        if vp_w < 300:
+            parent_stack = self.parentWidget()
+            if parent_stack and parent_stack.width() > 300:
+                vp_w = parent_stack.width() - 48  # Deduct margins and scrollbar padding
+
+        avail_w = max(400, vp_w - 24)
         card_w = BookCard.CARD_WIDTH  # 176px
         min_gap = 14
         cols = max(2, min(14, (avail_w + min_gap) // (card_w + min_gap)))

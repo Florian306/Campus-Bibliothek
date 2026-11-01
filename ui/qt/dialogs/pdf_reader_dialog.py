@@ -1,8 +1,9 @@
 import os
 import re
+import time
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
-from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QRectF, QEvent
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QPointF, QPoint, QRect, QRectF, QEvent, QTimer
 from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut, QPainter, QPen, QBrush, QPolygonF
 try:
     from PySide6.QtPdf import QPdfDocument, QPdfSearchModel
@@ -2219,10 +2220,35 @@ class PdfReaderDialog(QDialog):
             self.btn_fullscreen.setText("  ⛶ Fenster")
 
     def eventFilter(self, watched, event) -> bool:
-        if self.view and watched == self.view.viewport() and self._selection_overlay:
-            if event.type() in (QEvent.Resize, QEvent.Move, QEvent.Paint):
+        if self.view and watched == self.view.viewport():
+            if self._selection_overlay and event.type() in (QEvent.Resize, QEvent.Move, QEvent.Paint):
                 self._selection_overlay.setGeometry(self.view.viewport().rect())
                 self._selection_overlay.update()
+
+            if event.type() == QEvent.Wheel and self.view.pageMode() == QPdfView.PageMode.SinglePage:
+                delta_y = event.angleDelta().y()
+                vsb = self.view.verticalScrollBar()
+                now = time.time()
+                last_jump = getattr(self, "_last_wheel_page_jump", 0.0)
+
+                # Transition to next page when scrolling down past the bottom
+                if delta_y < 0 and vsb.value() >= vsb.maximum() and (now - last_jump > 0.22):
+                    cur = self.view.pageNavigator().currentPage()
+                    if self.doc and cur < self.doc.pageCount() - 1:
+                        self._last_wheel_page_jump = now
+                        self._jump_to_page(cur + 2)
+                        QTimer.singleShot(0, lambda: self.view.verticalScrollBar().setValue(0))
+                        return True
+
+                # Transition to previous page when scrolling up past the top
+                elif delta_y > 0 and vsb.value() <= vsb.minimum() and (now - last_jump > 0.22):
+                    cur = self.view.pageNavigator().currentPage()
+                    if cur > 0:
+                        self._last_wheel_page_jump = now
+                        self._jump_to_page(cur)
+                        QTimer.singleShot(0, lambda: self.view.verticalScrollBar().setValue(self.view.verticalScrollBar().maximum()))
+                        return True
+
         return super().eventFilter(watched, event)
 
     def _page_layout(self) -> List[Tuple[int, QRectF]]:
