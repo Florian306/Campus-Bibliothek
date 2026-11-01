@@ -507,7 +507,7 @@ def extract_publication_year(
         # 3. Imprint keywords / Publishing houses (up to 110 chars after publisher name)
         pub_years = []
         for m in re.finditer(
-            r'(?:erscheinungsjahr|veröffentlicht|gedruckt|printed|published|springer(?:\s+nature|\s+spektrum|\s+gabler|\s+vieweg|\s+fachmedien)?|hanser|pearson|wiley|thieme|de gruyter|c\.?\s*h\.?\s*beck|hogrefe|kohlhammer|nomos|utb|vahlen|vieweg|rowohlt|suhrkamp|campus|schubert|cornelsen|klett|westermann|oldenbourg|metzler|transcript|reclam|dtv|cambridge|oxford|routledge|elsevier|macmillan|münchen|berlin|heidelberg|wiesbaden|stuttgart|leipzig|frankfurt|köln|göttingen|weinheim|darmstadt|bonn)[^\n\r]{0,110}?\b([12]\d{3})\b',
+            r'(?:erscheinungsjahr|veröffentlicht|gedruckt|printed|published|waxmann|halem|verlag(?:\s+gmbh)?|springer(?:\s+nature|\s+spektrum|\s+gabler|\s+vieweg|\s+fachmedien)?|hanser|pearson|wiley|thieme|de gruyter|c\.?\s*h\.?\s*beck|hogrefe|kohlhammer|nomos|utb|vahlen|vieweg|rowohlt|suhrkamp|campus|schubert|cornelsen|klett|westermann|oldenbourg|metzler|transcript|reclam|dtv|cambridge|oxford|routledge|elsevier|macmillan|münchen|berlin|heidelberg|wiesbaden|stuttgart|leipzig|frankfurt|köln|göttingen|weinheim|darmstadt|bonn)[^\n\r]{0,110}?\b([12]\d{3})\b',
             text,
             re.I,
         ):

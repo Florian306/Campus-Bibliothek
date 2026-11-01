@@ -1530,12 +1530,15 @@ class InboxView(QWidget):
         fp = item.get("file_path", "")
         if not fp or not os.path.exists(fp):
             return
+        cat_val = item.get("suggested_category") or "Sonstiges"
+        cats_list = [c.strip() for c in str(cat_val).replace(" • ", "|").split("|") if c.strip()]
         book_mock = {
             "id": f"inbox_{item.get('id')}",
             "title": item.get("suggested_title") or item.get("filename", ""),
             "author": item.get("suggested_author", "Unbekannt"),
-            "category": item.get("suggested_category", "Sonstiges"),
-            "categories": [item.get("suggested_category", "Sonstiges")],
+            "category": cat_val,
+            "categories_str": cat_val,
+            "categories": cats_list,
             "file_path": fp,
             "filename": item.get("filename", ""),
             "page_count": item.get("page_count", 0),

@@ -236,7 +236,16 @@ class QuickLookDialog(QDialog):
         meta_layout.setSpacing(4)
         meta_layout.setContentsMargins(10, 8, 10, 8)
 
-        cats = (self.book.get("categories_str") or "Sonstiges").replace("|", " • ")
+        raw_cats = self.book.get("categories_str")
+        if not raw_cats:
+            cats_list = self.book.get("categories")
+            if isinstance(cats_list, list) and cats_list:
+                raw_cats = " • ".join([str(c) for c in cats_list if c])
+            elif self.book.get("category"):
+                raw_cats = str(self.book.get("category"))
+            elif self.book.get("suggested_category"):
+                raw_cats = str(self.book.get("suggested_category"))
+        cats = (raw_cats or "Sonstiges").replace("|", " • ")
         ed = f"{self.book.get('edition', 1)}. Auflage ({self.book.get('year') or 'N/A'})"
         pages = f"{self.book.get('page_count', 0)} Seiten"
         isbn = self.book.get("isbn") or "Keine ISBN"
@@ -530,7 +539,8 @@ class QuickLookDialog(QDialog):
         if not cached:
             path = self.book.get("file_path", "")
             if path and os.path.exists(path):
-                cats = (self.book.get("categories_str") or "Sonstiges").split("|")
+                raw_c = self.book.get("categories_str") or self.book.get("category") or self.book.get("suggested_category") or "Sonstiges"
+                cats = [c.strip() for c in str(raw_c).replace(" • ", "|").split("|") if c.strip()]
                 primary_cat = self.book.get("primary_category") or (cats[0].strip() if cats else "Sonstiges")
                 cached = extract_and_cache_cover(
                     book_id=bid,
@@ -1030,9 +1040,21 @@ class QuickLookDialog(QDialog):
         self.book.update(enriched)
         if old_vals != new_vals:
             self.was_data_modified = True
+            raw_cats = self.book.get("categories_str")
+            if not raw_cats:
+                cats_list = self.book.get("categories")
+                if isinstance(cats_list, list) and cats_list:
+                    raw_cats = " • ".join([str(c) for c in cats_list if c])
+                elif self.book.get("category"):
+                    raw_cats = str(self.book.get("category"))
+                elif self.book.get("suggested_category"):
+                    raw_cats = str(self.book.get("suggested_category"))
+            cats = (raw_cats or "Sonstiges").replace("|", " • ")
             ed = f"{self.book.get('edition', 1)}. Auflage ({self.book.get('year') or 'N/A'})"
             pages = f"{self.book.get('page_count', 0)} Seiten"
             isbn = self.book.get("isbn") or "Keine ISBN"
+            if hasattr(self, "lbl_meta_cats"):
+                self.lbl_meta_cats.setText(f"<span style='color:#8B949E;'>Fachbereiche:</span> <span style='color:#F0F6FC;'>{cats}</span>")
             if hasattr(self, "lbl_meta_ed"):
                 self.lbl_meta_ed.setText(f"<span style='color:#8B949E;'>Ausgabe:</span> <span style='color:#F0F6FC;'>{ed} • {pages}</span>")
             if hasattr(self, "lbl_meta_isbn"):
