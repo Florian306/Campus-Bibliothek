@@ -131,11 +131,12 @@ class CampusMainWindow(QMainWindow):
             ("scripts", "notes", "Studienbriefe & Skripte", 2),
             ("inbox", "inbox", "Posteingang", 3),
             ("desk", "desk", "Mein Schreibtisch", 4),
-            ("research", "research", "Paper & Forschung", 5),
-            ("textbooks", "book", "Fachbuch-Suche", 6),
-            ("web", "globe", "Fach-Websuche", 7),
-            ("radar", "radar", "Auflagen-Radar", 8),
-            ("sync", "sync", "Scan & Sync", 9),
+            ("analytics", "research", "Statistik & Analyse", 5),
+            ("research", "research", "Paper & Forschung", 6),
+            ("textbooks", "book", "Fachbuch-Suche", 7),
+            ("web", "globe", "Fach-Websuche", 8),
+            ("radar", "radar", "Auflagen-Radar", 9),
+            ("sync", "sync", "Scan & Sync", 10),
         ]
 
         for key, icon_name, text, idx in nav_items:
@@ -303,6 +304,9 @@ class CampusMainWindow(QMainWindow):
             from ui.qt.views.desk_view import DeskView
             view = DeskView(self.stack)
             view.data_changed.connect(self._on_data_modified)
+        elif key == "analytics":
+            from ui.qt.views.analytics_view import AnalyticsView
+            view = AnalyticsView(self.stack)
         elif key == "research":
             from ui.qt.views.research_view import ResearchView
             view = ResearchView(self.stack)
@@ -424,7 +428,7 @@ class CampusMainWindow(QMainWindow):
                 view.refresh_inbox_view()
             elif hasattr(view, "sync_filesystem_with_db"):
                 view.sync_filesystem_with_db()
-        elif idx in (4, 5, 6, 8, 9):
+        elif idx in (4, 5, 6, 7, 9, 10):
             if hasattr(view, "load_data"):
                 view.load_data()
 
