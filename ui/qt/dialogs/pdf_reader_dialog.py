@@ -481,7 +481,7 @@ class PdfReaderDialog(QDialog):
         # SinglePage renders in < 1 second. Users can switch to MultiPage at any time via the toolbar button.
         book_pages = book.get("page_count", 0) or 0
         book_size = book.get("file_size", 0) or 0
-        self._is_large_book = (book_pages > 250) or (book_size > 80 * 1024 * 1024)
+        self._is_large_book = False
 
         self.doc = QPdfDocument(self) if HAS_QT_PDF else None
         self.view = QPdfView(self) if HAS_QT_PDF else None
@@ -1000,8 +1000,7 @@ class PdfReaderDialog(QDialog):
 
         self.view.setDocument(self.doc)
         self.view.setFocusPolicy(Qt.StrongFocus)
-        initial_page_mode = QPdfView.PageMode.SinglePage if self._is_large_book else QPdfView.PageMode.MultiPage
-        self.view.setPageMode(initial_page_mode)
+        self.view.setPageMode(QPdfView.PageMode.MultiPage)
         self.view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         self.view.setStyleSheet("""
             QPdfView {
