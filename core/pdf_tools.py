@@ -684,6 +684,9 @@ def sort_chapters_with_toc_scan(items: List[Dict[str, Any]]) -> List[Dict[str, A
 
     items.sort(key=_composite_sort_key)
     return items
+
+
+def strip_common_book_prefix(items: List[Dict[str, Any]], book_title: str = "") -> None:
     """Strips redundant shared book title prefixes from bookmark_title across a list of chapter items in-place.
     Example: 'Einfhrung in die Physische Geographie 1 Geomorphologie' -> '1. Geomorphologie'
     """
