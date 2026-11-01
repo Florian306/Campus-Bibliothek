@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.1"
+CURRENT_VERSION = "2.3.2"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.1",
+        "version": "2.3.2",
         "date": "Aktuell",
+        "title": "Cyber-Obsidian Design-Upgrade & Perfektionierte Tabellen-Typografie",
+        "notes": "• Optimierte Spalten-Breiten & Padding: Keine abgeschnittenen Kategorien mehr (z. B. Wirtschaftswissenschaften)\n• Perfekt ausgerichtete Dropdown-Pfeile & zentrierte Status-Badges\n• Pixel-genau zentrierte Checkboxen in Kopfzeile und Datenzeilen\n• Ruhiges, klares Tabellenbild ohne Textversatz",
+    },
+    {
+        "version": "2.3.1",
+        "date": "01.11.2026",
         "title": "Posteingang Stabilitäts-Fix & Duplikatschutz beim Hinzufügen",
         "notes": "• Behoben: NameError 'threading' in refresh_inbox_view gefixt – kein Absturz mehr beim Wechsel in den Posteingang\n• Intelligenter Duplikatschutz: Verhindert Mehrfachkopien gleicher Dateien im Posteingang\n• Ghost-Queue Bereinigung: Nicht mehr existierende Dateien werden automatisch aufgeräumt",
     },

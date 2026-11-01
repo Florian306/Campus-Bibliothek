@@ -373,7 +373,7 @@ class CheckBoxHeader(QHeaderView):
                 painter.setPen(QPen(QColor("#58A6FF"), 1.4))
             else:
                 painter.setBrush(QBrush(QColor("#101726")))
-                painter.setPen(QPen(QColor("#2B3D5E"), 1.2))
+                painter.setPen(QPen(QColor("#304163"), 1.2))
             painter.drawRoundedRect(chk_rect, 4, 4)
 
             if self._checked:
@@ -789,14 +789,16 @@ class InboxView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
 
-        self.table.setColumnWidth(0, 42)
-        self.table.setColumnWidth(2, 190)
-        self.table.setColumnWidth(3, 190)
-        self.table.setColumnWidth(6, 170)
+        self.table.setColumnWidth(0, 48)
+        self.table.setColumnWidth(2, 210)
+        self.table.setColumnWidth(3, 235)
+        self.table.setColumnWidth(4, 135)
+        self.table.setColumnWidth(5, 125)
+        self.table.setColumnWidth(6, 175)
 
         self.table.cellDoubleClicked.connect(self._on_table_cell_double_clicked)
 
@@ -1183,8 +1185,10 @@ class InboxView(QWidget):
             chk_box = QWidget()
             chk_lay = QHBoxLayout(chk_box)
             chk_lay.setContentsMargins(0, 0, 0, 0)
+            chk_lay.setSpacing(0)
             chk_lay.setAlignment(Qt.AlignCenter)
             cb = QCheckBox()
+            cb.setFixedSize(20, 20)
             cb.setCursor(Qt.PointingHandCursor)
             cb.setChecked(is_selected)
             cb.setStyleSheet("""
@@ -1304,7 +1308,7 @@ class InboxView(QWidget):
                     color: #58A6FF;
                     border: 1px solid #23314A;
                     border-radius: 6px;
-                    padding: 0 10px;
+                    padding: 0 8px 0 10px;
                     font-size: 11px;
                     font-weight: 600;
                 }
@@ -1322,7 +1326,20 @@ class InboxView(QWidget):
                 QComboBox QLineEdit:focus {
                     color: #FFFFFF;
                 }
-                QComboBox::drop-down { border: none; width: 20px; }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 18px;
+                    subcontrol-origin: padding;
+                    subcontrol-position: top right;
+                }
+                QComboBox::down-arrow {
+                    width: 0;
+                    height: 0;
+                    border-left: 4px solid transparent;
+                    border-right: 4px solid transparent;
+                    border-top: 5px solid #58A6FF;
+                    margin-right: 6px;
+                }
                 QComboBox QAbstractItemView {
                     background-color: #121A2A;
                     color: #C9D1D9;
@@ -1440,6 +1457,7 @@ class InboxView(QWidget):
 
         if dup:
             lbl_dup = QLabel("⚠️ Duplikat")
+            lbl_dup.setAlignment(Qt.AlignCenter)
             lbl_dup.setToolTip(f"Mögliches Duplikat:\n{dup}")
             lbl_dup.setStyleSheet("""
                 color: #FFA657;
@@ -1447,31 +1465,33 @@ class InboxView(QWidget):
                 background: #2D1A10;
                 border: 1px solid #7C3D18;
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 4px 8px;
                 font-size: 11px;
             """)
             lay.addWidget(lbl_dup)
         elif status == "ready":
             lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
+            lbl_ready.setAlignment(Qt.AlignCenter)
             lbl_ready.setStyleSheet("""
                 color: #3FB950;
                 font-weight: 700;
                 background: #0D2616;
                 border: 1px solid #1E542C;
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 4px 8px;
                 font-size: 11px;
             """)
             lay.addWidget(lbl_ready)
         else:
             lbl_pend = QLabel("⏳ Analysiere...")
+            lbl_pend.setAlignment(Qt.AlignCenter)
             lbl_pend.setStyleSheet("""
                 color: #8B949E;
                 font-weight: 600;
                 background: #141C2B;
                 border: 1px solid #222F47;
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 4px 8px;
                 font-size: 11px;
             """)
             lay.addWidget(lbl_pend)
