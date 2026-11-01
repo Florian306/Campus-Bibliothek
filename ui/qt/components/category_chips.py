@@ -33,6 +33,7 @@ class CategoryChipsBar(QWidget):
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(8)
+        self.setFixedHeight(32)
 
         self._resize_timer = QTimer(self)
         self._resize_timer.setSingleShot(True)

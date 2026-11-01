@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.2.4"
+CURRENT_VERSION = "2.2.5"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
