@@ -416,6 +416,9 @@ def init_library_schema() -> None:
             pass
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_doc_type ON books(doc_type);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_isbn ON books(isbn);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_filename ON books(filename);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_books_filesize ON books(file_size);")
 
         # Auto-classify study guides / scripts (skip manually classified rows)
         try:

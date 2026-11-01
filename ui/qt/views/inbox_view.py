@@ -477,7 +477,8 @@ class InboxView(QWidget):
         self._toast_timer: Optional[QTimer] = None
 
         self._build_ui()
-        self.sync_filesystem_with_db()
+        # Fast non-blocking startup: load cached queue immediately, reconcile in background thread
+        self.refresh_inbox_view()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -898,6 +899,11 @@ class InboxView(QWidget):
     def refresh_inbox_view(self) -> None:
         """Instant UI rendering from cache/DB, then non-blocking background folder sync."""
         self._reload_table_data()
+        # Start workers for any pending items or missing covers
+        pending = [it for it in self._items if it.get("status") == "pending"]
+        if pending:
+            self._start_analysis_worker(pending)
+        self._start_cover_worker(self._items)
         threading.Thread(target=self._background_fs_reconcile, daemon=True).start()
 
     def _background_fs_reconcile(self) -> None:

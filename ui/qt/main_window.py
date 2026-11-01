@@ -197,6 +197,20 @@ class CampusMainWindow(QMainWindow):
         # Select initial view (JARVIS Briefing)
         self._switch_tab("jarvis", 0)
 
+        # Pre-warm Catalog and Inbox in background after initial render so switching is instant without hitch
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(150, self._prewarm_core_views)
+
+    def _prewarm_core_views(self) -> None:
+        """Silently instantiates and warms up Catalog and Inbox so tab clicks are 0ms instant."""
+        try:
+            cat = self._get_or_create_view("catalog", 1)
+            if hasattr(cat, "load_data") and not getattr(cat, "master_books", None):
+                cat.load_data()
+            self._get_or_create_view("inbox", 3)
+        except Exception:
+            pass
+
     def _setup_tray(self) -> None:
         """Configures Windows System Tray icon for instant background reopen."""
         from PySide6.QtWidgets import QSystemTrayIcon, QMenu
