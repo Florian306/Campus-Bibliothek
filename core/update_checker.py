@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.2"
+CURRENT_VERSION = "2.3.3"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.2",
+        "version": "2.3.3",
         "date": "Aktuell",
+        "title": "Smarte Skript-Erkennung im Posteingang & Performance-Boost für das Bücherregal",
+        "notes": "• Smarte Skript-Erkennung: Erkennt Studienbriefe, Kurseinheiten und Vorlesungsskripte schon beim Hinzufügen\n• 1-Klick-Pill-Schalter in der Inbox: Nahtloses Wechseln zwischen 'Fachbuch' und 'Studienbrief / Skript'\n• Sofortiges Bücherregal-Rendering: Kein zögerliches Nach-unten-Wegkleckern der Kacheln mehr\n• Korrigierte 'Zuletzt hinzugefügt'-Sortierung: Sortiert primär nach echtem Aufnahmezeitpunkt in die Bibliothek\n• Bereinigung: Veraltete Legacy-Dateien und ungenutzte Module vollständig entfernt",
+    },
+    {
+        "version": "2.3.2",
+        "date": "01.11.2026",
         "title": "Cyber-Obsidian Design-Upgrade & Perfektionierte Tabellen-Typografie",
         "notes": "• Optimierte Spalten-Breiten & Padding: Keine abgeschnittenen Kategorien mehr (z. B. Wirtschaftswissenschaften)\n• Perfekt ausgerichtete Dropdown-Pfeile & zentrierte Status-Badges\n• Pixel-genau zentrierte Checkboxen in Kopfzeile und Datenzeilen\n• Ruhiges, klares Tabellenbild ohne Textversatz",
     },
