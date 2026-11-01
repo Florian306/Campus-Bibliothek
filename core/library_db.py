@@ -396,6 +396,7 @@ def init_library_schema() -> None:
             ("edition", "INTEGER DEFAULT 1"),
             ("edition_str", "TEXT"),
             ("year", "INTEGER"),
+            ("doc_type", "TEXT DEFAULT 'book'"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE inbox_queue ADD COLUMN {col} {col_type};")
@@ -594,9 +595,13 @@ def compute_file_id(file_path: str, size: int) -> str:
     return h[:16]
 
 
-def detect_document_type(file_path: str, filename: str, title: str, categories: List[str]) -> str:
-    """Classifies document as 'study_script' or 'book' based on path, filename, and category patterns."""
-    text_corpus = f"{file_path} {filename} {title} {' '.join(categories)}".lower()
+def detect_document_type(file_path: str, filename: str, title: str, categories: List[str], text_snippet: str = "", has_isbn: bool = False) -> str:
+    """Classifies document as 'study_script' or 'book' based on path, filename, snippet, and ISBN."""
+    if has_isbn:
+        # Authentic published books almost universally carry an official ISBN
+        return "book"
+
+    text_corpus = f"{file_path} {filename} {title} {' '.join(categories)} {text_snippet[:1500]}".lower()
     script_keywords = (
         "studienbrief",
         "kurseinheit",
@@ -609,6 +614,12 @@ def detect_document_type(file_path: str, filename: str, title: str, categories: 
         "fernuni",
         "hochschule",
         "studium",
+        "lehrstuhl",
+        "prof. dr",
+        "sommersemester",
+        "wintersemester",
+        "ws 20",
+        "sose 20",
     )
     if any(kw in text_corpus for kw in script_keywords):
         return "study_script"
@@ -3051,6 +3062,7 @@ def update_inbox_item(
     page_count: Optional[int] = None,
     confidence: Optional[int] = None,
     duplicate_warning: Optional[str] = None,
+    doc_type: Optional[str] = None,
 ) -> bool:
     """Updates metadata or state of an item in the Inbox queue."""
     conn = get_db_connection()
@@ -3091,6 +3103,9 @@ def update_inbox_item(
             if duplicate_warning is not None:
                 updates.append("duplicate_warning = ?")
                 params.append(duplicate_warning)
+            if doc_type is not None:
+                updates.append("doc_type = ?")
+                params.append(doc_type)
 
             if not updates:
                 return True

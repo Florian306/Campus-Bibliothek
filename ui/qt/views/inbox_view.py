@@ -50,6 +50,7 @@ from core.library_db import (
     check_inbox_duplicate,
     upsert_book,
     get_category_counts,
+    detect_document_type,
 )
 from ai.pdf_extractor import (
     extract_pdf_preview_text,
@@ -201,6 +202,16 @@ class InboxAnalysisWorker(QThread):
                 file_size=file_size,
             )
 
+            # 6. Auto-detect document type (study_script vs book)
+            detected_type = detect_document_type(
+                file_path=file_path,
+                filename=fn,
+                title=extracted_title,
+                categories=suggested_cats_list,
+                text_snippet=text_snippet or front_text,
+                has_isbn=bool(isbn_str)
+            )
+
             analysis_result = {
                 "suggested_title": extracted_title,
                 "suggested_author": extracted_author or "Unbekannt",
@@ -213,6 +224,7 @@ class InboxAnalysisWorker(QThread):
                 "edition_str": ed_str,
                 "year": pub_year,
                 "duplicate_warning": dup_warning,
+                "doc_type": detected_type,
                 "status": "ready"
             }
 
@@ -230,6 +242,7 @@ class InboxAnalysisWorker(QThread):
                 page_count=page_count,
                 confidence=int(confidence * 100) if confidence <= 1.0 else int(confidence),
                 duplicate_warning=dup_warning,
+                doc_type=detected_type,
             )
 
             self.item_analyzed.emit(item_id, analysis_result)
@@ -1053,6 +1066,61 @@ class InboxView(QWidget):
             """)
             meta_row.addWidget(lbl_isbn)
 
+        # Interactive Document Type Toggle Pill (Fachbuch vs Studienbrief / Skript)
+        cur_doctype = item.get("doc_type") or "book"
+        btn_dtype = QPushButton()
+        btn_dtype.setCursor(Qt.PointingHandCursor)
+        btn_dtype.setFixedHeight(18)
+
+        def _update_dtype_pill(dtype: str):
+            if dtype == "study_script":
+                btn_dtype.setText("📄 Studienbrief / Skript")
+                btn_dtype.setToolTip("Dokumenttyp: Studienbrief / Vorlesungsskript (landet direkt im Skript-Bereich). Klicke zum Wechseln auf Fachbuch.")
+                btn_dtype.setStyleSheet("""
+                    QPushButton {
+                        color: #FFA657;
+                        background-color: #2D1A10;
+                        border: 1px solid #7C3D18;
+                        border-radius: 3px;
+                        padding: 0 6px;
+                        font-size: 10px;
+                        font-weight: 700;
+                    }
+                    QPushButton:hover {
+                        border-color: #FFB370;
+                        background-color: #3D2214;
+                    }
+                """)
+            else:
+                btn_dtype.setText("📘 Fachbuch")
+                btn_dtype.setToolTip("Dokumenttyp: Fachbuch / Lehrbuch (landet im Hauptkatalog). Klicke zum Wechseln auf Studienbrief / Skript.")
+                btn_dtype.setStyleSheet("""
+                    QPushButton {
+                        color: #58A6FF;
+                        background-color: #101F35;
+                        border: 1px solid #23426F;
+                        border-radius: 3px;
+                        padding: 0 6px;
+                        font-size: 10px;
+                        font-weight: 700;
+                    }
+                    QPushButton:hover {
+                        border-color: #79C0FF;
+                        background-color: #172D4D;
+                    }
+                """)
+
+        _update_dtype_pill(cur_doctype)
+
+        def _on_dtype_clicked(iid: int = item_id, it_dict: Dict = item):
+            new_type = "book" if it_dict.get("doc_type") == "study_script" else "study_script"
+            it_dict["doc_type"] = new_type
+            update_inbox_item(iid, doc_type=new_type)
+            _update_dtype_pill(new_type)
+
+        btn_dtype.clicked.connect(lambda: _on_dtype_clicked(item_id, item))
+        meta_row.addWidget(btn_dtype)
+
         meta_row.addStretch()
         info_box.addLayout(meta_row)
 
@@ -1760,7 +1828,8 @@ class InboxView(QWidget):
             except Exception:
                 pass
 
-        # 4. Insert into main library database with all assigned faculties
+        # 4. Insert into main library database with all assigned faculties and doc_type
+        doc_type = item.get("doc_type") or "book"
         book_id = upsert_book(
             file_path=target_path,
             filename=target_filename,
@@ -1775,7 +1844,8 @@ class InboxView(QWidget):
             file_size=os.path.getsize(target_path) if os.path.exists(target_path) else file_size,
             file_mtime=os.path.getmtime(target_path) if os.path.exists(target_path) else 0.0,
             confidence=item.get("confidence", 90),
-            audit_trail="Importiert via Campus-Inbox"
+            audit_trail="Importiert via Campus-Inbox",
+            doc_type=doc_type
         )
 
         # 5. Pre-generate and cache book cover thumbnail
