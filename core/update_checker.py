@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.0"
+CURRENT_VERSION = "2.3.1"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.0",
+        "version": "2.3.1",
         "date": "Aktuell",
+        "title": "Posteingang Stabilitäts-Fix & Duplikatschutz beim Hinzufügen",
+        "notes": "• Behoben: NameError 'threading' in refresh_inbox_view gefixt – kein Absturz mehr beim Wechsel in den Posteingang\n• Intelligenter Duplikatschutz: Verhindert Mehrfachkopien gleicher Dateien im Posteingang\n• Ghost-Queue Bereinigung: Nicht mehr existierende Dateien werden automatisch aufgeräumt",
+    },
+    {
+        "version": "2.3.0",
+        "date": "01.11.2026",
         "title": "Herausgeber-Erkennung beim Zusammenführen & Perfektioniertes Tabellen-Layout",
         "notes": "• Intelligente Autoren- und Herausgebererkennung ((Hrsg.) / Editoren / DNB) beim Verschmelzen von Buchkapiteln\n• Exakte vertikale und horizontale Ausrichtung aller Spalten in der Posteingangs-Tabelle (Checkboxen, Status-Pills, Aktionen)\n• Dynamische Spaltenbreiten verhindern Textabschneidungen oder ungewollte Versätze",
     },

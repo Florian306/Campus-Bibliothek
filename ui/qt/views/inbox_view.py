@@ -7,6 +7,7 @@ and 1-click filing into the main library directory on Google Drive or local disk
 import os
 import shutil
 import subprocess
+import threading
 from typing import Dict, List, Optional, Set
 from PySide6.QtCore import Qt, QThread, Signal, QSize, QRect, QPoint, QModelIndex, QTimer
 from PySide6.QtGui import (
@@ -856,6 +857,12 @@ class InboxView(QWidget):
 
             # Avoid self-copy
             if os.path.abspath(src).lower() != os.path.abspath(dest).lower():
+                # Check if exact same file is already registered in inbox queue
+                existing_in_queue = {it["file_path"].lower() for it in get_inbox_queue()}
+                if os.path.abspath(dest).lower() in existing_in_queue:
+                    # Same file already in inbox, don't duplicate copy
+                    continue
+
                 # Handle filename collision
                 base_name, ext = os.path.splitext(fn)
                 counter = 1
