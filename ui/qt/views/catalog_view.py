@@ -556,7 +556,12 @@ class CatalogView(QWidget):
         if self.sort_mode == "title_desc":
             books.sort(key=lambda x: (x.get("title") or "").lower(), reverse=True)
         elif self.sort_mode == "recent":
-            books.sort(key=lambda x: float(x.get("file_mtime") or 0.0), reverse=True)
+            # Primary sort by date_added (when user added/imported the book to the library),
+            # with fallback to file_mtime (file modification time)
+            books.sort(
+                key=lambda x: float(x.get("date_added") or x.get("file_mtime") or 0.0),
+                reverse=True
+            )
         elif self.sort_mode == "year_desc":
             books.sort(key=lambda x: (int(x.get("year") or 0), int(x.get("edition") or 1)), reverse=True)
         elif self.sort_mode == "pages_desc":
