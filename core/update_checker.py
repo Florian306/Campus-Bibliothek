@@ -10,14 +10,20 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.2.6"
+CURRENT_VERSION = "2.2.7"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.6",
+        "version": "2.2.7",
         "date": "Aktuell",
-        "title": "Turbo Fast-Start für Großbücher & Cloud-PDFs",
-        "notes": "• Blitzschnelles Öffnen großer Fachbücher (> 250 Seiten / > 80 MB wie z. B. 'Das Mittelmeer' mit 920 MB) in unter 2 Sekunden statt 20s Wartezeit\n• Intelligenter SinglePage-Start verhindert das blockierende Vorberechnen tausender Seitenhöhen\n• Volle Flexibilität mit 1-Klick-Umschaltung auf fortlaufendes Scrollen (Strg+M)",
+        "title": "Gezieltes Zusammenführen & Intelligente Buch-Kapitelsortierung",
+        "notes": "• PDF-Merge-Studio lädt bei Auswahl präzise nur die angehakten Kapitel/Dateien aus dem Posteingang statt des gesamten Ordners\n• Smarte Frontmatter-Erkennung: Deckblatt/BEGINN, Inhalt/TOC und Vorwort sortieren sich automatisch an den Anfang vor Teil I..VI\n• Dynamische Button-Beschriftung im Posteingang passend zur Anzahl ausgewählter Kapitel",
+    },
+    {
+        "version": "2.2.6",
+        "date": "01.11.2026",
+        "title": "Turbo-Katalog & Zero-Freeze Großbuch-Architektur",
+        "notes": "• Sofortiges, ruckelfreies Umschalten in den Katalog ohne Layout-Zucken der Kacheln\n• Zuverlässiges Öffnen riesiger Fachbücher (> 1200 Seiten / fast 1 GB) im SinglePage-Modus ohne Einfrieren oder Absturz",
     },
     {
         "version": "2.1.5",

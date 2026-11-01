@@ -517,12 +517,12 @@ class InboxView(QWidget):
         top_row.addLayout(title_box)
         top_row.addStretch()
 
-        btn_merge_studio = QPushButton("  Kapitel / PDFs zusammenführen")
-        btn_merge_studio.setIcon(create_vector_icon("merge", "#D2A8FF", 14))
-        btn_merge_studio.setCursor(Qt.PointingHandCursor)
-        btn_merge_studio.setFixedHeight(34)
-        btn_merge_studio.setToolTip("Mehrere Einzelkapitel oder PDF-Dateien inklusive Inhaltsverzeichnis zu einem Gesamtbuch verschmelzen")
-        btn_merge_studio.setStyleSheet("""
+        self.btn_merge_studio = QPushButton("  Kapitel / PDFs zusammenführen")
+        self.btn_merge_studio.setIcon(create_vector_icon("merge", "#D2A8FF", 14))
+        self.btn_merge_studio.setCursor(Qt.PointingHandCursor)
+        self.btn_merge_studio.setFixedHeight(34)
+        self.btn_merge_studio.setToolTip("Mehrere Einzelkapitel oder PDF-Dateien inklusive Inhaltsverzeichnis zu einem Gesamtbuch verschmelzen")
+        self.btn_merge_studio.setStyleSheet("""
             QPushButton {
                 background-color: #1A162B;
                 color: #D2A8FF;
@@ -538,8 +538,8 @@ class InboxView(QWidget):
                 color: #FFFFFF;
             }
         """)
-        btn_merge_studio.clicked.connect(self._open_merge_studio)
-        top_row.addWidget(btn_merge_studio)
+        self.btn_merge_studio.clicked.connect(self._open_merge_studio)
+        top_row.addWidget(self.btn_merge_studio)
 
         btn_open_folder = QPushButton("  _Inbox im Explorer")
         btn_open_folder.setIcon(create_vector_icon("export", "#58A6FF", 13))
@@ -1103,9 +1103,13 @@ class InboxView(QWidget):
         if count > 0:
             self.btn_batch_delete.setEnabled(True)
             self.btn_batch_delete.setText(f"  {count} Ausgewählte löschen")
+            if hasattr(self, "btn_merge_studio"):
+                self.btn_merge_studio.setText(f"  {count} ausgewählte PDFs zusammenführen" if count > 1 else "  Ausgewählte PDF zusammenführen")
         else:
             self.btn_batch_delete.setEnabled(False)
             self.btn_batch_delete.setText("  Ausgewählte löschen")
+            if hasattr(self, "btn_merge_studio"):
+                self.btn_merge_studio.setText("  Kapitel / PDFs zusammenführen")
 
     def _delete_selected_items(self) -> None:
         """Deletes all currently checked books from inbox queue and physical disk."""
@@ -1797,15 +1801,23 @@ class InboxView(QWidget):
             self._reload_table_data()
 
     def _open_merge_studio(self) -> None:
-        """Opens the PDF Merge Studio preloaded with current Inbox PDFs."""
+        """Opens the PDF Merge Studio preloaded with selected or current Inbox PDFs."""
         from ui.qt.dialogs.pdf_merge_dialog import PdfMergeDialog
-        inbox_paths = [it["file_path"] for it in self._items if os.path.isfile(it.get("file_path", ""))]
+        
+        # If user checked specific items, only load those!
+        if self._selected_item_ids:
+            selected_items = [it for it in self._items if it.get("id") in self._selected_item_ids and os.path.isfile(it.get("file_path", ""))]
+            inbox_paths = [it["file_path"] for it in selected_items]
+        else:
+            inbox_paths = [it["file_path"] for it in self._items if os.path.isfile(it.get("file_path", ""))]
+
         dlg = PdfMergeDialog(
             initial_files=inbox_paths,
             from_inbox=len(inbox_paths) > 0,
             parent=self.window(),
         )
         if dlg.exec():
+            self._selected_item_ids.clear()
             self.sync_filesystem_with_db()
             self.book_filed.emit()
 

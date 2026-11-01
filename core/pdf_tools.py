@@ -445,9 +445,9 @@ def suggest_chapter_sort_key(file_path: str, bookmark_title: str = "") -> Tuple[
         return (3, 9900, filename.lower())
 
     # 1. Check Frontmatter (Group 0) with exact book publishing sequence
-    if any(k in combined for k in ["front_cover", "front cover", "frontcover", "deckblatt", "umschlag", "cover"]):
+    if any(k in combined for k in ["front_cover", "front cover", "frontcover", "deckblatt", "umschlag", "cover", "beginn", "start", "00_cover"]):
         return (0, 10, filename.lower())
-    if any(k in combined for k in ["titelei", "schmutztitel", "titelseite"]) or re.search(r'(?:^|[_.\s-])titel$', filename.lower()):
+    if any(k in combined for k in ["titelei", "schmutztitel", "titelseite"]) or re.search(r'(?:^|[_.\s-])titel(?:blatt)?(?:\.pdf)?$', filename.lower()):
         return (0, 20, filename.lower())
     if any(k in combined for k in ["impressum", "copyright"]):
         return (0, 30, filename.lower())
@@ -455,10 +455,12 @@ def suggest_chapter_sort_key(file_path: str, bookmark_title: str = "") -> Tuple[
         return (0, 35, filename.lower())
     if any(k in combined for k in ["vorwort", "preface", "foreword", "geleitwort", "danksagung"]):
         return (0, 40, filename.lower())
-    if any(k in combined for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "contents"]):
+    if any(k in combined for k in ["inhaltsverzeichnis", "inhaltsübersicht", "table of contents", "contents"]) or re.search(r'(?:^|[_.\s-])(?:inhalt|toc)(?:[_.\s-]|$)', combined):
         return (0, 50, filename.lower())
-    if any(k in combined for k in ["abkürzungsverzeichnis", "symbolverzeichnis"]):
+    if any(k in combined for k in ["abkürzungsverzeichnis", "symbolverzeichnis", "abkuerzungsverzeichnis"]):
         return (0, 60, filename.lower())
+    if re.search(r'(?:^|[_.\s-])(?:einleitung|einführung|einfuehrung|introduction)\b', combined) and not re.search(r'(?:kapitel|chapter|teil|part)\s*\d', combined):
+        return (0, 70, filename.lower())
 
     # 2. Check Backmatter (Group 3) with exact book publishing sequence
     if any(k in combined for k in ["lösungen", "loesungen", "solutions", "antworten"]):
