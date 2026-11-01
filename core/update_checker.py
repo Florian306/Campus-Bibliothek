@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.2.7"
+CURRENT_VERSION = "2.2.8"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.2.7",
+        "version": "2.2.8",
         "date": "Aktuell",
+        "title": "TOC-Deep-Scan & Automatische Inhaltsverzeichnis-Sortierung",
+        "notes": "• Automatischer Deep-Scan des Inhaltsverzeichnisses (TOC) zur Bestimmung der perfekten Buch-Reihenfolge\n• Analyse gedruckter Buch-Seitenzahlen auf den ersten Seiten aller Kapitel als treffsichere Sortierbasis\n• Deckblatt, Frontmatter, Inhaltsverzeichnis, Vorwort und Hauptteile ordnen sich vollautomatisch akkurat an",
+    },
+    {
+        "version": "2.2.7",
+        "date": "01.11.2026",
         "title": "Gezieltes Zusammenführen & Intelligente Buch-Kapitelsortierung",
         "notes": "• PDF-Merge-Studio lädt bei Auswahl präzise nur die angehakten Kapitel/Dateien aus dem Posteingang statt des gesamten Ordners\n• Smarte Frontmatter-Erkennung: Deckblatt/BEGINN, Inhalt/TOC und Vorwort sortieren sich automatisch an den Anfang vor Teil I..VI\n• Dynamische Button-Beschriftung im Posteingang passend zur Anzahl ausgewählter Kapitel",
     },

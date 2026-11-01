@@ -565,7 +565,125 @@ def suggest_chapter_sort_key(file_path: str, bookmark_title: str = "") -> Tuple[
     return (2, 5000, filename.lower())
 
 
-def strip_common_book_prefix(items: List[Dict[str, Any]], book_title: str = "") -> None:
+def sort_chapters_with_toc_scan(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sorts chapter items using a multi-stage intelligence pipeline:
+    1. Direct scan for Table of Contents (Inhaltsverzeichnis) PDF or TOC bookmarks.
+    2. Printed page number inspection across the initial pages of each PDF.
+    3. Structural Frontmatter/Chapter/Backmatter heuristic ordering.
+    """
+    if len(items) < 2:
+        return items
+
+    # A. Search for a Table of Contents PDF among items
+    toc_text = ""
+    toc_path = None
+    for it in items:
+        fp = it.get("file_path", "")
+        fn = os.path.basename(fp).lower()
+        if any(k in fn for k in ["inhalt", "toc", "contents", "inhaltsverzeichnis", "inhaltsübersicht"]):
+            if fitz is not None and os.path.isfile(fp):
+                try:
+                    doc = fitz.open(fp)
+                    toc_text = "\n".join(page.get_text("text") for page in doc)
+                    doc.close()
+                    toc_path = os.path.abspath(fp).lower()
+                    break
+                except Exception:
+                    pass
+
+    # B. Extract printed page numbers on initial pages of all items
+    printed_pages: Dict[str, int] = {}
+    if fitz is not None:
+        for it in items:
+            fp = it.get("file_path", "")
+            if os.path.isfile(fp):
+                norm_p = os.path.abspath(fp).lower()
+                try:
+                    doc = fitz.open(fp)
+                    found_pg = None
+                    for p_idx in range(min(4, len(doc))):
+                        page_text = doc[p_idx].get_text("text") or ""
+                        lines = [ln.strip() for ln in page_text.splitlines() if ln.strip()]
+                        for ln in (lines[:3] + lines[-3:]):
+                            m_pg = re.match(r'^(?:seite\s*|s\.\s*|page\s*|p\.\s*)?(\d{1,4})$', ln, re.IGNORECASE)
+                            if m_pg:
+                                val = int(m_pg.group(1))
+                                if 1 <= val <= 3500:
+                                    found_pg = val
+                                    break
+                        if found_pg is not None:
+                            break
+                    doc.close()
+                    if found_pg is not None:
+                        printed_pages[norm_p] = found_pg
+                except Exception:
+                    pass
+
+    # C. Calculate position in TOC text if TOC was found
+    toc_positions: Dict[str, int] = {}
+    if toc_text:
+        low_toc = toc_text.lower()
+        for it in items:
+            fp = it.get("file_path", "")
+            norm_p = os.path.abspath(fp).lower()
+            if norm_p == toc_path:
+                toc_positions[norm_p] = 0
+                continue
+
+            fn = os.path.splitext(os.path.basename(fp))[0]
+            bm = it.get("bookmark_title", "")
+            best_pos = -1
+
+            # Check Roman parts (Teil I, Teil II, Kapitel 1, etc.)
+            m_part = re.search(r'(?:Teil|Kapitel|Band|Chapter|Part)\s+([IVX0-9]+)', f"{fn} {bm}", re.IGNORECASE)
+            if m_part:
+                needle = f"{m_part.group(0).lower()}"
+                p = low_toc.find(needle)
+                if p != -1:
+                    best_pos = p
+
+            # Check Vorwort / Geleitwort
+            if best_pos == -1 and any(k in fn.lower() for k in ["vorwort", "preface", "foreword"]):
+                p = low_toc.find("vorwort")
+                if p != -1:
+                    best_pos = p
+
+            # Match salient keyword tokens from bookmark / filename
+            if best_pos == -1:
+                tokens = [t for t in re.split(r'[\s_.-]+', f"{bm} {fn}") if len(t) > 4 and t.lower() not in ["handbuch", "buch", "kapitel", "teil"]]
+                for t in tokens:
+                    p = low_toc.find(t.lower())
+                    if p != -1 and (best_pos == -1 or p < best_pos):
+                        best_pos = p
+
+            if best_pos != -1:
+                toc_positions[norm_p] = best_pos
+
+    # D. Final Composite Sorting Function
+    def _composite_sort_key(item: Dict[str, Any]):
+        fp = item.get("file_path", "")
+        norm_p = os.path.abspath(fp).lower()
+        fn = os.path.basename(fp)
+        bm = item.get("bookmark_title", "")
+        base_group, base_order, name_order = suggest_chapter_sort_key(fp, bm)
+
+        # Front cover always comes first
+        if base_group == 0 and base_order <= 20:
+            return (0, base_order, name_order)
+
+        # If TOC position exists, use it with high precedence
+        if norm_p in toc_positions:
+            return (1, toc_positions[norm_p], name_order)
+
+        # If printed book page number exists, use it
+        if norm_p in printed_pages:
+            return (1, printed_pages[norm_p] * 10, name_order)
+
+        # Fallback to standard chapter sort key
+        return (base_group, base_order, name_order)
+
+    items.sort(key=_composite_sort_key)
+    return items
     """Strips redundant shared book title prefixes from bookmark_title across a list of chapter items in-place.
     Example: 'Einfhrung in die Physische Geographie 1 Geomorphologie' -> '1. Geomorphologie'
     """

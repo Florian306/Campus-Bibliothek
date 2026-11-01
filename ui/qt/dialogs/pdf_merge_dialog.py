@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from core.pdf_tools import (
     get_pdf_page_count,
     suggest_chapter_sort_key,
+    sort_chapters_with_toc_scan,
     clean_chapter_bookmark_title,
     strip_common_book_prefix,
     merge_pdf_files,
@@ -1030,7 +1031,7 @@ class PdfMergeDialog(QDialog):
         self._infer_book_metadata_if_empty()
 
         if auto_sort and len(self._items) > 1:
-            self._items.sort(key=lambda x: suggest_chapter_sort_key(x["file_path"], x["bookmark_title"]))
+            self._items = sort_chapters_with_toc_scan(self._items)
 
         # Strip redundant shared book title prefixes from chapter bookmarks (e.g. "Einfhrung in die Physische Geographie ...")
         strip_common_book_prefix(self._items, self.input_title.text().strip())
@@ -1137,7 +1138,7 @@ class PdfMergeDialog(QDialog):
     def _auto_sort_chapters(self) -> None:
         if len(self._items) < 2:
             return
-        self._items.sort(key=lambda x: suggest_chapter_sort_key(x["file_path"], x["bookmark_title"]))
+        self._items = sort_chapters_with_toc_scan(self._items)
         strip_common_book_prefix(self._items, self.input_title.text().strip())
         self._refresh_table()
 
