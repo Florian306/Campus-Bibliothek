@@ -484,3 +484,4 @@ class AnalyticsView(QWidget):
         lbl_s.setStyleSheet("color: #8B949E;")
         lay.addWidget(lbl_s)
         return f
+

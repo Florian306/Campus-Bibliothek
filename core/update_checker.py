@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.3"
+CURRENT_VERSION = "2.3.4"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.3",
+        "version": "2.3.4",
         "date": "Aktuell",
+        "title": "Neuer Statistik & Analyse Tab, Instant-Update-Erkennung & Pre-Warming",
+        "notes": "• Neuer Statistik & Analyse Tab: Interaktives Cyber-Obsidian Dashboard mit Bestands-KPIs, Fakultäten-Verteilung, Publikations-Histogramm und Bibliotheks-Rekorden\n• Sofortige Update-Erkennung: Schnelle Hintergrund-Prüfung direkt beim App-Start mit leuchtendem Nav-Badge und 1-Klick-Update-Toast\n• Zero-Hitch Pre-Warming: Kein Ruckeln mehr beim ersten Öffnen von Katalog und Posteingang dank asynchronem Hintergrund-Cachen\n• Optimierte SQLite-Indizes: Blitzschnelle Duplikat- und Metadatenprüfungen in der Datenbank",
+    },
+    {
+        "version": "2.3.3",
+        "date": "01.11.2026",
         "title": "Smarte Skript-Erkennung im Posteingang & Performance-Boost für das Bücherregal",
         "notes": "• Smarte Skript-Erkennung: Erkennt Studienbriefe, Kurseinheiten und Vorlesungsskripte schon beim Hinzufügen\n• 1-Klick-Pill-Schalter in der Inbox: Nahtloses Wechseln zwischen 'Fachbuch' und 'Studienbrief / Skript'\n• Sofortiges Bücherregal-Rendering: Kein zögerliches Nach-unten-Wegkleckern der Kacheln mehr\n• Korrigierte 'Zuletzt hinzugefügt'-Sortierung: Sortiert primär nach echtem Aufnahmezeitpunkt in die Bibliothek\n• Bereinigung: Veraltete Legacy-Dateien und ungenutzte Module vollständig entfernt",
     },
