@@ -456,7 +456,7 @@ class CampusMainWindow(QMainWindow):
                 btn_inbox.setText("  Posteingang")
 
     def _start_startup_update_check(self) -> None:
-        """Starts background update polling (immediately on boot, then every 30 minutes)."""
+        """Starts ultra-fast background update polling (immediately on boot, then every 10 minutes)."""
         import threading
         from PySide6.QtCore import QTimer
         from core.update_checker import check_for_updates
@@ -464,24 +464,44 @@ class CampusMainWindow(QMainWindow):
         self._last_notified_update = None
 
         def _worker():
-            avail, latest, url, notes = check_for_updates()
-            if avail and latest and latest != self._last_notified_update:
-                self._last_notified_update = latest
-                QTimer.singleShot(0, lambda: self._on_update_available_badge(latest, url, notes))
+            try:
+                avail, latest, url, notes = check_for_updates()
+                if avail and latest and latest != self._last_notified_update:
+                    self._last_notified_update = latest
+                    QTimer.singleShot(0, lambda: self._on_update_available_badge(latest, url or "", notes or ""))
+            except Exception:
+                pass
 
-        # Check in background immediately
+        # Check in background immediately without waiting for any tab clicks
         threading.Thread(target=_worker, daemon=True).start()
 
-        # Recurring background timer every 30 minutes (1800000 ms)
+        # Recurring background timer every 10 minutes (600000 ms) instead of 30 minutes
         self._update_poll_timer = QTimer(self)
         self._update_poll_timer.timeout.connect(lambda: threading.Thread(target=_worker, daemon=True).start())
-        self._update_poll_timer.start(30 * 60 * 1000)
+        self._update_poll_timer.start(10 * 60 * 1000)
 
     def _on_update_available_badge(self, latest_ver: str, url: str = "", notes: str = "") -> None:
         """Updates the sidebar badge and shows non-intrusive toast notification and tray alert."""
         btn_sync = self._nav_buttons.get("sync")
         if btn_sync and latest_ver:
             btn_sync.setText(f"  Scan && Sync  •  v{latest_ver} ⬆")
+            btn_sync.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F4529, stop:1 #132A19);
+                    color: #3FB950;
+                    border: 1px solid #2EA043;
+                    border-radius: 7px;
+                    text-align: left;
+                    padding-left: 14px;
+                    font-weight: 700;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #235431;
+                    border-color: #3FB950;
+                    color: #FFFFFF;
+                }
+            """)
 
         # Notify sync view if it was already created
         if "sync" in self._views_cache:
@@ -503,10 +523,10 @@ class CampusMainWindow(QMainWindow):
             except Exception:
                 pass
 
-        # In-App Toast Banner
-        self._show_update_toast(latest_ver)
+        # In-App Floating Toast Banner with direct 1-click update
+        self._show_update_toast(latest_ver, url, notes)
 
-    def _show_update_toast(self, latest_ver: str) -> None:
+    def _show_update_toast(self, latest_ver: str, url: str = "", notes: str = "") -> None:
         """Displays an elegant, floating toast in the bottom right corner with direct 1-click update."""
         if hasattr(self, "_toast_widget") and self._toast_widget:
             try:
@@ -529,17 +549,29 @@ class CampusMainWindow(QMainWindow):
 
         from ui.qt.icons import create_vector_pixmap
         lbl_icon = QLabel()
-        lbl_icon.setPixmap(create_vector_pixmap("research", "#58A6FF", 18))
+        lbl_icon.setPixmap(create_vector_pixmap("sync", "#58A6FF", 20))
         lbl_icon.setStyleSheet("border: none; background: transparent;")
         layout.addWidget(lbl_icon)
 
-        lbl_msg = QLabel(f"<b>Update v{latest_ver} bereit!</b><br><span style='color: #8B949E; font-size: 11px;'>Jetzt ohne Neustart verfügbar.</span>")
+        lbl_msg = QLabel(f"<b>Campus-Bibliothek v{latest_ver} verfügbar!</b><br><span style='color: #8B949E; font-size: 11px;'>Ein Klick genügt zum Aktualisieren.</span>")
         lbl_msg.setStyleSheet("color: #F0F6FC; border: none; background: transparent; font-size: 12px;")
         layout.addWidget(lbl_msg)
 
-        btn_open = QPushButton("Jetzt ansehen")
-        btn_open.setCursor(Qt.PointingHandCursor)
-        btn_open.setStyleSheet("""
+        def _direct_update_or_switch():
+            self._toast_widget.hide()
+            if url:
+                try:
+                    from ui.qt.dialogs.auto_updater_dialog import UpdateProgressDialog
+                    dlg = UpdateProgressDialog(self, url, latest_ver)
+                    dlg.exec()
+                    return
+                except Exception:
+                    pass
+            self._switch_tab("sync", 9)
+
+        btn_install = QPushButton("Jetzt aktualisieren")
+        btn_install.setCursor(Qt.PointingHandCursor)
+        btn_install.setStyleSheet("""
             QPushButton {
                 background-color: #238636;
                 color: #FFFFFF;
@@ -547,14 +579,14 @@ class CampusMainWindow(QMainWindow):
                 font-size: 11px;
                 border: 1px solid #2EA043;
                 border-radius: 6px;
-                padding: 6px 12px;
+                padding: 6px 14px;
             }
             QPushButton:hover {
                 background-color: #2EA043;
             }
         """)
-        btn_open.clicked.connect(lambda: [self._switch_tab("sync", 4), self._toast_widget.hide()])
-        layout.addWidget(btn_open)
+        btn_install.clicked.connect(_direct_update_or_switch)
+        layout.addWidget(btn_install)
 
         btn_close = QPushButton("✕")
         btn_close.setCursor(Qt.PointingHandCursor)
