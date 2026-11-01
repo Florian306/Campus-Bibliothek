@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from ui.qt.theme import DARK_STYLESHEET
 from ui.qt.icons import create_vector_icon
 from ui.qt.dialogs.quick_look import QuickLookDialog
-from core.library_db import get_category_counts, get_all_research_papers, get_inbox_count
+from core.library_db import get_category_counts, get_all_books, get_all_research_papers, get_inbox_count
 
 
 class CampusMainWindow(QMainWindow):
