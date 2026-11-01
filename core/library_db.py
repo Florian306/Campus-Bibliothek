@@ -37,8 +37,9 @@ def get_db_connection() -> sqlite3.Connection:
 
 def init_library_schema() -> None:
     """Creates the relational schema for the virtual library."""
-    conn = sqlite3.connect(DB_PATH, timeout=15.0)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     try:
+        conn.execute("PRAGMA busy_timeout = 30000;")
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys=ON;")
         cursor = conn.cursor()
@@ -459,11 +460,16 @@ def init_library_schema() -> None:
             pass
 
         conn.commit()
+    except sqlite3.OperationalError:
+        pass
     finally:
         conn.close()
 
 
-init_library_schema()
+try:
+    init_library_schema()
+except Exception:
+    pass
 
 
 def save_book_cover_blob(book_id: str, cover_bytes: bytes) -> bool:

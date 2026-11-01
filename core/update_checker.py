@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.2.8"
+CURRENT_VERSION = "2.2.9"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.2.8",
+        "version": "2.2.9",
         "date": "Aktuell",
+        "title": "TOC-Deep-Scan, Smarte Kapitelsortierung & Stabilitäts-Upgrade",
+        "notes": "• Automatischer Deep-Scan des Inhaltsverzeichnisses (TOC) zur Bestimmung der perfekten Buch-Reihenfolge\n• Analyse gedruckter Buch-Seitenzahlen auf den ersten Seiten aller Kapitel als treffsichere Sortierbasis\n• Deckblatt, Frontmatter, Inhaltsverzeichnis, Vorwort und Hauptteile ordnen sich vollautomatisch akkurat an\n• Zuverlässiges Öffnen des PDF-Merge-Studios mit gezielt ausgewählten Inbox-Dateien\n• Robuste SQLite-Sperrbehandlung (Busy Timeout & Graceful Schema Init)",
+    },
+    {
+        "version": "2.2.8",
+        "date": "01.11.2026",
         "title": "TOC-Deep-Scan & Automatische Inhaltsverzeichnis-Sortierung",
         "notes": "• Automatischer Deep-Scan des Inhaltsverzeichnisses (TOC) zur Bestimmung der perfekten Buch-Reihenfolge\n• Analyse gedruckter Buch-Seitenzahlen auf den ersten Seiten aller Kapitel als treffsichere Sortierbasis\n• Deckblatt, Frontmatter, Inhaltsverzeichnis, Vorwort und Hauptteile ordnen sich vollautomatisch akkurat an",
     },
