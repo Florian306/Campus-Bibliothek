@@ -79,15 +79,8 @@ class CategoryChipsBar(QWidget):
         w_more = fm.horizontalAdvance("  Weitere Fachbereiche ▾") + 46
         w_more = max(w_more, 175)
 
-        # Priority order: if an individual category is selected, prioritize it to ensure visibility
-        active_cat = self.active_category
-        active_entry = next((c for c in self.category_counts if c[0] == active_cat), None)
-        other_cats = [c for c in self.category_counts if c[0] != active_cat]
-
-        if active_entry:
-            candidate_order = [active_entry] + other_cats
-        else:
-            candidate_order = list(self.category_counts)
+        # Keep stable order: never jump clicked categories to the front
+        candidate_order = list(self.category_counts)
 
         # Determine visible chips and overflow
         space_for_chips = avail_w - w_all - w_more - 24

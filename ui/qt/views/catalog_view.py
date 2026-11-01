@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
+    QSizePolicy,
 )
 
 from ui.qt.components.book_card import BookCard
@@ -228,31 +229,32 @@ class CatalogView(QWidget):
 
         # Compact Alphabetical Quick-Filter Strip (Alle | A B C ... Z)
         az_frame = QFrame(self)
-        az_frame.setFixedHeight(30)
+        az_frame.setFixedHeight(34)
         az_frame.setStyleSheet("""
             QFrame {
-                background-color: #0D121F;
-                border: 1px solid #1B253B;
-                border-radius: 7px;
+                background-color: #0E1422;
+                border: 1px solid #1E293B;
+                border-radius: 8px;
             }
         """)
         az_layout = QHBoxLayout(az_frame)
-        az_layout.setContentsMargins(6, 2, 6, 2)
-        az_layout.setSpacing(2)
+        az_layout.setContentsMargins(6, 4, 6, 4)
+        az_layout.setSpacing(3)
 
         letters = ["Alle"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
         for ltr in letters:
             btn_l = QPushButton(ltr)
             btn_l.setCursor(Qt.PointingHandCursor)
-            btn_l.setFixedHeight(22)
+            btn_l.setFixedHeight(24)
             if ltr == "Alle":
-                btn_l.setFixedWidth(42)
+                btn_l.setMinimumWidth(50)
+                btn_l.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
             else:
-                btn_l.setFixedWidth(24)
+                btn_l.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn_l.clicked.connect(lambda checked=False, l=ltr: self._on_letter_selected(l))
             az_layout.addWidget(btn_l)
             self._letter_buttons[ltr] = btn_l
-        az_layout.addStretch()
+
         self._update_letter_bar_styles()
         main_layout.addWidget(az_frame)
 
@@ -417,6 +419,7 @@ class CatalogView(QWidget):
         unit = "Studienbriefe" if self.mode == "study_scripts" else "Bücher"
         self.lbl_badge_total.setText(f"{total_cnt} {unit}")
         self._update_merge_button_label()
+        self._update_letter_bar_styles()
         self.apply_filter()
 
     def _set_view_mode(self, mode: str) -> None:
@@ -432,6 +435,8 @@ class CatalogView(QWidget):
 
     def _on_category_selected(self, category: str) -> None:
         self.current_category = category
+        self.active_letter = "Alle"
+        self._update_letter_bar_styles()
         self.apply_filter()
 
     def _on_search_changed(self, text: str) -> None:
@@ -448,32 +453,67 @@ class CatalogView(QWidget):
         self.apply_filter()
 
     def _update_letter_bar_styles(self) -> None:
+        # Check available letters in currently selected category
+        counts_by_letter = {}
+        umlaut_map = {"Ä": "A", "Ö": "O", "Ü": "U"}
+        target_cat = self.current_category
+
+        for b in self.master_books:
+            if target_cat != "Alle" and target_cat not in (b.get("categories_str") or ""):
+                continue
+            t_clean = (b.get("title") or "").lstrip(" ([{„\"'").upper()
+            first_ch = t_clean[0] if t_clean else ""
+            first_ch = umlaut_map.get(first_ch, first_ch)
+            if "A" <= first_ch <= "Z":
+                counts_by_letter[first_ch] = counts_by_letter.get(first_ch, 0) + 1
+
         for ltr, btn in self._letter_buttons.items():
+            if ltr == "Alle":
+                total_in_cat = sum(counts_by_letter.values())
+                btn.setToolTip(f"Alle {total_in_cat} Bücher anzeigen")
+                btn.setEnabled(True)
+            else:
+                cnt = counts_by_letter.get(ltr, 0)
+                btn.setEnabled(cnt > 0)
+                btn.setToolTip(f"{cnt} Bücher mit '{ltr}'" if cnt > 0 else f"Keine Bücher mit '{ltr}'")
+
             if ltr == self.active_letter:
                 btn.setStyleSheet("""
                     QPushButton {
                         background-color: #1F6FEB;
                         color: #FFFFFF;
                         border: 1px solid #58A6FF;
-                        border-radius: 4px;
-                        font-size: 10px;
+                        border-radius: 5px;
+                        font-size: 11px;
                         font-weight: bold;
+                        padding: 0px;
+                    }
+                """)
+            elif not btn.isEnabled():
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: transparent;
+                        color: #384358;
+                        border: none;
+                        font-size: 11px;
+                        font-weight: 500;
                         padding: 0px;
                     }
                 """)
             else:
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: transparent;
-                        color: #8B949E;
-                        border: none;
-                        border-radius: 4px;
-                        font-size: 10px;
+                        background-color: #131A2B;
+                        color: #94A3B8;
+                        border: 1px solid #1E293B;
+                        border-radius: 5px;
+                        font-size: 11px;
                         font-weight: 600;
                         padding: 0px;
                     }
                     QPushButton:hover {
-                        background-color: #1A243B;
+                        background-color: #1F293D;
+                        border-color: #388BFD;
                         color: #F0F6FC;
                     }
                 """)
