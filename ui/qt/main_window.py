@@ -415,14 +415,14 @@ class CampusMainWindow(QMainWindow):
                 view.load_data()
 
     def update_sidebar_stats(self) -> None:
-        cats = get_category_counts()
-        total_b = sum(c[1] for c in cats)
+        all_books = get_all_books(doc_type="book")
+        total_b = len(all_books)
         papers = get_all_research_papers()
         total_p = len(papers)
         if total_p > 0:
-            self.lbl_stats.setText(f"{total_b} Dokumente · {total_p} Paper")
+            self.lbl_stats.setText(f"{total_b} Bücher · {total_p} Paper")
         else:
-            self.lbl_stats.setText(f"{total_b} Dokumente indiziert")
+            self.lbl_stats.setText(f"{total_b} Bücher indiziert")
 
         self._update_inbox_badge(get_inbox_count())
 

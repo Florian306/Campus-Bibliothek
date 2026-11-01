@@ -734,13 +734,18 @@ class SyncView(QWidget):
             conn = sqlite3.connect(db_path)
             cur = conn.cursor()
 
-            cur.execute("SELECT COUNT(*), COALESCE(SUM(page_count), 0), COALESCE(SUM(file_size), 0) FROM books")
+            cur.execute("SELECT COUNT(*), COALESCE(SUM(page_count), 0), COALESCE(SUM(file_size), 0) FROM books WHERE COALESCE(doc_type, 'book') = 'book'")
             row = cur.fetchone() or (0, 0, 0)
             total_books = int(row[0] or 0)
             total_pages = int(row[1] or 0)
             total_bytes = int(row[2] or 0)
 
-            cur.execute("SELECT COUNT(DISTINCT category) FROM book_categories")
+            cur.execute("""
+                SELECT COUNT(DISTINCT bc.category) 
+                FROM book_categories bc
+                JOIN books b ON b.id = bc.book_id
+                WHERE COALESCE(b.doc_type, 'book') = 'book'
+            """)
             cat_count = int((cur.fetchone() or (0,))[0] or 0)
 
             desk_count = 0
