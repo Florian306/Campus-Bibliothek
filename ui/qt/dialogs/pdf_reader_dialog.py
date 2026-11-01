@@ -475,6 +475,13 @@ class PdfReaderDialog(QDialog):
             }
         """)
 
+        # Turbo Fast-Start for very large books (> 250 pages or > 80 MB):
+        # MultiPage forces QtPdf to pre-layout every single page immediately, blocking GUI for 15-20s.
+        # SinglePage renders in < 1 second. Users can switch to MultiPage at any time via the toolbar button.
+        book_pages = book.get("page_count", 0) or 0
+        book_size = book.get("file_size", 0) or 0
+        self._is_large_book = (book_pages > 250) or (book_size > 80 * 1024 * 1024)
+
         self.doc = QPdfDocument(self) if HAS_QT_PDF else None
         self.view = QPdfView(self) if HAS_QT_PDF else None
         self.search_model = QPdfSearchModel(self) if HAS_QT_PDF and QPdfSearchModel else None
@@ -777,8 +784,10 @@ class PdfReaderDialog(QDialog):
         top_layout.addWidget(zoom_capsule)
 
         # Page Mode Toggle: MultiPage vs SinglePage (Icon Pill)
-        self.btn_page_mode = QPushButton("📜")
-        self.btn_page_mode.setToolTip("Seitenmodus: Fortlaufend / Einzelseite wechseln (Strg+M)")
+        initial_page_icon = "📄" if self._is_large_book else "📜"
+        initial_page_tip = "Modus: Einzelseite (klicken für fortlaufend)" if self._is_large_book else "Modus: Fortlaufend (klicken für Einzelseite)"
+        self.btn_page_mode = QPushButton(initial_page_icon)
+        self.btn_page_mode.setToolTip(f"{initial_page_tip} (Strg+M)")
         self.btn_page_mode.setAutoDefault(False)
         self.btn_page_mode.setDefault(False)
         self.btn_page_mode.setCursor(Qt.PointingHandCursor)
@@ -990,7 +999,8 @@ class PdfReaderDialog(QDialog):
 
         self.view.setDocument(self.doc)
         self.view.setFocusPolicy(Qt.StrongFocus)
-        self.view.setPageMode(QPdfView.PageMode.MultiPage)
+        initial_page_mode = QPdfView.PageMode.SinglePage if self._is_large_book else QPdfView.PageMode.MultiPage
+        self.view.setPageMode(initial_page_mode)
         self.view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         self.view.setStyleSheet("""
             QPdfView {

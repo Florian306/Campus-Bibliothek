@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.1.5"
+CURRENT_VERSION = "2.1.6"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.1.5",
+        "version": "2.1.6",
         "date": "Aktuell",
+        "title": "Turbo Fast-Start für Großbücher & Cloud-PDFs",
+        "notes": "• Blitzschnelles Öffnen großer Fachbücher (> 250 Seiten / > 80 MB wie z. B. 'Das Mittelmeer' mit 920 MB) in unter 2 Sekunden statt 20s Wartezeit\n• Intelligenter SinglePage-Start verhindert das blockierende Vorberechnen tausender Seitenhöhen\n• Volle Flexibilität mit 1-Klick-Umschaltung auf fortlaufendes Scrollen (Strg+M)",
+    },
+    {
+        "version": "2.1.5",
+        "date": "31.10.2026",
         "title": "Verfeinerte Multi-Kategorien-Zuordnung & Interdisziplinäre Fächer",
         "notes": "• Vollständige Multi-Kategorie-Erkennung für interdisziplinäre Bücher (DNB-Katalog, OpenLibrary & Inhaltsverzeichnis-Heuristik)\n• Editierbare Mehrfach-Auswahl in der Posteingangs-Tabelle mit automatischer Primärfach-Gewichtung\n• Saubere Übernahme aller zugewiesenen Fachbereiche in den Bibliothekskatalog",
     },
