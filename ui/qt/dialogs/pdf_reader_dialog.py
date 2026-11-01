@@ -423,36 +423,6 @@ class TocLoaderWorker(QThread):
             self.finished_toc.emit(items)
 
 
-class BackgroundMultiPagePreparer(QThread):
-    """Pre-calculates MultiPage continuous layout in the background for massive PDFs (>250 pages)."""
-    layout_ready = Signal(object, object)
-
-    def __init__(self, file_path: str, parent=None):
-        super().__init__(parent)
-        self.file_path = file_path
-        self._is_cancelled = False
-
-    def cancel(self):
-        self._is_cancelled = True
-
-    def run(self):
-        try:
-            if not self.file_path or not os.path.exists(self.file_path) or self._is_cancelled:
-                return
-            bg_doc = QPdfDocument()
-            bg_doc.load(self.file_path)
-            if self._is_cancelled or bg_doc.status() != QPdfDocument.Status.Ready:
-                return
-            bg_view = QPdfView()
-            bg_view.setDocument(bg_doc)
-            bg_view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
-            bg_view.setPageMode(QPdfView.PageMode.MultiPage)
-            if not self._is_cancelled:
-                self.layout_ready.emit(bg_view, bg_doc)
-        except Exception:
-            pass
-
-
 # Module-level worker registry to prevent Python GC from destroying active QThreads before native run() finishes
 _ACTIVE_READER_WORKERS = set()
 
@@ -525,7 +495,6 @@ class PdfReaderDialog(QDialog):
         self._toc_thread: Optional[TocLoaderWorker] = None
         self._thumb_thread: Optional[PageThumbnailWorker] = None
         self._stream_loader_thread: Optional[PdfStreamLoaderWorker] = None
-        self._bg_multipage_thread: Optional[BackgroundMultiPagePreparer] = None
         self._is_closing = False
         self._is_jumping = False
 
@@ -1636,74 +1605,6 @@ class PdfReaderDialog(QDialog):
         self._refresh_bookmarks_list()
         self._update_bookmark_button_state(self.initial_page)
 
-        # Seamless Background MultiPage Hydration for large books (> 250 pages):
-        # We start in SinglePage (<40ms), while a background thread pre-computes the continuous MultiPage layout.
-        # Once ready, it swaps without UI freeze or scroll jumps.
-        if self._is_large_book:
-            self._start_background_multipage_prep()
-
-    def _start_background_multipage_prep(self) -> None:
-        if self._bg_multipage_thread and self._bg_multipage_thread.isRunning():
-            return
-        self._bg_multipage_thread = BackgroundMultiPagePreparer(self.file_path, parent=None)
-        _retain_worker(self._bg_multipage_thread)
-        self._bg_multipage_thread.layout_ready.connect(self._on_background_multipage_ready)
-        self._bg_multipage_thread.finished.connect(self._bg_multipage_thread.deleteLater)
-        self._bg_multipage_thread.start()
-
-    def _on_background_multipage_ready(self, bg_view: Any, bg_doc: Any) -> None:
-        if self._is_closing or not self.isVisible() or not bg_view or not bg_doc:
-            return
-        # If user explicitly switched to single page or closed, ignore
-        if self.view.pageMode() != QPdfView.PageMode.SinglePage:
-            return
-
-        try:
-            curr_page = self.view.pageNavigator().currentPage()
-            # Replace old QPdfView with hydrated continuous MultiPage QPdfView
-            old_view = self.view
-            self.doc = bg_doc
-            self.view = bg_view
-            self.view.setParent(self)
-            self.view.setFocusPolicy(Qt.StrongFocus)
-            self.view.setStyleSheet("""
-                QPdfView {
-                    background-color: #0E131F;
-                    border: none;
-                }
-            """)
-
-            if self.search_model:
-                self.search_model.setDocument(self.doc)
-                self.view.setSearchModel(self.search_model)
-
-            # Re-attach text selection overlay
-            vp = self.view.viewport()
-            if vp:
-                vp.setStyleSheet("background-color: #0E131F;")
-                self._selection_overlay = PdfSelectionOverlay(vp)
-                self._selection_overlay.setGeometry(vp.rect())
-                self._selection_overlay.show()
-                vp.installEventFilter(self)
-
-            # Re-connect page navigation signal
-            nav = self.view.pageNavigator()
-            nav.currentPageChanged.connect(self._on_pdf_page_changed)
-
-            # Hot-swap widget in center_stack
-            self.center_stack.removeWidget(old_view)
-            self.center_stack.addWidget(self.view)
-            self.center_stack.setCurrentWidget(self.view)
-            old_view.deleteLater()
-
-            # Preserve exact page position
-            self.view.pageNavigator().jump(curr_page, QPointF(0, 0), self.view.pageNavigator().currentZoom())
-            self.btn_page_mode.setText("📜")
-            self.btn_page_mode.setToolTip("Modus: Fortlaufend (klicken für Einzelseite)")
-            self.view.setFocus()
-        except Exception:
-            pass
-
     def _on_sidebar_tab_changed(self, index: int) -> None:
         # Tab 2 is "🖼️ Vorschau" (Thumbnails)
         if index == 2 and not self._thumbnails_loaded:
@@ -2769,15 +2670,6 @@ class PdfReaderDialog(QDialog):
                     pass
                 if exp_worker.isRunning():
                     _retain_worker(exp_worker)
-            if hasattr(self, "_bg_multipage_thread") and self._bg_multipage_thread:
-                bg_m_worker = self._bg_multipage_thread
-                self._bg_multipage_thread = None
-                bg_m_worker.cancel()
-                try:
-                    bg_m_worker.layout_ready.disconnect()
-                except Exception:
-                    pass
-
             if hasattr(self, "_dict_thread") and self._dict_thread:
                 dict_worker = self._dict_thread
                 self._dict_thread = None
