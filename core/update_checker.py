@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.4"
+CURRENT_VERSION = "2.3.5"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.4",
+        "version": "2.3.5",
         "date": "Aktuell",
+        "title": "Cyber-Obsidian Design-Perfektionierung für Statistik & Analyse",
+        "notes": "• Design-Upgrade Cockpit: Dezente Icon-Badges mit sanftem Glow und harmonische Typografie auf allen 4 KPI-Karten\n• Bereinigte Fakultäts-Kacheln: Saubere Farb-Indikatoren ohne störende Klammern oder Textversatz\n• Neues Histogramm für Publikationsjahre: Gradient-Füllbalken mit abgerundeten Ecken und Ø-Jahrgangsanzeige\n• Vektor-Icons & Lesbarkeit: Gestochen scharfe Vektor-Icons in den Bibliotheks-Highlights & Rekorden",
+    },
+    {
+        "version": "2.3.4",
+        "date": "01.11.2026",
         "title": "Neuer Statistik & Analyse Tab, Instant-Update-Erkennung & Pre-Warming",
         "notes": "• Neuer Statistik & Analyse Tab: Interaktives Cyber-Obsidian Dashboard mit Bestands-KPIs, Fakultäten-Verteilung, Publikations-Histogramm und Bibliotheks-Rekorden\n• Sofortige Update-Erkennung: Schnelle Hintergrund-Prüfung direkt beim App-Start mit leuchtendem Nav-Badge und 1-Klick-Update-Toast\n• Zero-Hitch Pre-Warming: Kein Ruckeln mehr beim ersten Öffnen von Katalog und Posteingang dank asynchronem Hintergrund-Cachen\n• Optimierte SQLite-Indizes: Blitzschnelle Duplikat- und Metadatenprüfungen in der Datenbank",
     },
