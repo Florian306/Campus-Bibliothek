@@ -333,9 +333,15 @@ class PageThumbnailWorker(QThread):
                     break
                 try:
                     page = doc[p_idx]
-                    pix = page.get_pixmap(dpi=36)
+                    # Targeted scale factor to directly generate ~90px wide thumbnail with zero resize overhead
+                    w = page.rect.width
+                    zoom = max(0.1, min(1.0, 90.0 / w)) if w > 0 else 0.2
+                    mat = fitz.Matrix(zoom, zoom)
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
                     samples = bytes(pix.samples)
                     self.thumbnail_ready.emit(p_idx, samples, pix.width, pix.height)
+                    # Yield CPU and permit GUI event processing headroom between rendered pages
+                    self.msleep(15)
                 except Exception:
                     continue
             doc.close()
@@ -1618,7 +1624,7 @@ class PdfReaderDialog(QDialog):
             self._thumb_thread.wait(200)
 
         self.list_thumbnails.clear()
-        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=80, parent=None)
+        self._thumb_thread = PageThumbnailWorker(self.file_path, max_pages=120, parent=None)
         _retain_worker(self._thumb_thread)
         self._thumb_thread.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_thread.finished.connect(self._thumb_thread.deleteLater)

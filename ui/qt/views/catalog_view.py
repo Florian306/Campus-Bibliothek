@@ -266,6 +266,9 @@ class CatalogView(QWidget):
         # View 0: Virtual Shelf ScrollArea
         self.shelf_scroll = QScrollArea(self.stacked_views)
         self.shelf_scroll.setWidgetResizable(True)
+        # Keep vertical scrollbar always on to guarantee 100% stable viewport width
+        self.shelf_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.shelf_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.shelf_scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
 
         self.shelf_container = QWidget(self.shelf_scroll)
@@ -304,6 +307,8 @@ class CatalogView(QWidget):
         # -------------------------------------------------------------
         footer = QHBoxLayout()
         self.lbl_table_count = QLabel("Lade Daten...")
+        self.lbl_table_count.setFixedWidth(160)
+        self.lbl_table_count.setAlignment(Qt.AlignCenter)
         self.lbl_table_count.setStyleSheet("""
             QLabel {
                 background-color: #1F2937;
@@ -579,6 +584,9 @@ class CatalogView(QWidget):
 
         cols, gap, side_margin = self._calculate_shelf_geometry()
         self._current_cols = cols
+
+        # Always reset scrollbar position to top when re-rendering new filter list
+        self.shelf_scroll.verticalScrollBar().setValue(0)
 
         # Freeze visual painting on container during bulk layout update
         self.shelf_container.setUpdatesEnabled(False)
