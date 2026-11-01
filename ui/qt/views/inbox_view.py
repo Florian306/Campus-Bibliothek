@@ -783,7 +783,7 @@ class InboxView(QWidget):
 
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "", "BUCHTITEL & DATEINAME", "AUTOR", "KI-KATEGORIE", "STATUS", "DATEIGRÖSSE", "AKTION"
+            "", "BUCHTITEL & DATEINAME", "AUTOR", "KI-FACHBEREICH", "STATUS", "GRÖSSE", "AKTION"
         ])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -793,12 +793,12 @@ class InboxView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
 
-        self.table.setColumnWidth(0, 48)
-        self.table.setColumnWidth(2, 210)
-        self.table.setColumnWidth(3, 235)
-        self.table.setColumnWidth(4, 135)
-        self.table.setColumnWidth(5, 125)
-        self.table.setColumnWidth(6, 175)
+        self.table.setColumnWidth(0, 42)
+        self.table.setColumnWidth(2, 170)
+        self.table.setColumnWidth(3, 175)
+        self.table.setColumnWidth(4, 115)
+        self.table.setColumnWidth(5, 95)
+        self.table.setColumnWidth(6, 150)
 
         self.table.cellDoubleClicked.connect(self._on_table_cell_double_clicked)
 
@@ -1308,7 +1308,7 @@ class InboxView(QWidget):
                     color: #58A6FF;
                     border: 1px solid #23314A;
                     border-radius: 6px;
-                    padding: 0 8px 0 10px;
+                    padding: 0 4px 0 8px;
                     font-size: 11px;
                     font-weight: 600;
                 }
@@ -1322,23 +1322,24 @@ class InboxView(QWidget):
                     font-weight: 600;
                     border: none;
                     padding: 0;
+                    margin: 0;
                 }
                 QComboBox QLineEdit:focus {
                     color: #FFFFFF;
                 }
                 QComboBox::drop-down {
                     border: none;
-                    width: 18px;
+                    width: 14px;
                     subcontrol-origin: padding;
                     subcontrol-position: top right;
                 }
                 QComboBox::down-arrow {
                     width: 0;
                     height: 0;
-                    border-left: 4px solid transparent;
-                    border-right: 4px solid transparent;
-                    border-top: 5px solid #58A6FF;
-                    margin-right: 6px;
+                    border-left: 3px solid transparent;
+                    border-right: 3px solid transparent;
+                    border-top: 4px solid #58A6FF;
+                    margin-right: 4px;
                 }
                 QComboBox QAbstractItemView {
                     background-color: #121A2A;
@@ -1387,22 +1388,22 @@ class InboxView(QWidget):
             # Col 6: Action buttons (Fixed width to avoid text truncation)
             act_box = QWidget()
             act_lay = QHBoxLayout(act_box)
-            act_lay.setContentsMargins(6, 4, 6, 4)
+            act_lay.setContentsMargins(4, 4, 4, 4)
             act_lay.setSpacing(6)
             act_lay.setAlignment(Qt.AlignCenter)
 
             btn_file = QPushButton("  Einsortieren")
             btn_file.setIcon(create_vector_icon("check", "#FFFFFF", 12))
             btn_file.setCursor(Qt.PointingHandCursor)
-            btn_file.setFixedHeight(32)
-            btn_file.setMinimumWidth(105)
+            btn_file.setFixedHeight(30)
+            btn_file.setMinimumWidth(95)
             btn_file.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #287FFB);
                     color: #FFFFFF;
                     border: 1px solid #388BFD;
                     border-radius: 6px;
-                    padding: 0 10px;
+                    padding: 0 8px;
                     font-size: 11px;
                     font-weight: 600;
                 }
@@ -1415,9 +1416,9 @@ class InboxView(QWidget):
             act_lay.addWidget(btn_file)
 
             btn_del = QPushButton()
-            btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 13))
+            btn_del.setIcon(create_vector_icon("trash", "#FF7B72", 12))
             btn_del.setToolTip("Aus Posteingang entfernen & Datei löschen")
-            btn_del.setFixedSize(32, 32)
+            btn_del.setFixedSize(30, 30)
             btn_del.setCursor(Qt.PointingHandCursor)
             btn_del.setStyleSheet("""
                 QPushButton {
@@ -1465,25 +1466,26 @@ class InboxView(QWidget):
                 background: #2D1A10;
                 border: 1px solid #7C3D18;
                 border-radius: 6px;
-                padding: 4px 8px;
+                padding: 4px 6px;
                 font-size: 11px;
             """)
             lay.addWidget(lbl_dup)
         elif status == "ready":
-            lbl_ready = QLabel(f"✓ Bereit ({conf}%)")
+            lbl_ready = QLabel(f"✓ {conf}%")
             lbl_ready.setAlignment(Qt.AlignCenter)
+            lbl_ready.setToolTip(f"KI-Klassifizierung bereit (Sicherheit: {conf}%)")
             lbl_ready.setStyleSheet("""
                 color: #3FB950;
                 font-weight: 700;
                 background: #0D2616;
                 border: 1px solid #1E542C;
                 border-radius: 6px;
-                padding: 4px 8px;
+                padding: 4px 6px;
                 font-size: 11px;
             """)
             lay.addWidget(lbl_ready)
         else:
-            lbl_pend = QLabel("⏳ Analysiere...")
+            lbl_pend = QLabel("⏳ Analysiert...")
             lbl_pend.setAlignment(Qt.AlignCenter)
             lbl_pend.setStyleSheet("""
                 color: #8B949E;
@@ -1491,7 +1493,7 @@ class InboxView(QWidget):
                 background: #141C2B;
                 border: 1px solid #222F47;
                 border-radius: 6px;
-                padding: 4px 8px;
+                padding: 4px 6px;
                 font-size: 11px;
             """)
             lay.addWidget(lbl_pend)
