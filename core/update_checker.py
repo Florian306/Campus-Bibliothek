@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.2.9"
+CURRENT_VERSION = "2.3.0"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.2.9",
+        "version": "2.3.0",
         "date": "Aktuell",
+        "title": "Herausgeber-Erkennung beim Zusammenführen & Perfektioniertes Tabellen-Layout",
+        "notes": "• Intelligente Autoren- und Herausgebererkennung ((Hrsg.) / Editoren / DNB) beim Verschmelzen von Buchkapiteln\n• Exakte vertikale und horizontale Ausrichtung aller Spalten in der Posteingangs-Tabelle (Checkboxen, Status-Pills, Aktionen)\n• Dynamische Spaltenbreiten verhindern Textabschneidungen oder ungewollte Versätze",
+    },
+    {
+        "version": "2.2.9",
+        "date": "01.11.2026",
         "title": "TOC-Deep-Scan, Smarte Kapitelsortierung & Stabilitäts-Upgrade",
         "notes": "• Automatischer Deep-Scan des Inhaltsverzeichnisses (TOC) zur Bestimmung der perfekten Buch-Reihenfolge\n• Analyse gedruckter Buch-Seitenzahlen auf den ersten Seiten aller Kapitel als treffsichere Sortierbasis\n• Deckblatt, Frontmatter, Inhaltsverzeichnis, Vorwort und Hauptteile ordnen sich vollautomatisch akkurat an\n• Zuverlässiges Öffnen des PDF-Merge-Studios mit gezielt ausgewählten Inbox-Dateien\n• Robuste SQLite-Sperrbehandlung (Busy Timeout & Graceful Schema Init)",
     },

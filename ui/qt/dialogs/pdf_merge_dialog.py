@@ -1080,34 +1080,54 @@ class PdfMergeDialog(QDialog):
                         self.combo_category.setCurrentIndex(idx)
                 break
 
-        # 2. Check inbox queue
+        # 2. Check inbox queue (scan all items, prefer ones with known author)
         inbox_map = {os.path.abspath(it["file_path"]).lower(): it for it in get_inbox_queue() if it.get("file_path")}
-        ib_entry = inbox_map.get(first_path.lower())
-        if ib_entry:
-            if not self.input_title.text().strip() and ib_entry.get("suggested_title"):
-                raw_t = ib_entry["suggested_title"]
-                raw_t = re.sub(r'\s*[-–—:]?\s*(?:Kapitel|Chapter|Teil|Kurseinheit|KE)\s*\d+.*$', '', raw_t, flags=re.I).strip()
-                if raw_t:
-                    self.input_title.setText(raw_t)
-            if not self.input_author.text().strip() and ib_entry.get("suggested_author") and ib_entry["suggested_author"] != "Unbekannt":
-                self.input_author.setText(ib_entry["suggested_author"])
-            if ib_entry.get("suggested_category"):
-                idx = self.combo_category.findText(ib_entry["suggested_category"])
-                if idx >= 0:
-                    self.combo_category.setCurrentIndex(idx)
+        for it in self._items:
+            norm_p = os.path.abspath(it["file_path"]).lower()
+            ib_entry = inbox_map.get(norm_p)
+            if ib_entry:
+                if not self.input_title.text().strip() and ib_entry.get("suggested_title"):
+                    raw_t = ib_entry["suggested_title"]
+                    raw_t = re.sub(r'\s*[-–—:]?\s*(?:Kapitel|Chapter|Teil|Kurseinheit|KE)\s*\d+.*$', '', raw_t, flags=re.I).strip()
+                    if raw_t:
+                        self.input_title.setText(raw_t)
+                if not self.input_author.text().strip() and ib_entry.get("suggested_author") and ib_entry["suggested_author"].lower() not in ("unbekannt", "unknown", ""):
+                    self.input_author.setText(ib_entry["suggested_author"])
+                if ib_entry.get("suggested_category") and self.combo_category.currentText() in ("", "Sonstiges"):
+                    idx = self.combo_category.findText(ib_entry["suggested_category"])
+                    if idx >= 0:
+                        self.combo_category.setCurrentIndex(idx)
+                if self.input_title.text().strip() and self.input_author.text().strip() and self.input_author.text().strip().lower() != "unbekannt":
+                    break
 
-        # 3. Inspect first PDF directly via PyMuPDF if still missing
-        if not self.input_title.text().strip() or not self.input_author.text().strip():
+        # 3. Inspect initial PDF chapters directly via PyMuPDF if still missing
+        if not self.input_title.text().strip() or not self.input_author.text().strip() or self.input_author.text().strip().lower() == "unbekannt":
             try:
                 import fitz
-                doc = fitz.open(first_path)
-                vt, va = extract_visual_title_and_author(doc)
-                doc.close()
-                if vt and not self.input_title.text().strip():
-                    clean_vt = re.sub(r'\s*[-–—:]?\s*(?:Kapitel|Chapter|Teil|Kurseinheit|KE)\s*\d+.*$', '', vt, flags=re.I).strip()
-                    self.input_title.setText(clean_vt or vt)
-                if va and not self.input_author.text().strip():
-                    self.input_author.setText(sanitize_author_string(va))
+                for cand_it in self._items[:4]:
+                    cand_p = cand_it.get("file_path", "")
+                    if not os.path.isfile(cand_p):
+                        continue
+                    doc = fitz.open(cand_p)
+                    # Check for explicit editors / Herausgeber (Hrsg.)
+                    if not self.input_author.text().strip() or self.input_author.text().strip().lower() == "unbekannt":
+                        for p_idx in range(min(5, len(doc))):
+                            p_txt = doc[p_idx].get_text("text") or ""
+                            m_ed = re.search(r'([A-ZÄÖÜ][a-zA-ZäöüÄÖÜß\s\.\-·&,]{3,65}?)\s*\((?:Hrsg\.?|Herausgeber)\)', p_txt)
+                            if m_ed:
+                                ed = m_ed.group(1).replace("·", ", ").replace("•", ", ")
+                                ed = re.sub(r'\s*,\s*', ', ', ed).strip(' ,')
+                                self.input_author.setText(ed)
+                                break
+                    vt, va = extract_visual_title_and_author(doc)
+                    doc.close()
+                    if vt and not self.input_title.text().strip():
+                        clean_vt = re.sub(r'\s*[-–—:]?\s*(?:Kapitel|Chapter|Teil|Kurseinheit|KE)\s*\d+.*$', '', vt, flags=re.I).strip()
+                        self.input_title.setText(clean_vt or vt)
+                    if va and (not self.input_author.text().strip() or self.input_author.text().strip().lower() == "unbekannt"):
+                        self.input_author.setText(sanitize_author_string(va))
+                    if self.input_title.text().strip() and self.input_author.text().strip() and self.input_author.text().strip().lower() != "unbekannt":
+                        break
             except Exception:
                 pass
 

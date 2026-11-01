@@ -788,16 +788,14 @@ class InboxView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
 
-        self.table.setColumnWidth(0, 48)
-        self.table.setColumnWidth(2, 210)
-        self.table.setColumnWidth(3, 210)
-        self.table.setColumnWidth(4, 130)
-        self.table.setColumnWidth(5, 125)
-        self.table.setColumnWidth(6, 175)
+        self.table.setColumnWidth(0, 42)
+        self.table.setColumnWidth(2, 190)
+        self.table.setColumnWidth(3, 190)
+        self.table.setColumnWidth(6, 170)
 
         self.table.cellDoubleClicked.connect(self._on_table_cell_double_clicked)
 
@@ -1358,6 +1356,7 @@ class InboxView(QWidget):
             sz_txt = f"{sz_mb:.1f} MB • {p_cnt} S." if p_cnt > 0 else f"{sz_mb:.1f} MB"
             item_sz = QTableWidgetItem(sz_txt)
             item_sz.setTextAlignment(Qt.AlignCenter)
+            item_sz.setForeground(QColor("#8B949E"))
             item_sz.setFlags(item_sz.flags() & ~Qt.ItemIsEditable)
             self.table.setItem(row, 5, item_sz)
 
