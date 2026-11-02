@@ -4,7 +4,7 @@ Displays instant search hits across book contents with page jumps, highlighted s
 
 from typing import Any, Dict, List, Optional
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QFont, QColor, QPixmap
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -18,87 +18,147 @@ from PySide6.QtWidgets import (
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
 from core.fulltext_search import search_fulltext, get_fts_index_stats
+from core.cover_manager import get_book_cover_blob
 
 
 class FullTextResultItem(QFrame):
-    """Single full-text match result showing document info, page number badge, and highlighted snippet."""
+    """Single full-text match result card with document cover thumbnail, page badge, and highlighted snippet."""
 
     page_jump_requested = Signal(str, int)  # (file_path, page_number)
 
     def __init__(self, data: Dict[str, Any], parent=None):
         super().__init__(parent)
         self.data = data
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self._build_ui()
 
     def _build_ui(self) -> None:
         self.setObjectName("ftsResultItem")
         self.setStyleSheet("""
             QFrame#ftsResultItem {
-                background-color: #101625;
+                background-color: #0E1524;
                 border: 1px solid #1C273C;
-                border-radius: 8px;
+                border-left: 3px solid #58A6FF;
+                border-radius: 9px;
             }
             QFrame#ftsResultItem:hover {
-                background-color: #141D30;
+                background-color: #131E33;
                 border-color: #388BFD;
+                border-left: 3px solid #79B8FF;
             }
         """)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(8)
+        main_row = QHBoxLayout(self)
+        main_row.setContentsMargins(14, 12, 14, 12)
+        main_row.setSpacing(14)
 
-        # Header Row: Title, Author, Page Badge, and Open Button
-        head_row = QHBoxLayout()
-        head_row.setSpacing(10)
+        # 1. Left Thumbnail Column
+        self.thumb_lbl = QLabel()
+        self.thumb_lbl.setFixedSize(48, 68)
+        self.thumb_lbl.setAlignment(Qt.AlignCenter)
+        self.thumb_lbl.setStyleSheet("""
+            background-color: #080C14;
+            border: 1px solid #1F2C44;
+            border-radius: 5px;
+        """)
 
-        # Document Icon
-        ico_lbl = QLabel()
-        ico_lbl.setPixmap(create_vector_pixmap("notes" if self.data.get("doc_type") == "study_script" else "book", "#58A6FF", 16))
-        head_row.addWidget(ico_lbl)
+        # Load cover blob if available
+        book_id = self.data.get("book_id")
+        loaded_thumb = False
+        if book_id:
+            try:
+                blob = get_book_cover_blob(book_id)
+                if blob:
+                    pm = QPixmap()
+                    if pm.loadFromData(blob):
+                        scaled = pm.scaled(48, 68, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                        self.thumb_lbl.setPixmap(scaled)
+                        loaded_thumb = True
+            except Exception:
+                loaded_thumb = False
 
-        # Title & Author
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
+        if not loaded_thumb:
+            self.thumb_lbl.setPixmap(create_vector_pixmap(
+                "notes" if self.data.get("doc_type") == "study_script" else "book",
+                "#58A6FF",
+                20
+            ))
+
+        main_row.addWidget(self.thumb_lbl)
+
+        # 2. Middle Content Column
+        content_box = QVBoxLayout()
+        content_box.setSpacing(6)
+
+        # Header: Title + Author
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
 
         lbl_title = QLabel(self.data.get("title", "Unbekannt"))
         lbl_title.setFont(QFont("Segoe UI", 10, QFont.Bold))
         lbl_title.setStyleSheet("color: #FFFFFF; border: none; background: transparent;")
-        title_box.addWidget(lbl_title)
+        title_row.addWidget(lbl_title)
 
         author_str = self.data.get("author", "Unbekannter Autor")
-        year_str = f" ({self.data.get('year')})" if self.data.get("year") else ""
-        lbl_sub = QLabel(f"{author_str}{year_str}")
+        year_str = f" · {self.data.get('year')}" if self.data.get("year") else ""
+        lbl_sub = QLabel(f"von {author_str}{year_str}")
         lbl_sub.setFont(QFont("Segoe UI", 8))
         lbl_sub.setStyleSheet("color: #8B949E; border: none; background: transparent;")
-        title_box.addWidget(lbl_sub)
-        head_row.addLayout(title_box, stretch=1)
+        title_row.addWidget(lbl_sub)
+        title_row.addStretch()
 
-        # Page Number Badge
+        content_box.addLayout(title_row)
+
+        # Highlighted Snippet Box
+        snippet_html = self.data.get("snippet", "")
+        if snippet_html:
+            lbl_snip = QLabel(f"» {snippet_html} «")
+            lbl_snip.setTextFormat(Qt.RichText)
+            lbl_snip.setWordWrap(True)
+            lbl_snip.setFont(QFont("Segoe UI", 9))
+            lbl_snip.setStyleSheet("""
+                background-color: #070B12;
+                color: #C9D1D9;
+                border: 1px solid #162032;
+                border-radius: 6px;
+                padding: 6px 12px;
+                line-height: 1.45;
+            """)
+            content_box.addWidget(lbl_snip)
+
+        main_row.addLayout(content_box, stretch=1)
+
+        # 3. Right Action Column: Page Number Badge + Jump Button
+        action_box = QVBoxLayout()
+        action_box.setSpacing(8)
+        action_box.setAlignment(Qt.AlignCenter)
+
         page_num = self.data.get("page_number", 1)
-        lbl_page = QLabel(f"Seite {page_num}")
+        lbl_page = QLabel(f"SEITE {page_num}")
+        lbl_page.setAlignment(Qt.AlignCenter)
         lbl_page.setFont(QFont("Segoe UI", 9, QFont.Bold))
         lbl_page.setStyleSheet("""
-            background-color: #1A2740;
-            color: #58A6FF;
-            border: 1px solid #283D66;
-            border-radius: 6px;
+            background-color: #152238;
+            color: #79C0FF;
+            border: 1px solid #233758;
+            border-radius: 5px;
             padding: 4px 10px;
+            font-size: 10px;
+            letter-spacing: 0.5px;
         """)
-        head_row.addWidget(lbl_page)
+        action_box.addWidget(lbl_page)
 
-        # Jump Button
         btn_open = QPushButton("  Zur Seite springen")
         btn_open.setIcon(create_vector_icon("research", "#FFFFFF", 12))
         btn_open.setCursor(Qt.PointingHandCursor)
-        btn_open.setFixedHeight(28)
+        btn_open.setFixedHeight(30)
         btn_open.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD);
                 color: #FFFFFF;
                 border: none;
-                border-radius: 5px;
-                padding: 0 12px;
+                border-radius: 6px;
+                padding: 0 14px;
                 font-weight: 600;
                 font-size: 11px;
             }
@@ -107,25 +167,9 @@ class FullTextResultItem(QFrame):
             }
         """)
         btn_open.clicked.connect(self._on_jump_clicked)
-        head_row.addWidget(btn_open)
+        action_box.addWidget(btn_open)
 
-        layout.addLayout(head_row)
-
-        # Snippet Box
-        snippet_html = self.data.get("snippet", "")
-        if snippet_html:
-            lbl_snip = QLabel(f"» {snippet_html} «")
-            lbl_snip.setTextFormat(Qt.RichText)
-            lbl_snip.setWordWrap(True)
-            lbl_snip.setFont(QFont("Segoe UI", 9))
-            lbl_snip.setStyleSheet("""
-                background-color: #0B0F19;
-                color: #C9D1D9;
-                border: 1px solid #162032;
-                border-radius: 6px;
-                padding: 8px 12px;
-            """)
-            layout.addWidget(lbl_snip)
+        main_row.addLayout(action_box)
 
     def _on_jump_clicked(self) -> None:
         file_path = self.data.get("file_path")

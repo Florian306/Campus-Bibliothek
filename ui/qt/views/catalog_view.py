@@ -62,6 +62,7 @@ class CatalogView(QWidget):
     def __init__(self, mode: str = "books", parent=None):
         super().__init__(parent)
         self.mode = mode  # "books" or "study_scripts"
+        self.view_mode = "shelf"
         self.doc_type_filter = "study_script" if mode == "study_scripts" else "book"
         self.master_books: List[Dict[str, Any]] = []
         self.filtered_books: List[Dict[str, Any]] = []
@@ -215,27 +216,50 @@ class CatalogView(QWidget):
         search_box = QHBoxLayout()
         search_box.setSpacing(6)
 
-        self.btn_search_mode = QPushButton("Titel")
-        self.btn_search_mode.setToolTip("Zwischen Titelsuche und Volltext-Inhaltssuche umschalten")
-        self.btn_search_mode.setCursor(Qt.PointingHandCursor)
-        self.btn_search_mode.setFixedHeight(34)
-        self.btn_search_mode.setFixedWidth(78)
-        self.btn_search_mode.setStyleSheet("""
-            QPushButton {
+        # Segmented switch pill: [ Titel ] [ 🔍 Volltext ]
+        switch_search_frame = QWidget()
+        switch_search_frame.setStyleSheet("""
+            QWidget {
                 background-color: #121826;
-                color: #58A6FF;
-                border: 1px solid #233454;
+                border: 1px solid #232F48;
                 border-radius: 8px;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #1A2438;
-                border-color: #58A6FF;
             }
         """)
-        self.btn_search_mode.clicked.connect(self._toggle_search_mode)
-        search_box.addWidget(self.btn_search_mode)
+        sw_s_lay = QHBoxLayout(switch_search_frame)
+        sw_s_lay.setContentsMargins(2, 2, 2, 2)
+        sw_s_lay.setSpacing(2)
+
+        self.btn_mode_title = QPushButton("Titel")
+        self.btn_mode_title.setCursor(Qt.PointingHandCursor)
+        self.btn_mode_title.setFixedHeight(28)
+        self.btn_mode_title.setStyleSheet("""
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD);
+            color: #FFFFFF;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 11px;
+        """)
+        self.btn_mode_title.clicked.connect(lambda: self._set_search_mode("meta"))
+        sw_s_lay.addWidget(self.btn_mode_title)
+
+        self.btn_mode_fts = QPushButton("🔍 Volltext")
+        self.btn_mode_fts.setCursor(Qt.PointingHandCursor)
+        self.btn_mode_fts.setFixedHeight(28)
+        self.btn_mode_fts.setStyleSheet("""
+            background-color: transparent;
+            color: #8B949E;
+            border: none;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 11px;
+            font-weight: 600;
+        """)
+        self.btn_mode_fts.clicked.connect(lambda: self._set_search_mode("fulltext"))
+        sw_s_lay.addWidget(self.btn_mode_fts)
+
+        search_box.addWidget(switch_search_frame)
 
         self.ent_search = QLineEdit()
         self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
@@ -462,6 +486,7 @@ class CatalogView(QWidget):
         self.apply_filter()
 
     def _set_view_mode(self, mode: str) -> None:
+        self.view_mode = mode
         if mode == "shelf":
             self.stacked_views.setCurrentIndex(0)
             self.btn_shelf.setStyleSheet("background-color: #1F6FEB; color: #FFFFFF; font-weight: bold; border: none; border-radius: 4px; padding: 5px 12px;")
@@ -478,42 +503,23 @@ class CatalogView(QWidget):
         self._update_letter_bar_styles()
         self.apply_filter()
 
-    def _toggle_search_mode(self) -> None:
-        """Toggles between metadata title search and deep full-text page content search."""
-        if self.search_mode == "meta":
-            self.search_mode = "fulltext"
-            self.btn_search_mode.setText("🔍 Volltext")
-            self.btn_search_mode.setStyleSheet("""
-                QPushButton {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD);
-                    color: #FFFFFF;
-                    border: 1px solid #58A6FF;
-                    border-radius: 8px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-            """)
-            self.ent_search.setPlaceholderText("🔍 Im Buchinhalt suchen (Definitionen, Begriffe)...")
+    def _set_search_mode(self, mode: str) -> None:
+        """Sets active search mode ('meta' or 'fulltext') with smooth visual pill transition."""
+        self.search_mode = mode
+        if mode == "fulltext":
+            self.btn_mode_fts.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD); color: #FFFFFF; font-weight: bold; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px;")
+            self.btn_mode_title.setStyleSheet("background-color: transparent; color: #8B949E; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px; font-weight: 600;")
+            self.ent_search.setPlaceholderText("🔍 Im Buchinhalt suchen (Begriffe, Definitionen)...")
         else:
-            self.search_mode = "meta"
-            self.btn_search_mode.setText("Titel")
-            self.btn_search_mode.setStyleSheet("""
-                QPushButton {
-                    background-color: #121826;
-                    color: #58A6FF;
-                    border: 1px solid #233454;
-                    border-radius: 8px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-                QPushButton:hover {
-                    background-color: #1A2438;
-                    border-color: #58A6FF;
-                }
-            """)
+            self.btn_mode_title.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD); color: #FFFFFF; font-weight: bold; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px;")
+            self.btn_mode_fts.setStyleSheet("background-color: transparent; color: #8B949E; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px; font-weight: 600;")
             self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
 
         self._on_search_changed(self.ent_search.text())
+
+    def _toggle_search_mode(self) -> None:
+        new_mode = "fulltext" if self.search_mode == "meta" else "meta"
+        self._set_search_mode(new_mode)
 
     def _on_search_changed(self, text: str) -> None:
         self.search_term = text.strip()
@@ -525,9 +531,7 @@ class CatalogView(QWidget):
                 self.lbl_table_count.setText("Volltext-Modus")
                 return
             else:
-                # Return to previous view if query cleared
-                prev_idx = 0 if self.btn_shelf.isEnabled() is False or "qlineargradient" in self.btn_shelf.styleSheet() else 1
-                self.stacked_views.setCurrentIndex(prev_idx)
+                self.stacked_views.setCurrentIndex(0 if self.view_mode == "shelf" else 1)
 
         self.apply_filter()
 
