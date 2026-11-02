@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from ui.qt.components.book_card import BookCard
 from ui.qt.components.category_chips import CategoryChipsBar
+from ui.qt.components.fulltext_search_overlay import FullTextSearchOverlay
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
 from ui.qt.theme import NoFocusItemDelegate
 from core.library_db import (
@@ -209,14 +210,42 @@ class CatalogView(QWidget):
         self.combo_sort.currentIndexChanged.connect(self._on_sort_changed)
         top_bar.addWidget(self.combo_sort)
 
-        # Search Input
+        # Search Mode Toggle & Input
+        self.search_mode = "meta"  # "meta" or "fulltext"
+        search_box = QHBoxLayout()
+        search_box.setSpacing(6)
+
+        self.btn_search_mode = QPushButton("Titel")
+        self.btn_search_mode.setToolTip("Zwischen Titelsuche und Volltext-Inhaltssuche umschalten")
+        self.btn_search_mode.setCursor(Qt.PointingHandCursor)
+        self.btn_search_mode.setFixedHeight(34)
+        self.btn_search_mode.setFixedWidth(78)
+        self.btn_search_mode.setStyleSheet("""
+            QPushButton {
+                background-color: #121826;
+                color: #58A6FF;
+                border: 1px solid #233454;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1A2438;
+                border-color: #58A6FF;
+            }
+        """)
+        self.btn_search_mode.clicked.connect(self._toggle_search_mode)
+        search_box.addWidget(self.btn_search_mode)
+
         self.ent_search = QLineEdit()
         self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
-        self.ent_search.setFixedWidth(260)
+        self.ent_search.setFixedWidth(240)
         self.ent_search.setFixedHeight(34)
         self.ent_search.textChanged.connect(self._on_search_changed)
         self.ent_search.setClearButtonEnabled(True)
-        top_bar.addWidget(self.ent_search)
+        search_box.addWidget(self.ent_search)
+
+        top_bar.addLayout(search_box)
 
         main_layout.addLayout(top_bar)
 
@@ -299,6 +328,11 @@ class CatalogView(QWidget):
         self.table_books.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table_books.customContextMenuRequested.connect(self._on_table_context_menu)
         self.stacked_views.addWidget(self.table_books)
+
+        # View 2: Full-Text Search Results Overlay
+        self.fts_overlay = FullTextSearchOverlay(self.stacked_views)
+        self.fts_overlay.open_reader_requested.connect(self._on_fts_open_requested)
+        self.stacked_views.addWidget(self.fts_overlay)
 
         main_layout.addWidget(self.stacked_views)
 
@@ -444,9 +478,71 @@ class CatalogView(QWidget):
         self._update_letter_bar_styles()
         self.apply_filter()
 
+    def _toggle_search_mode(self) -> None:
+        """Toggles between metadata title search and deep full-text page content search."""
+        if self.search_mode == "meta":
+            self.search_mode = "fulltext"
+            self.btn_search_mode.setText("🔍 Volltext")
+            self.btn_search_mode.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD);
+                    color: #FFFFFF;
+                    border: 1px solid #58A6FF;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    font-size: 11px;
+                }
+            """)
+            self.ent_search.setPlaceholderText("🔍 Im Buchinhalt suchen (Definitionen, Begriffe)...")
+        else:
+            self.search_mode = "meta"
+            self.btn_search_mode.setText("Titel")
+            self.btn_search_mode.setStyleSheet("""
+                QPushButton {
+                    background-color: #121826;
+                    color: #58A6FF;
+                    border: 1px solid #233454;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    font-size: 11px;
+                }
+                QPushButton:hover {
+                    background-color: #1A2438;
+                    border-color: #58A6FF;
+                }
+            """)
+            self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
+
+        self._on_search_changed(self.ent_search.text())
+
     def _on_search_changed(self, text: str) -> None:
-        self.search_term = text.strip().lower()
+        self.search_term = text.strip()
+
+        if self.search_mode == "fulltext":
+            if self.search_term and len(self.search_term) >= 2:
+                self.stacked_views.setCurrentIndex(2)
+                self.fts_overlay.perform_search(self.search_term)
+                self.lbl_table_count.setText("Volltext-Modus")
+                return
+            else:
+                # Return to previous view if query cleared
+                prev_idx = 0 if self.btn_shelf.isEnabled() is False or "qlineargradient" in self.btn_shelf.styleSheet() else 1
+                self.stacked_views.setCurrentIndex(prev_idx)
+
         self.apply_filter()
+
+    def _on_fts_open_requested(self, file_path: str, page_number: int) -> None:
+        """Opens internal PDF reader directly jumped to the matched page."""
+        if not file_path or not os.path.exists(file_path):
+            QMessageBox.warning(self, "Datei nicht gefunden", "Das Dokument konnte am Speicherort nicht gefunden werden.")
+            return
+
+        reader = PdfReaderDialog(
+            pdf_path=file_path,
+            initial_page=page_number,
+            parent=self.window()
+        )
+        reader.exec()
 
     def _on_sort_changed(self, _index: int = 0) -> None:
         self.sort_mode = self.combo_sort.currentData() or "title_asc"

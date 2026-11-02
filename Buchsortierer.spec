@@ -87,6 +87,8 @@ hiddenimports += [
     'ui.qt.views.sync_view',
     'ui.qt.views.inbox_view',
     'ui.qt.views.analytics_view',
+    'core.fulltext_search',
+    'ui.qt.components.fulltext_search_overlay',
     'ai.textbook_search',
     'core.calendar_service',
     'core.rss_news_service',

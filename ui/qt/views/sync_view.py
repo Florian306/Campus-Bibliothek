@@ -36,6 +36,11 @@ from core.config import (
     save_app_config,
     get_database_path,
 )
+from core.fulltext_search import (
+    get_fts_index_stats,
+    FullTextIndexWorker,
+    init_fts_schema,
+)
 from core.github_sync import GitHubSyncService
 from core.update_checker import (
     check_for_updates,
@@ -354,6 +359,91 @@ class SyncView(QWidget):
         scan_action_row.addWidget(self.lbl_status, stretch=1)
 
         local_layout.addLayout(scan_action_row)
+        # === FTS Full-Text Indexing Section ===
+        fts_box = QFrame()
+        fts_box.setStyleSheet("""
+            QFrame {
+                background-color: #0B0F19;
+                border: 1px solid #1C263A;
+                border-radius: 8px;
+                padding: 4px;
+            }
+        """)
+        fts_lay = QVBoxLayout(fts_box)
+        fts_lay.setContentsMargins(10, 8, 10, 8)
+        fts_lay.setSpacing(6)
+
+        fts_head = QHBoxLayout()
+        lbl_fts_ico = QLabel()
+        lbl_fts_ico.setPixmap(create_vector_pixmap("research", "#58A6FF", 14))
+        fts_head.addWidget(lbl_fts_ico)
+
+        lbl_fts_t = QLabel("Volltext-Index (FTS5)")
+        lbl_fts_t.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        lbl_fts_t.setStyleSheet("color: #FFFFFF;")
+        fts_head.addWidget(lbl_fts_t)
+        fts_head.addStretch()
+
+        self.lbl_fts_badge = QLabel("Prüfe Index...")
+        self.lbl_fts_badge.setStyleSheet("""
+            background-color: #162035;
+            color: #79C0FF;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid #25395C;
+        """)
+        fts_head.addWidget(self.lbl_fts_badge)
+        fts_lay.addLayout(fts_head)
+
+        self.fts_progress = QProgressBar()
+        self.fts_progress.setFixedHeight(6)
+        self.fts_progress.setTextVisible(False)
+        self.fts_progress.setStyleSheet("""
+            QProgressBar {
+                background-color: #101625;
+                border: none;
+                border-radius: 3px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #58A6FF);
+                border-radius: 3px;
+            }
+        """)
+        fts_lay.addWidget(self.fts_progress)
+
+        fts_act_row = QHBoxLayout()
+        self.lbl_fts_info = QLabel("Ermöglicht blitzschnelle Inhaltssuche in Buchseiten")
+        self.lbl_fts_info.setStyleSheet("color: #8B949E; font-size: 10px;")
+        fts_act_row.addWidget(self.lbl_fts_info, stretch=1)
+
+        self.btn_fts_build = QPushButton("Index aktualisieren")
+        self.btn_fts_build.setIcon(create_vector_icon("research", "#C9D1D9", 11))
+        self.btn_fts_build.setCursor(Qt.PointingHandCursor)
+        self.btn_fts_build.setFixedHeight(26)
+        self.btn_fts_build.setStyleSheet("""
+            QPushButton {
+                background-color: #162032;
+                color: #C9D1D9;
+                border: 1px solid #2B3D5E;
+                border-radius: 4px;
+                padding: 0 10px;
+                font-size: 10px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #21324E;
+                border-color: #58A6FF;
+                color: #FFFFFF;
+            }
+        """)
+        self.btn_fts_build.clicked.connect(self._start_fts_indexing)
+        fts_act_row.addWidget(self.btn_fts_build)
+        fts_lay.addLayout(fts_act_row)
+
+        local_layout.addWidget(fts_box)
+
         grid_row.addWidget(card_local, stretch=1)
 
         # === RIGHT COLUMN: GitHub Cloud-Sync & Snapshot Backup ===
@@ -726,7 +816,12 @@ class SyncView(QWidget):
         return lbl_val, lbl_sub, card
 
     def load_data(self) -> None:
-        """Refreshes live SQLite telemetry counters for the 4 KPI cards."""
+        """Refreshes live SQLite telemetry counters for the 4 KPI cards and FTS index status."""
+        try:
+            self._update_fts_status_ui()
+        except Exception:
+            pass
+
         try:
             db_path = get_database_path()
             if not os.path.exists(db_path):
@@ -1199,3 +1294,66 @@ class SyncView(QWidget):
             else:
                 friendly = humanize_error(msg, "Download fehlgeschlagen")
                 QMessageBox.critical(self, "Download fehlgeschlagen", friendly)
+
+    def _update_fts_status_ui(self) -> None:
+        """Updates FTS index stats badge and progress bar in sync center."""
+        stats = get_fts_index_stats()
+        total = stats.get("total_books", 0)
+        indexed = stats.get("indexed_books", 0)
+        pages = stats.get("indexed_pages", 0)
+
+        if total == 0:
+            self.lbl_fts_badge.setText("0 Bücher")
+            self.fts_progress.setValue(0)
+            self.lbl_fts_info.setText("Keine Bücher im Datenbestand vorhanden.")
+            return
+
+        pct = int((indexed / total) * 100) if total > 0 else 0
+        self.fts_progress.setValue(pct)
+        if indexed >= total:
+            self.lbl_fts_badge.setText("100% Indiziert")
+            self.lbl_fts_badge.setStyleSheet("""
+                background-color: rgba(35, 134, 54, 0.16);
+                color: #3FB950;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid #2EA043;
+            """)
+            self.lbl_fts_info.setText(f"{indexed} von {total} Büchern indiziert ({pages:,} Seiten im Volltext)".replace(",", "."))
+            self.btn_fts_build.setText("Index optimieren")
+        else:
+            self.lbl_fts_badge.setText(f"{pct}% ({indexed}/{total})")
+            self.lbl_fts_badge.setStyleSheet("""
+                background-color: #162035;
+                color: #79C0FF;
+                font-size: 10px;
+                font-weight: 600;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid #25395C;
+            """)
+            self.lbl_fts_info.setText(f"{total - indexed} Bücher ausstehend ({pages:,} Seiten bereits indiziert)".replace(",", "."))
+            self.btn_fts_build.setText("Index weiterführen")
+
+    def _start_fts_indexing(self) -> None:
+        """Starts asynchronous background worker for full-text indexing."""
+        self.btn_fts_build.setEnabled(False)
+        self.btn_fts_build.setText("Indiziere...")
+        self._append_log("Volltext-Index: Starte Hintergrund-Indizierung aller Buchseiten...")
+
+        def on_prog(current, total, title):
+            pct = int((current / max(1, total)) * 100)
+            self.signals.progress.emit(pct, f"Volltext: [{current}/{total}] {title}")
+
+        def on_fin(indexed_cnt, total_pending):
+            self.btn_fts_build.setEnabled(True)
+            self._update_fts_status_ui()
+            self._append_log(f"Volltext-Index abgeschlossen: {indexed_cnt} Dokumente erfolgreich indiziert.")
+
+        worker = FullTextIndexWorker(
+            progress_callback=on_prog,
+            finished_callback=on_fin
+        )
+        worker.start()
