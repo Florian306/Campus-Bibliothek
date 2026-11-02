@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.7"
+CURRENT_VERSION = "2.3.8"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.7",
+        "version": "2.3.8",
         "date": "Aktuell",
+        "title": "Ultra-flüssige Volltextsuche & ruckelfreie Hintergrund-Indizierung",
+        "notes": "• Ruckelfreie Hintergrund-Indizierung: Worker auf niedrigste Betriebssystem-Priorität gedrosselt mit 50-Seiten-Batching und CPU-Yields\n• Butterweiches Tippen: 220ms Smart-Debouncing verhindert UI-Lags bei schneller Tastatureingabe\n• Edles Kachel-Design: Original-Buchcover, harmonische Typografie und sauber ausgerichtete Aktions-Buttons\n• Absturzsicheres Öffnen: Modalloser Reader-Start mit automatischer Pfad-Heilung und Direktsprung zur Fundstelle",
+    },
+    {
+        "version": "2.3.7",
+        "date": "02.11.2026",
         "title": "High-Performance Volltext-Suche (SQLite FTS5) & Direktsprung",
         "notes": "• Blitzschnelle Volltext-Suche: Durchsucht alle archivierten Buchseiten in unter 10ms mit BM25-Relevanzranking\n• 1-Klick-Umschaltung im Katalog: Nahtlos zwischen Titelsuche und Volltext-Inhaltssuche wechseln\n• Direktsprung & Snippets: Text-Auszüge mit Suchbegriff-Hervorhebung und 1-Klick-Öffnen direkt auf der Fundstellen-Seite\n• Inkrementeller Hintergrund-Index: Asynchrones Einlesen im Scan & Sync Center mit Live-Fortschrittsanzeige",
     },
