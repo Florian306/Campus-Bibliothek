@@ -119,18 +119,27 @@ def speak_text(text: str, on_finished=None) -> None:
 
     def _worker():
         global _speech_process
+        tmp_script_path = None
         with _speech_lock:
             try:
-                # PowerShell script for natural German speech output
-                encoded_text = clean.replace("'", "''").replace('"', '`"')
-                ps_script = (
-                    f"$wshell = New-Object -ComObject WScript.Shell; "
-                    f"$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-                    f"$synth.Rate = 1; "
-                    f"$synth.Speak('{encoded_text}');"
+                import tempfile
+                # Target German voice if installed, otherwise system default
+                script_content = (
+                    "Add-Type -AssemblyName System.Speech;\n"
+                    "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;\n"
+                    "try {\n"
+                    "    $de = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'de*' -and $_.Enabled } | Select-Object -First 1;\n"
+                    "    if ($de) { $synth.SelectVoice($de.VoiceInfo.Name); }\n"
+                    "} catch {}\n"
+                    "$synth.Rate = 0;\n"
+                    f"$synth.Speak(@'\n{clean}\n'@);\n"
                 )
+                with tempfile.NamedTemporaryFile(suffix=".ps1", mode="w", encoding="utf-8", delete=False) as f:
+                    f.write(script_content)
+                    tmp_script_path = f.name
+
                 _speech_process = subprocess.Popen(
-                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                    ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp_script_path],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -140,6 +149,12 @@ def speak_text(text: str, on_finished=None) -> None:
 
         if _speech_process:
             _speech_process.wait()
+
+        if tmp_script_path and os.path.exists(tmp_script_path):
+            try:
+                os.unlink(tmp_script_path)
+            except Exception:
+                pass
 
         if on_finished:
             on_finished()
