@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.5"
+CURRENT_VERSION = "2.3.6"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.5",
+        "version": "2.3.6",
         "date": "Aktuell",
+        "title": "Menschliche KI-Sprachausgabe (Neural Voice) für JARVIS Briefings",
+        "notes": "• Ultra-realistische Sprachausgabe: Natürliche, menschliche KI-Stimme (Microsoft Florian Neural Voice) mit deutscher Satzmelodie und Betonung\n• Zuverlässiger Offline-Fallback: Automatische Umschaltung auf lokale Windows-Stimmen bei fehlender Internetverbindung\n• Fehlerbehebung TTS: Beseitigt Parsing- und Variablenfehler in der PowerShell-Sprachsynthese",
+    },
+    {
+        "version": "2.3.5",
+        "date": "01.11.2026",
         "title": "Cyber-Obsidian Design-Perfektionierung für Statistik & Analyse",
         "notes": "• Design-Upgrade Cockpit: Dezente Icon-Badges mit sanftem Glow und harmonische Typografie auf allen 4 KPI-Karten\n• Bereinigte Fakultäts-Kacheln: Saubere Farb-Indikatoren ohne störende Klammern oder Textversatz\n• Neues Histogramm für Publikationsjahre: Gradient-Füllbalken mit abgerundeten Ecken und Ø-Jahrgangsanzeige\n• Vektor-Icons & Lesbarkeit: Gestochen scharfe Vektor-Icons in den Bibliotheks-Highlights & Rekorden",
     },
