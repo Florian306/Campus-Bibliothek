@@ -1346,6 +1346,13 @@ class SyncView(QWidget):
         def on_prog(current, total, title):
             pct = int((current / max(1, total)) * 100)
             self.signals.progress.emit(pct, f"Volltext: [{current}/{total}] {title}")
+            # Live-update the FTS box numbers while indexing
+            try:
+                self.lbl_fts_badge.setText(f"{pct}% ({current}/{total})")
+                self.fts_progress.setValue(pct)
+                self.lbl_fts_info.setText(f"Indiziere: {title[:45]}...")
+            except Exception:
+                pass
 
         def on_fin(indexed_cnt, total_pending):
             self.btn_fts_build.setEnabled(True)
