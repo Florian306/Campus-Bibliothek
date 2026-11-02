@@ -13,3 +13,4 @@ requests>=2.31.0
 python-dateutil>=2.9.0
 lxml>=5.0.0
 pyinstaller>=6.10.0
+edge-tts>=7.0.0

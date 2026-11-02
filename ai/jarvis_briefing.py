@@ -1,6 +1,6 @@
 """JARVIS Briefing & Voice Synthesis Engine.
 Synthesizes agenda, upcoming events, unread emails, and top news into a seamless daily executive summary.
-Includes zero-dependency native Windows SpeechSynthesizer TTS audio playback.
+Supports ultra-realistic Microsoft Edge Neural Voices (de-DE-FlorianMultilingualNeural) with Windows SpeechSynthesizer fallback.
 """
 
 import os
@@ -8,6 +8,8 @@ import re
 import datetime
 import subprocess
 import threading
+import tempfile
+import ctypes
 from typing import Any, Dict, List, Optional
 
 from core.calendar_service import get_today_events, get_next_upcoming_event
@@ -18,6 +20,7 @@ from core.rss_news_service import fetch_live_news
 
 _speech_process: Optional[subprocess.Popen] = None
 _speech_lock = threading.Lock()
+_stop_requested = False
 
 
 def get_greeting() -> str:
@@ -104,59 +107,93 @@ def generate_executive_briefing() -> str:
 
 
 def speak_text(text: str, on_finished=None) -> None:
-    """Speaks the text aloud using zero-dependency native Windows SpeechSynthesizer."""
-    global _speech_process
-
+    """Speaks the text aloud with human-like Neural Voice (edge-tts) or native Windows fallback."""
+    global _stop_requested
     stop_speech()
+    _stop_requested = False
 
     # Clean text of markdown, asterisks, emojis for smooth TTS pronunciation
     clean = re.sub(r"[\*#_`~]", "", text)
     clean = re.sub(r"[^\w\s\.,;:!\?\-\(\)\/äöüÄÖÜß]", " ", clean)
-    clean = re.sub(r"\s+", " ", clean).strip()[:1000]
+    clean = re.sub(r"\s+", " ", clean).strip()[:1500]
 
     if not clean:
         return
 
     def _worker():
-        global _speech_process
-        tmp_script_path = None
-        with _speech_lock:
-            try:
-                import tempfile
-                # Target German voice if installed, otherwise system default
-                script_content = (
-                    "Add-Type -AssemblyName System.Speech;\n"
-                    "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;\n"
-                    "try {\n"
-                    "    $de = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'de*' -and $_.Enabled } | Select-Object -First 1;\n"
-                    "    if ($de) { $synth.SelectVoice($de.VoiceInfo.Name); }\n"
-                    "} catch {}\n"
-                    "$synth.Rate = 0;\n"
-                    f"$synth.Speak(@'\n{clean}\n'@);\n"
-                )
-                with tempfile.NamedTemporaryFile(suffix=".ps1", mode="w", encoding="utf-8", delete=False) as f:
-                    f.write(script_content)
-                    tmp_script_path = f.name
+        global _speech_process, _stop_requested
 
-                _speech_process = subprocess.Popen(
-                    ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp_script_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                )
-            except Exception:
-                _speech_process = None
+        # 1. Try human-like Neural Voice via edge-tts
+        played_neural = False
+        try:
+            import asyncio
+            import edge_tts
 
-        if _speech_process:
-            _speech_process.wait()
+            mp3_path = None
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                mp3_path = f.name
 
-        if tmp_script_path and os.path.exists(tmp_script_path):
-            try:
-                os.unlink(tmp_script_path)
-            except Exception:
-                pass
+            # Premium German neural voice (FlorianMultilingual / Conrad / Katja)
+            voice = "de-DE-FlorianMultilingualNeural"
+            communicate = edge_tts.Communicate(clean, voice)
+            asyncio.run(communicate.save(mp3_path))
 
-        if on_finished:
+            if not _stop_requested and os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1000:
+                mci = ctypes.windll.winmm.mciSendStringW
+                mci('close jarvis_speech', None, 0, None)
+                open_cmd = f'open "{mp3_path}" type mpegvideo alias jarvis_speech'
+                mci(open_cmd, None, 0, None)
+                mci('play jarvis_speech wait', None, 0, None)
+                mci('close jarvis_speech', None, 0, None)
+                played_neural = True
+
+            if mp3_path and os.path.exists(mp3_path):
+                try:
+                    os.unlink(mp3_path)
+                except Exception:
+                    pass
+
+        except Exception:
+            played_neural = False
+
+        # 2. Fallback to native Windows SpeechSynthesizer if offline or edge-tts unavailable
+        if not played_neural and not _stop_requested:
+            tmp_script_path = None
+            with _speech_lock:
+                try:
+                    script_content = (
+                        "Add-Type -AssemblyName System.Speech;\n"
+                        "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;\n"
+                        "try {\n"
+                        "    $de = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'de*' -and $_.Enabled } | Select-Object -First 1;\n"
+                        "    if ($de) { $synth.SelectVoice($de.VoiceInfo.Name); }\n"
+                        "} catch {}\n"
+                        "$synth.Rate = 0;\n"
+                        f"$synth.Speak(@'\n{clean}\n'@);\n"
+                    )
+                    with tempfile.NamedTemporaryFile(suffix=".ps1", mode="w", encoding="utf-8", delete=False) as f:
+                        f.write(script_content)
+                        tmp_script_path = f.name
+
+                    _speech_process = subprocess.Popen(
+                        ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp_script_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+                    )
+                except Exception:
+                    _speech_process = None
+
+            if _speech_process:
+                _speech_process.wait()
+
+            if tmp_script_path and os.path.exists(tmp_script_path):
+                try:
+                    os.unlink(tmp_script_path)
+                except Exception:
+                    pass
+
+        if on_finished and not _stop_requested:
             on_finished()
 
     threading.Thread(target=_worker, daemon=True).start()
@@ -164,7 +201,14 @@ def speak_text(text: str, on_finished=None) -> None:
 
 def stop_speech() -> None:
     """Stops any currently playing text-to-speech audio."""
-    global _speech_process
+    global _speech_process, _stop_requested
+    _stop_requested = True
+    try:
+        ctypes.windll.winmm.mciSendStringW('stop jarvis_speech', None, 0, None)
+        ctypes.windll.winmm.mciSendStringW('close jarvis_speech', None, 0, None)
+    except Exception:
+        pass
+
     with _speech_lock:
         if _speech_process is not None:
             try:
