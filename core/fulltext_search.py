@@ -7,6 +7,7 @@ import os
 import sqlite3
 import threading
 import time
+import ctypes
 from typing import Any, Dict, List, Optional, Tuple
 
 import pymupdf
@@ -81,8 +82,16 @@ def get_fts_index_stats() -> Dict[str, Any]:
     }
 
 
-def index_single_book(book_id: str, file_path: str, conn: Optional[sqlite3.Connection] = None) -> Tuple[bool, int, str]:
-    """Extracts text page-by-page from PDF and indexes into FTS5. Returns (success, pages_count, error)."""
+def index_single_book(
+    book_id: str,
+    file_path: str,
+    conn: Optional[sqlite3.Connection] = None,
+    stop_check_fn=None
+) -> Tuple[bool, int, str]:
+    """Extracts text page-by-page from PDF and indexes into FTS5.
+    Yields CPU periodically between pages to ensure zero UI lag.
+    Returns (success, pages_count, error).
+    """
     if not file_path or not os.path.exists(file_path):
         return False, 0, "Datei nicht gefunden"
 
@@ -107,23 +116,45 @@ def index_single_book(book_id: str, file_path: str, conn: Optional[sqlite3.Conne
         # Remove previous index entries for this book if re-indexing
         cur.execute("DELETE FROM book_pages_fts WHERE book_id = ?;", (str(book_id),))
 
-        # Extract text page by page with PyMuPDF
+        # Extract text page by page with PyMuPDF with batching & throttling
         doc = pymupdf.open(file_path)
         pages_to_insert = []
+        batch_size = 50
+
         for page_idx in range(len(doc)):
+            if stop_check_fn and stop_check_fn():
+                doc.close()
+                if should_close:
+                    conn.close()
+                return False, len(pages_to_insert), "Abgebrochen"
+
             page = doc[page_idx]
             txt = page.get_text("text").strip()
             if txt:
                 pages_to_insert.append((str(book_id), page_idx + 1, txt))
 
+            # Flush in small batches and yield CPU to prevent OS thread starvation
+            if len(pages_to_insert) >= batch_size:
+                cur.executemany(
+                    "INSERT INTO book_pages_fts(book_id, page_number, content) VALUES (?, ?, ?);",
+                    pages_to_insert
+                )
+                conn.commit()
+                pages_to_insert.clear()
+                time.sleep(0.005)  # 5ms yield between page chunks
+
         doc.close()
 
-        # Batch insert into FTS5
+        # Insert remaining pages
         if pages_to_insert:
             cur.executemany(
                 "INSERT INTO book_pages_fts(book_id, page_number, content) VALUES (?, ?, ?);",
                 pages_to_insert
             )
+
+        # Total pages count for this book in FTS
+        cur.execute("SELECT COUNT(*) FROM book_pages_fts WHERE book_id = ?;", (str(book_id),))
+        total_p = cur.fetchone()[0] or 0
 
         # Update status record
         cur.execute("""
@@ -135,12 +166,12 @@ def index_single_book(book_id: str, file_path: str, conn: Optional[sqlite3.Conne
                 status = 'indexed',
                 error_msg = NULL,
                 indexed_at = CURRENT_TIMESTAMP;
-        """, (str(book_id), mtime, len(pages_to_insert)))
+        """, (str(book_id), mtime, total_p))
 
         conn.commit()
         if should_close:
             conn.close()
-        return True, len(pages_to_insert), ""
+        return True, total_p, ""
 
     except Exception as exc:
         conn.rollback()
@@ -224,7 +255,7 @@ def search_fulltext(
 
 
 class FullTextIndexWorker(threading.Thread):
-    """Background worker daemon for incremental full-text library indexing."""
+    """Low-priority background worker daemon for smooth, non-blocking incremental indexing."""
 
     def __init__(self, progress_callback=None, finished_callback=None):
         super().__init__(daemon=True)
@@ -236,11 +267,22 @@ class FullTextIndexWorker(threading.Thread):
         self.stop_requested.set()
 
     def run(self) -> None:
+        # Throttle thread priority on Windows to Lowest/Idle priority
+        if os.name == "nt":
+            try:
+                kernel32 = ctypes.windll.kernel32
+                kernel32.GetCurrentThread.restype = ctypes.c_void_p
+                kernel32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
+                # -2 = THREAD_PRIORITY_LOWEST, ensures UI thread gets 100% precedence
+                kernel32.SetThreadPriority(kernel32.GetCurrentThread(), -2)
+            except Exception:
+                pass
+
         init_fts_schema()
         conn = _get_connection()
         cur = conn.cursor()
 
-        # Find books that need indexing (either not in fts_index_status or modified)
+        # Find books that need indexing
         cur.execute("""
             SELECT b.id, b.file_path, b.title
             FROM books b
@@ -260,12 +302,17 @@ class FullTextIndexWorker(threading.Thread):
             if self.progress_callback:
                 self.progress_callback(idx + 1, total_pending, title or os.path.basename(f_path))
 
-            success, pages, err = index_single_book(b_id, f_path, conn)
+            success, pages, err = index_single_book(
+                b_id,
+                f_path,
+                conn,
+                stop_check_fn=self.stop_requested.is_set
+            )
             if success:
                 indexed_count += 1
 
-            # Brief cooperative yield to keep UI and filesystem responsive
-            time.sleep(0.01)
+            # Generous cooperative yield between books so UI and rendering stay completely butter-smooth
+            time.sleep(0.04)
 
         conn.close()
 

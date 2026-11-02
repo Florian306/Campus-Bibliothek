@@ -53,6 +53,7 @@ from core.error_handler import humanize_error
 
 class ScanSignals(QObject):
     progress = Signal(int, str)
+    fts_progress = Signal(int, int, str)  # current, total, title
     finished = Signal(dict)
     log_message = Signal(str)
     sync_completed = Signal(bool, bool, str)  # is_push, success, message
@@ -75,6 +76,7 @@ class SyncView(QWidget):
 
         self.signals = ScanSignals()
         self.signals.progress.connect(self._on_progress)
+        self.signals.fts_progress.connect(self._on_fts_progress)
         self.signals.finished.connect(self._on_finished)
         self.signals.log_message.connect(self._append_log)
         self.signals.sync_completed.connect(self._on_sync_completed)
@@ -1346,21 +1348,30 @@ class SyncView(QWidget):
         def on_prog(current, total, title):
             pct = int((current / max(1, total)) * 100)
             self.signals.progress.emit(pct, f"Volltext: [{current}/{total}] {title}")
-            # Live-update the FTS box numbers while indexing
-            try:
-                self.lbl_fts_badge.setText(f"{pct}% ({current}/{total})")
-                self.fts_progress.setValue(pct)
-                self.lbl_fts_info.setText(f"Indiziere: {title[:45]}...")
-            except Exception:
-                pass
+            # Dispatch safely through Qt signal to main thread
+            self.signals.fts_progress.emit(current, total, title)
 
         def on_fin(indexed_cnt, total_pending):
-            self.btn_fts_build.setEnabled(True)
-            self._update_fts_status_ui()
-            self._append_log(f"Volltext-Index abgeschlossen: {indexed_cnt} Dokumente erfolgreich indiziert.")
+            self.signals.finished.connect(lambda _: None)  # noop
+            self.signals.sync_completed.emit(False, True, f"Volltext-Index abgeschlossen ({indexed_cnt} indiziert)")
+            # Trigger final status refresh on main thread
+            QTimer.singleShot(0, self._on_fts_finished)
 
         worker = FullTextIndexWorker(
             progress_callback=on_prog,
             finished_callback=on_fin
         )
         worker.start()
+
+    def _on_fts_progress(self, current: int, total: int, title: str) -> None:
+        """Main-thread safe slot for updating FTS progress UI."""
+        pct = int((current / max(1, total)) * 100)
+        self.lbl_fts_badge.setText(f"{pct}% ({current}/{total})")
+        self.fts_progress.setValue(pct)
+        self.lbl_fts_info.setText(f"Indiziere: {title[:40]}...")
+
+    def _on_fts_finished(self) -> None:
+        """Main-thread safe slot for index completion."""
+        self.btn_fts_build.setEnabled(True)
+        self._update_fts_status_ui()
+        self._append_log("Volltext-Index: Hintergrund-Aktualisierung erfolgreich beendet.")
