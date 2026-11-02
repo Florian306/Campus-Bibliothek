@@ -87,6 +87,12 @@ class CatalogView(QWidget):
         self._resize_timer.setInterval(120)
         self._resize_timer.timeout.connect(self._handle_debounced_resize)
 
+        # Debounce timer for fulltext search input to prevent query hammering
+        self._fts_debounce_timer = QTimer(self)
+        self._fts_debounce_timer.setSingleShot(True)
+        self._fts_debounce_timer.setInterval(220)
+        self._fts_debounce_timer.timeout.connect(self._trigger_debounced_fts)
+
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -527,26 +533,59 @@ class CatalogView(QWidget):
         if self.search_mode == "fulltext":
             if self.search_term and len(self.search_term) >= 2:
                 self.stacked_views.setCurrentIndex(2)
-                self.fts_overlay.perform_search(self.search_term)
                 self.lbl_table_count.setText("Volltext-Modus")
+                self._fts_debounce_timer.start()
                 return
             else:
+                self._fts_debounce_timer.stop()
                 self.stacked_views.setCurrentIndex(0 if self.view_mode == "shelf" else 1)
 
         self.apply_filter()
 
+    def _trigger_debounced_fts(self) -> None:
+        """Executes full-text query after user stopped typing."""
+        if self.search_mode == "fulltext" and self.search_term and len(self.search_term) >= 2:
+            self.fts_overlay.perform_search(self.search_term)
+
     def _on_fts_open_requested(self, file_path: str, page_number: int) -> None:
-        """Opens internal PDF reader directly jumped to the matched page."""
+        """Opens internal PDF reader safely jumped directly to the matched full-text page."""
         if not file_path or not os.path.exists(file_path):
             QMessageBox.warning(self, "Datei nicht gefunden", "Das Dokument konnte am Speicherort nicht gefunden werden.")
             return
 
-        reader = PdfReaderDialog(
-            pdf_path=file_path,
-            initial_page=page_number,
-            parent=self.window()
-        )
-        reader.exec()
+        # Find matching book from master_books or create contextual book dictionary
+        book = next((b for b in self.master_books if b.get("file_path") == file_path), None)
+        if not book:
+            resolved = resolve_and_heal_book_path(file_path)
+            book = {
+                "id": "",
+                "file_path": resolved,
+                "title": os.path.splitext(os.path.basename(file_path))[0],
+                "author": "Unbekannt",
+                "current_page": page_number,
+                "page_count": 0,
+                "file_size": os.path.getsize(file_path) if os.path.exists(file_path) else 0,
+            }
+        else:
+            resolved = resolve_and_heal_book_path(book.get("file_path", file_path), book_id=str(book.get("id", "")))
+            book["file_path"] = resolved
+
+        cfg = load_config()
+        if cfg.get("use_internal_reader", True):
+            dlg = PdfReaderDialog(
+                book=book,
+                initial_page=page_number,
+                parent=self.window()
+            )
+            dlg.setModal(False)
+            dlg.setAttribute(Qt.WA_DeleteOnClose, True)
+            if book.get("id"):
+                dlg.finished.connect(lambda _=None, bid=book["id"]: self._refresh_single_book(bid))
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
+        else:
+            open_pdf_in_edge(resolved, page=page_number)
 
     def _on_sort_changed(self, _index: int = 0) -> None:
         self.sort_mode = self.combo_sort.currentData() or "title_asc"
