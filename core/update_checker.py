@@ -10,12 +10,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.6"
+CURRENT_VERSION = "2.3.7"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
     {
-        "version": "2.3.6",
+        "version": "2.3.7",
         "date": "Aktuell",
+        "title": "High-Performance Volltext-Suche (SQLite FTS5) & Direktsprung",
+        "notes": "• Blitzschnelle Volltext-Suche: Durchsucht alle archivierten Buchseiten in unter 10ms mit BM25-Relevanzranking\n• 1-Klick-Umschaltung im Katalog: Nahtlos zwischen Titelsuche und Volltext-Inhaltssuche wechseln\n• Direktsprung & Snippets: Text-Auszüge mit Suchbegriff-Hervorhebung und 1-Klick-Öffnen direkt auf der Fundstellen-Seite\n• Inkrementeller Hintergrund-Index: Asynchrones Einlesen im Scan & Sync Center mit Live-Fortschrittsanzeige",
+    },
+    {
+        "version": "2.3.6",
+        "date": "02.11.2026",
         "title": "Menschliche KI-Sprachausgabe (Neural Voice) für JARVIS Briefings",
         "notes": "• Ultra-realistische Sprachausgabe: Natürliche, menschliche KI-Stimme (Microsoft Florian Neural Voice) mit deutscher Satzmelodie und Betonung\n• Zuverlässiger Offline-Fallback: Automatische Umschaltung auf lokale Windows-Stimmen bei fehlender Internetverbindung\n• Fehlerbehebung TTS: Beseitigt Parsing- und Variablenfehler in der PowerShell-Sprachsynthese",
     },
