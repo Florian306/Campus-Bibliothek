@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.4.0"
+CURRENT_VERSION = "2.4.1"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.4.1",
+        "date": "Aktuell",
+        "title": "Sofortige Startup-Update-Erkennung & Persistenter Nav-Badge",
+        "notes": "• Thread-sichere Startup-Erkennung: Neue Versionen werden sofort beim Start signalisiert – unabhängig davon, in welchem Tab sich der Benutzer befindet\n• Persistenter Nav-Badge: Das Leucht-Badge am Scan & Sync Button bleibt auch beim Tab-Wechsel dauerhaft erhalten\n• 1-Klick-Toast-Aktivierung: Der Floating Toast erscheint unmittelbar nach Boot und führt direkt zum Update-Dialog",
+    },
     {
         "version": "2.4.0",
         "date": "Aktuell",
