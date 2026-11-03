@@ -5,7 +5,7 @@ and responsive stacked view routing.
 
 import os
 from typing import Optional
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QFont, QKeySequence, QShortcut, QIcon
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -28,6 +28,8 @@ from core.library_db import get_category_counts, get_all_books, get_all_research
 class CampusMainWindow(QMainWindow):
     """Flagship Main Application Window with high-performance Lazy-View loading."""
 
+    update_found_signal = Signal(str, str, str)  # (latest_ver, url, notes)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Campus-Bibliothek AI – Virtueller Lehrbuch-Workspace")
@@ -44,6 +46,10 @@ class CampusMainWindow(QMainWindow):
 
         self._nav_buttons = {}
         self._views_cache = {}
+        self._active_update_ver = None
+        self._active_update_url = None
+        self._active_update_notes = None
+        self.update_found_signal.connect(self._on_update_available_badge)
         self._build_ui()
         self._setup_shortcuts()
         self._setup_tray()
@@ -372,7 +378,7 @@ class CampusMainWindow(QMainWindow):
 
     @property
     def view_sync(self):
-        return self._get_or_create_view("sync", 9)
+        return self._get_or_create_view("sync", 10)
 
     def _setup_shortcuts(self) -> None:
         shortcut_space = QShortcut(QKeySequence(Qt.Key_Space), self)
@@ -400,23 +406,42 @@ class CampusMainWindow(QMainWindow):
                     }
                 """)
             else:
-                btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: transparent;
-                        color: #8B949E;
-                        border: 1px solid transparent;
-                        border-radius: 7px;
-                        text-align: left;
-                        padding-left: 14px;
-                        font-weight: 600;
-                        font-size: 13px;
-                    }
-                    QPushButton:hover {
-                        background-color: #151D2E;
-                        color: #F0F6FC;
-                        border-color: #232F48;
-                    }
-                """)
+                if k == "sync" and getattr(self, "_active_update_ver", None):
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F4529, stop:1 #132A19);
+                            color: #3FB950;
+                            border: 1px solid #2EA043;
+                            border-radius: 7px;
+                            text-align: left;
+                            padding-left: 14px;
+                            font-weight: 700;
+                            font-size: 13px;
+                        }
+                        QPushButton:hover {
+                            background-color: #235431;
+                            border-color: #3FB950;
+                            color: #FFFFFF;
+                        }
+                    """)
+                else:
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: transparent;
+                            color: #8B949E;
+                            border: 1px solid transparent;
+                            border-radius: 7px;
+                            text-align: left;
+                            padding-left: 14px;
+                            font-weight: 600;
+                            font-size: 13px;
+                        }
+                        QPushButton:hover {
+                            background-color: #151D2E;
+                            color: #F0F6FC;
+                            border-color: #232F48;
+                        }
+                    """)
 
         # Trigger data refresh on tab activate
         if idx in (1, 2):
@@ -472,7 +497,7 @@ class CampusMainWindow(QMainWindow):
                 avail, latest, url, notes = check_for_updates()
                 if avail and latest and latest != self._last_notified_update:
                     self._last_notified_update = latest
-                    QTimer.singleShot(0, lambda: self._on_update_available_badge(latest, url or "", notes or ""))
+                    self.update_found_signal.emit(str(latest), str(url or ""), str(notes or ""))
             except Exception:
                 pass
 
@@ -486,6 +511,9 @@ class CampusMainWindow(QMainWindow):
 
     def _on_update_available_badge(self, latest_ver: str, url: str = "", notes: str = "") -> None:
         """Updates the sidebar badge and shows non-intrusive toast notification and tray alert."""
+        self._active_update_ver = latest_ver
+        self._active_update_url = url
+        self._active_update_notes = notes
         btn_sync = self._nav_buttons.get("sync")
         if btn_sync and latest_ver:
             btn_sync.setText(f"  Scan && Sync  •  v{latest_ver} ⬆")
@@ -571,7 +599,7 @@ class CampusMainWindow(QMainWindow):
                     return
                 except Exception:
                     pass
-            self._switch_tab("sync", 9)
+            self._switch_tab("sync", 10)
 
         btn_install = QPushButton("Jetzt aktualisieren")
         btn_install.setCursor(Qt.PointingHandCursor)
