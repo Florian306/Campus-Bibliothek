@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.4.1"
+CURRENT_VERSION = "2.5.0"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.0",
+        "date": "Aktuell",
+        "title": "All-in-One Search Capsule, FTS Buch-Akkordeon & Live-Seitenvorschau",
+        "notes": "• All-in-One Search Capsule: Integriertes Spotlight-Kapseldesign mit sanfter Glow-Border und interaktivem Live-Trefferzähler\n• Buch-Akkordeon für Volltext-Treffer: Ergebnisse werden übersichtlich nach Büchern gruppiert und lassen sich auf- und zuklappen\n• Live-Seitenvorschau (Split-View): Direkte hochauflösende Dokumentenvorschau im rechten Inspector ohne Reader-Öffnung\n• Floating Reader-HUD: Sanft ausblendende Seitenanzeige beim Scrollen im fortlaufenden Lesemodus",
+    },
     {
         "version": "2.4.1",
         "date": "Aktuell",
