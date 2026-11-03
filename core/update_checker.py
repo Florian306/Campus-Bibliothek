@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.0"
+CURRENT_VERSION = "2.5.1"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.1",
+        "date": "Aktuell",
+        "title": "Intelligente Posteingangs-Erkennung & OCR-tolerante Metadaten",
+        "notes": "• Smarter Dateinamen-Parser: Automatische Zerlegung von akademischen Dateinamen in Autor, Buchtitel, Auflage und Erscheinungsjahr\n• Tiefer Impressum-Scan: Erweitert die Titelei-Suche auf bis zu 16 Seiten zur zuverlässigen Erkennung von Springer-, Hanser- und DNB-Impressumsdaten\n• OCR-tolerante ISBN-Erkennung: Erkennt ISBNs auch bei Scans mit typischen Scan-Fehlern (z. B. 'O' statt '0') und fehlenden Bindestrichen\n• Multi-Stufen-Fallback: Nie wieder leere Autoren- oder Titelangaben im Posteingang",
+    },
     {
         "version": "2.5.0",
         "date": "Aktuell",
