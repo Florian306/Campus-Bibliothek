@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.9"
+CURRENT_VERSION = "2.4.0"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.4.0",
+        "date": "Aktuell",
+        "title": "Fix: Exakter Seiten-Erhalt beim Scrollmodus-Wechsel",
+        "notes": "• Perfekter Scroll-Übergang: Behebt den QtPdf-Eigenheitseffekt beim Umschalten von Einzelseite auf fortlaufendes Scrollen, sodass der Reader nie mehr an den Buchanfang springt\n• Unmittelbare Ziel-Ausrichtung: Sofortige Scrollbar- und Navigator-Justierung auf die genaue Leseposition",
+    },
     {
         "version": "2.3.9",
         "date": "Aktuell",
