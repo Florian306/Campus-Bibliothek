@@ -539,6 +539,9 @@ class CatalogView(QWidget):
             else:
                 self._fts_debounce_timer.stop()
                 self.stacked_views.setCurrentIndex(0 if self.view_mode == "shelf" else 1)
+        else:
+            self._fts_debounce_timer.stop()
+            self.stacked_views.setCurrentIndex(0 if self.view_mode == "shelf" else 1)
 
         self.apply_filter()
 

@@ -222,7 +222,7 @@ def search_fulltext(
         SELECT 
             fts.book_id,
             fts.page_number,
-            snippet(book_pages_fts, 2, '<b><mark style=\"background:#58A6FF; color:#0A0E17; border-radius:3px; padding:0 2px;\">', '</mark></b>', '...', 24) AS match_snippet,
+            snippet(book_pages_fts, 2, '<b style=\"background:rgba(56,139,253,0.25); color:#79C0FF; border:1px solid rgba(88,166,255,0.4); border-radius:3px; padding:1px 5px;\">', '</b>', '...', 24) AS match_snippet,
             bm25(book_pages_fts) AS rank,
             b.title,
             b.author,

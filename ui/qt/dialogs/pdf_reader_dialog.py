@@ -1805,6 +1805,7 @@ class PdfReaderDialog(QDialog):
     def _toggle_page_mode(self) -> None:
         if not self.view:
             return
+        curr_p = self.view.pageNavigator().currentPage() + 1
         if self.view.pageMode() == QPdfView.PageMode.MultiPage:
             self.view.setPageMode(QPdfView.PageMode.SinglePage)
             self.btn_page_mode.setText("📄")
@@ -1813,6 +1814,7 @@ class PdfReaderDialog(QDialog):
             self.view.setPageMode(QPdfView.PageMode.MultiPage)
             self.btn_page_mode.setText("📜")
             self.btn_page_mode.setToolTip("Modus: Fortlaufend (klicken für Einzelseite)")
+        QTimer.singleShot(40, lambda: self._jump_to_page(curr_p, keep_focus=True))
 
     def _toggle_search_bar(self, checked: Optional[bool] = None) -> None:
         if checked is None:

@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.3.8"
+CURRENT_VERSION = "2.3.9"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.3.9",
+        "date": "Aktuell",
+        "title": "Optimierte Volltext-Navigation & Seiten-Erhalt im PDF-Reader",
+        "notes": "• Intelligenter Seiten-Erhalt: Beim Umschalten zwischen Einzelseite und fortlaufender Ansicht bleibt die aktuelle Leseseite exakt erhalten\n• Nahtloser Suchmodus-Wechsel: Umschalten von Volltext auf Titel wechselt sofort und zuverlässig zurück zur Regal-/Tabellenansicht\n• Premium Such-Snippets: Eleganter Glashighlight-Look für Trefferwörter ohne störende Farbblöcke",
+    },
     {
         "version": "2.3.8",
         "date": "Aktuell",
