@@ -565,6 +565,9 @@ class CatalogView(QWidget):
             if self.search_term and len(self.search_term) >= 2:
                 self.stacked_views.setCurrentIndex(2)
                 self.lbl_table_count.setText("Volltext-Modus")
+                if hasattr(self, "lbl_search_hits"):
+                    self.lbl_search_hits.setText("Suche...")
+                    self.lbl_search_hits.show()
                 self._fts_debounce_timer.start()
                 return
             else:
@@ -582,6 +585,10 @@ class CatalogView(QWidget):
         """Executes full-text query after user stopped typing."""
         if self.search_mode == "fulltext" and self.search_term and len(self.search_term) >= 2:
             self.fts_overlay.perform_search(self.search_term)
+            if hasattr(self, "lbl_search_hits") and hasattr(self.fts_overlay, "lbl_hits"):
+                hits_txt = self.fts_overlay.lbl_hits.text()
+                self.lbl_search_hits.setText(hits_txt)
+                self.lbl_search_hits.show()
 
     def _on_fts_open_requested(self, file_path: str, page_number: int) -> None:
         """Opens internal PDF reader safely jumped directly to the matched full-text page."""

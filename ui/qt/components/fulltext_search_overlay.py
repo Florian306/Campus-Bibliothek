@@ -1,6 +1,6 @@
 """Full-Text Search Results View & Interactive Preview Inspector for Campus-Bibliothek.
 Groups hits logically by document with collapsible accordion cards, snippet expanders,
-and an instant right-side page rendering preview inspector.
+active selection indicators, and an instant studio-rendered page preview inspector.
 """
 
 from typing import Any, Dict, List, Optional
@@ -28,7 +28,7 @@ from core.cover_manager import get_book_cover_blob
 class HitSnippetRow(QFrame):
     """Single page match row with quick jump button, page badge, and preview selector."""
 
-    page_selected = Signal(str, int)  # (file_path, page_number)
+    row_clicked = Signal(object, str, int)  # (self, file_path, page_number)
     open_reader_requested = Signal(str, int)
 
     def __init__(self, hit_data: Dict[str, Any], parent=None):
@@ -37,71 +37,41 @@ class HitSnippetRow(QFrame):
         self.file_path = hit_data.get("file_path", "")
         self.page_num = hit_data.get("page_number", 1)
         self.snippet_html = hit_data.get("snippet", "")
+        self._is_active = False
         self._build_ui()
 
     def _build_ui(self) -> None:
         self.setObjectName("hitSnippetRow")
-        self.setStyleSheet("""
-            QFrame#hitSnippetRow {
-                background-color: #0B101B;
-                border: 1px solid #182234;
-                border-radius: 7px;
-            }
-            QFrame#hitSnippetRow:hover {
-                background-color: #121A2C;
-                border-color: #388BFD;
-            }
-        """)
+        self.setCursor(Qt.PointingHandCursor)
+        self._update_style()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(10, 8, 12, 8)
         layout.setSpacing(10)
 
         # Page Badge
-        lbl_p = QLabel(f"S. {self.page_num}")
-        lbl_p.setAlignment(Qt.AlignCenter)
-        lbl_p.setFont(QFont("Segoe UI", 9, QFont.Bold))
-        lbl_p.setFixedWidth(54)
-        lbl_p.setStyleSheet("""
+        self.lbl_p = QLabel(f"S. {self.page_num}")
+        self.lbl_p.setAlignment(Qt.AlignCenter)
+        self.lbl_p.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        self.lbl_p.setFixedWidth(58)
+        self.lbl_p.setStyleSheet("""
             background-color: #152238;
             color: #79C0FF;
             border: 1px solid #233758;
-            border-radius: 4px;
-            padding: 3px 6px;
+            border-radius: 5px;
+            padding: 4px 6px;
         """)
-        layout.addWidget(lbl_p)
+        layout.addWidget(self.lbl_p)
 
         # Snippet Text
         lbl_snip = QLabel(f"» {self.snippet_html} «")
         lbl_snip.setTextFormat(Qt.RichText)
         lbl_snip.setWordWrap(True)
         lbl_snip.setFont(QFont("Segoe UI", 9))
-        lbl_snip.setStyleSheet("color: #C9D1D9; border: none; background: transparent; line-height: 1.4;")
+        lbl_snip.setStyleSheet("color: #C9D1D9; border: none; background: transparent; line-height: 1.45;")
         layout.addWidget(lbl_snip, stretch=1)
 
-        # Actions
-        btn_preview = QPushButton("Vorschau")
-        btn_preview.setCursor(Qt.PointingHandCursor)
-        btn_preview.setFixedHeight(26)
-        btn_preview.setStyleSheet("""
-            QPushButton {
-                background-color: #162032;
-                color: #8B949E;
-                border: 1px solid #253550;
-                border-radius: 4px;
-                padding: 0 8px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #1F2D44;
-                color: #FFFFFF;
-                border-color: #58A6FF;
-            }
-        """)
-        btn_preview.clicked.connect(lambda: self.page_selected.emit(self.file_path, self.page_num))
-        layout.addWidget(btn_preview)
-
+        # Action: Direct Open In Reader
         btn_jump = QPushButton("Öffnen ↗")
         btn_jump.setCursor(Qt.PointingHandCursor)
         btn_jump.setFixedHeight(26)
@@ -122,16 +92,44 @@ class HitSnippetRow(QFrame):
         btn_jump.clicked.connect(lambda: self.open_reader_requested.emit(self.file_path, self.page_num))
         layout.addWidget(btn_jump)
 
+    def set_active(self, active: bool) -> None:
+        self._is_active = active
+        self._update_style()
+
+    def _update_style(self) -> None:
+        if self._is_active:
+            self.setStyleSheet("""
+                QFrame#hitSnippetRow {
+                    background-color: #13223A;
+                    border: 1px solid #388BFD;
+                    border-left: 4px solid #58A6FF;
+                    border-radius: 7px;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QFrame#hitSnippetRow {
+                    background-color: #0B101B;
+                    border: 1px solid #182234;
+                    border-left: 3px solid transparent;
+                    border-radius: 7px;
+                }
+                QFrame#hitSnippetRow:hover {
+                    background-color: #101828;
+                    border-color: #2D4263;
+                }
+            """)
+
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
-            self.page_selected.emit(self.file_path, self.page_num)
+            self.row_clicked.emit(self, self.file_path, self.page_num)
         super().mousePressEvent(event)
 
 
 class BookGroupAccordionItem(QFrame):
     """Group card representing all matches within a specific book with collapsible hit list."""
 
-    preview_requested = Signal(str, int)
+    preview_requested = Signal(object, str, int)  # (row_widget, file_path, page_num)
     open_requested = Signal(str, int)
 
     def __init__(self, book_title: str, book_data: Dict[str, Any], hits: List[Dict[str, Any]], parent=None):
@@ -140,6 +138,7 @@ class BookGroupAccordionItem(QFrame):
         self.book_data = book_data
         self.hits = hits
         self._is_expanded = True
+        self.row_widgets: List[HitSnippetRow] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -153,21 +152,25 @@ class BookGroupAccordionItem(QFrame):
         """)
 
         main_vbox = QVBoxLayout(self)
-        main_vbox.setContentsMargins(12, 10, 12, 10)
-        main_vbox.setSpacing(8)
+        main_vbox.setContentsMargins(14, 12, 14, 12)
+        main_vbox.setSpacing(10)
 
         # Header Row
         header_widget = QWidget()
         header_widget.setCursor(Qt.PointingHandCursor)
         h_lay = QHBoxLayout(header_widget)
         h_lay.setContentsMargins(0, 0, 0, 0)
-        h_lay.setSpacing(12)
+        h_lay.setSpacing(14)
 
         # Thumbnail
         thumb_lbl = QLabel()
-        thumb_lbl.setFixedSize(38, 52)
+        thumb_lbl.setFixedSize(42, 58)
         thumb_lbl.setAlignment(Qt.AlignCenter)
-        thumb_lbl.setStyleSheet("background-color: #080C14; border: 1px solid #1F2C44; border-radius: 4px;")
+        thumb_lbl.setStyleSheet("""
+            background-color: #080C14;
+            border: 1px solid #1F2C44;
+            border-radius: 5px;
+        """)
 
         book_id = self.book_data.get("book_id")
         loaded_thumb = False
@@ -177,12 +180,12 @@ class BookGroupAccordionItem(QFrame):
                 if blob:
                     pm = QPixmap()
                     if pm.loadFromData(blob):
-                        thumb_lbl.setPixmap(pm.scaled(38, 52, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                        thumb_lbl.setPixmap(pm.scaled(42, 58, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
                         loaded_thumb = True
             except Exception:
                 pass
         if not loaded_thumb:
-            thumb_lbl.setPixmap(create_vector_pixmap("book", "#58A6FF", 18))
+            thumb_lbl.setPixmap(create_vector_pixmap("book", "#58A6FF", 20))
         h_lay.addWidget(thumb_lbl)
 
         # Meta info
@@ -230,9 +233,10 @@ class BookGroupAccordionItem(QFrame):
 
         for h in self.hits:
             row = HitSnippetRow(h)
-            row.page_selected.connect(self.preview_requested.emit)
+            row.row_clicked.connect(self.preview_requested.emit)
             row.open_reader_requested.connect(self.open_requested.emit)
             self.hits_layout.addWidget(row)
+            self.row_widgets.append(row)
 
         main_vbox.addWidget(self.hits_container)
 
@@ -243,7 +247,7 @@ class BookGroupAccordionItem(QFrame):
 
 
 class FullTextPagePreviewInspector(QFrame):
-    """Right-side preview inspector showing rendered high-res PDF page snapshot."""
+    """Right-side preview inspector showing rendered studio PDF page snapshot with search highlights."""
 
     open_in_reader = Signal(str, int)
 
@@ -251,13 +255,15 @@ class FullTextPagePreviewInspector(QFrame):
         super().__init__(parent)
         self._current_path = ""
         self._current_page = 1
+        self._current_term = ""
+        self._dark_inverted = False
         self._build_ui()
 
     def _build_ui(self) -> None:
         self.setStyleSheet("""
             QFrame {
-                background-color: #0B0F19;
-                border-left: 1px solid #1E293B;
+                background-color: #070B12;
+                border-left: 1px solid #1A2438;
             }
         """)
 
@@ -272,6 +278,29 @@ class FullTextPagePreviewInspector(QFrame):
         self.lbl_head.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
         top_bar.addWidget(self.lbl_head)
         top_bar.addStretch()
+
+        # Dark Invert Toggle
+        self.btn_invert = QPushButton("🌙 Dunkel")
+        self.btn_invert.setCursor(Qt.PointingHandCursor)
+        self.btn_invert.setFixedHeight(28)
+        self.btn_invert.setStyleSheet("""
+            QPushButton {
+                background-color: #121A2B;
+                color: #8B949E;
+                border: 1px solid #23314A;
+                border-radius: 5px;
+                padding: 0 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #1A253E;
+                color: #FFFFFF;
+                border-color: #388BFD;
+            }
+        """)
+        self.btn_invert.clicked.connect(self._toggle_invert)
+        top_bar.addWidget(self.btn_invert)
 
         self.btn_open = QPushButton("Im Reader öffnen ↗")
         self.btn_open.setCursor(Qt.PointingHandCursor)
@@ -292,39 +321,89 @@ class FullTextPagePreviewInspector(QFrame):
         top_bar.addWidget(self.btn_open)
         layout.addLayout(top_bar)
 
-        # Page Snapshot Scroll Area
+        # Page Snapshot Scroll Area (Studio Canvas Background)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("QScrollArea { border: 1px solid #1C273C; border-radius: 8px; background-color: #070A12; }")
+        self.scroll.setAlignment(Qt.AlignCenter)
+        self.scroll.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #141C2E;
+                border-radius: 10px;
+                background-color: #06080F;
+            }
+        """)
+
+        # Canvas container with margins to give page a centered floating sheet look
+        self.canvas_widget = QWidget()
+        self.canvas_widget.setStyleSheet("background-color: #06080F;")
+        canv_lay = QVBoxLayout(self.canvas_widget)
+        canv_lay.setContentsMargins(18, 18, 18, 18)
+        canv_lay.setAlignment(Qt.AlignCenter)
 
         self.lbl_page_render = QLabel()
         self.lbl_page_render.setAlignment(Qt.AlignCenter)
-        self.lbl_page_render.setStyleSheet("background-color: #070A12; color: #8B949E; font-size: 11px;")
-        self.lbl_page_render.setText("Wähle einen Treffer aus,\num eine direkte Seitenvorschau anzuzeigen.")
-        self.scroll.setWidget(self.lbl_page_render)
+        self.lbl_page_render.setStyleSheet("""
+            background-color: #FFFFFF;
+            border: 1px solid #23314A;
+            border-radius: 4px;
+        """)
+        self.lbl_page_render.setText("Wähle einen Treffer aus,\num die Buchseite hier in hoher Auflösung anzuzeigen.")
+        canv_lay.addWidget(self.lbl_page_render)
+
+        self.scroll.setWidget(self.canvas_widget)
         layout.addWidget(self.scroll, stretch=1)
 
-    def load_page_preview(self, file_path: str, page_num: int) -> None:
+    def _toggle_invert(self) -> None:
+        self._dark_inverted = not self._dark_inverted
+        self.btn_invert.setText("☀️ Hell" if self._dark_inverted else "🌙 Dunkel")
+        if self._current_path:
+            self.load_page_preview(self._current_path, self._current_page, self._current_term)
+
+    def load_page_preview(self, file_path: str, page_num: int, search_term: str = "") -> None:
         self._current_path = file_path
         self._current_page = page_num
+        self._current_term = search_term
         self.lbl_head.setText(f"Vorschau: Seite {page_num}")
 
         if not file_path or not os.path.exists(file_path):
-            self.lbl_page_render.setText("Dokument nicht gefunden")
+            self.lbl_page_render.setStyleSheet("background-color: transparent; color: #8B949E;")
+            self.lbl_page_render.setText("Dokument am Speicherort nicht gefunden")
             return
 
         try:
             doc = pymupdf.open(file_path)
             idx = max(0, min(page_num - 1, doc.page_count - 1))
             page = doc.load_page(idx)
-            # Render page at 1.4x scale for crisp inspection
-            mat = pymupdf.Matrix(1.4, 1.4)
+
+            # Highlight occurrences of search query words directly on rendered preview page
+            if search_term and len(search_term.strip()) >= 2:
+                words = search_term.strip().split()
+                for w in words:
+                    clean_w = w.strip('",*.')
+                    if len(clean_w) >= 2:
+                        rects = page.search_for(clean_w)
+                        for r in rects:
+                            annot = page.add_highlight_annot(r)
+                            annot.set_colors(stroke=(0.2, 0.55, 1.0))
+                            annot.update()
+
+            # Render page at 1.45x scale
+            mat = pymupdf.Matrix(1.45, 1.45)
             pix = page.get_pixmap(matrix=mat, alpha=False)
+
+            if self._dark_inverted:
+                pix.invert_irect()
+
             img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
             pm = QPixmap.fromImage(img)
             self.lbl_page_render.setPixmap(pm)
+            self.lbl_page_render.setStyleSheet("""
+                border: 1px solid #1E2B42;
+                border-radius: 4px;
+            """)
             doc.close()
         except Exception as e:
+            self.lbl_page_render.setStyleSheet("background-color: transparent; color: #8B949E;")
             self.lbl_page_render.setText(f"Vorschau konnte nicht gerendert werden:\n{e}")
 
     def _on_open_clicked(self) -> None:
@@ -339,6 +418,8 @@ class FullTextSearchOverlay(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._active_row: Optional[HitSnippetRow] = None
+        self._last_query = ""
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -401,18 +482,19 @@ class FullTextSearchOverlay(QWidget):
         self.preview_inspector.open_in_reader.connect(self._on_jump_requested)
         self.splitter.addWidget(self.preview_inspector)
 
-        self.splitter.setSizes([650, 450])
+        self.splitter.setSizes([620, 480])
         main_layout.addWidget(self.splitter, stretch=1)
 
     def perform_search(self, query: str) -> None:
         """Executes full-text query, groups hits by book and renders interactive accordion cards."""
+        self._last_query = query.strip()
         while self.results_layout.count() > 0:
             item = self.results_layout.takeAt(0)
             w = item.widget()
             if w:
                 w.deleteLater()
 
-        clean_q = query.strip()
+        clean_q = self._last_query
         if not clean_q or len(clean_q) < 2:
             self.lbl_hits.setText("Suchbegriff eingeben...")
             return
@@ -444,24 +526,38 @@ class FullTextSearchOverlay(QWidget):
                 }
             grouped[b_key]["hits"].append(m)
 
+        first_row_widget = None
         first_hit = matches[0]
+
         for b_info in grouped.values():
             accordion = BookGroupAccordionItem(
                 b_info["title"],
                 b_info["book_data"],
                 b_info["hits"]
             )
-            accordion.preview_requested.connect(self.preview_inspector.load_page_preview)
+            accordion.preview_requested.connect(self._on_row_selected)
             accordion.open_requested.connect(self._on_jump_requested)
             self.results_layout.addWidget(accordion)
+            if not first_row_widget and accordion.row_widgets:
+                first_row_widget = accordion.row_widgets[0]
 
         self.results_layout.addStretch()
         self.results_container.adjustSize()
         self.scroll.verticalScrollBar().setValue(0)
 
-        # Automatically preview first hit
-        if first_hit.get("file_path"):
-            self.preview_inspector.load_page_preview(first_hit["file_path"], first_hit.get("page_number", 1))
+        # Highlight & load first hit
+        if first_row_widget and first_hit.get("file_path"):
+            self._on_row_selected(first_row_widget, first_hit["file_path"], first_hit.get("page_number", 1))
+
+    def _on_row_selected(self, row_widget: HitSnippetRow, file_path: str, page_num: int) -> None:
+        if self._active_row and self._active_row != row_widget:
+            try:
+                self._active_row.set_active(False)
+            except Exception:
+                pass
+        self._active_row = row_widget
+        row_widget.set_active(True)
+        self.preview_inspector.load_page_preview(file_path, page_num, search_term=self._last_query)
 
     def _on_jump_requested(self, file_path: str, page_num: int) -> None:
         self.open_reader_requested.emit(file_path, page_num)
