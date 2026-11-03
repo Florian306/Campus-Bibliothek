@@ -217,65 +217,94 @@ class CatalogView(QWidget):
         self.combo_sort.currentIndexChanged.connect(self._on_sort_changed)
         top_bar.addWidget(self.combo_sort)
 
-        # Search Mode Toggle & Input
+        # Integrated All-in-One Search Capsule (Spotlight Style)
         self.search_mode = "meta"  # "meta" or "fulltext"
-        search_box = QHBoxLayout()
-        search_box.setSpacing(6)
 
-        # Segmented switch pill: [ Titel ] [ 🔍 Volltext ]
-        switch_search_frame = QWidget()
-        switch_search_frame.setStyleSheet("""
-            QWidget {
-                background-color: #121826;
-                border: 1px solid #232F48;
-                border-radius: 8px;
+        self.search_capsule = QFrame()
+        self.search_capsule.setStyleSheet("""
+            QFrame {
+                background-color: #101624;
+                border: 1px solid #23314A;
+                border-radius: 18px;
+            }
+            QFrame:hover {
+                border-color: #388BFD;
             }
         """)
-        sw_s_lay = QHBoxLayout(switch_search_frame)
-        sw_s_lay.setContentsMargins(2, 2, 2, 2)
-        sw_s_lay.setSpacing(2)
+        capsule_lay = QHBoxLayout(self.search_capsule)
+        capsule_lay.setContentsMargins(4, 3, 10, 3)
+        capsule_lay.setSpacing(6)
+
+        # Mode Pills Container
+        switch_frame = QWidget()
+        switch_frame.setStyleSheet("background-color: #0A0E17; border-radius: 14px; border: 1px solid #1B263B;")
+        sw_lay = QHBoxLayout(switch_frame)
+        sw_lay.setContentsMargins(2, 2, 2, 2)
+        sw_lay.setSpacing(2)
 
         self.btn_mode_title = QPushButton("Titel")
         self.btn_mode_title.setCursor(Qt.PointingHandCursor)
-        self.btn_mode_title.setFixedHeight(28)
+        self.btn_mode_title.setFixedHeight(24)
         self.btn_mode_title.setStyleSheet("""
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD);
             color: #FFFFFF;
             font-weight: bold;
             border: none;
-            border-radius: 6px;
+            border-radius: 12px;
             padding: 0 10px;
             font-size: 11px;
         """)
         self.btn_mode_title.clicked.connect(lambda: self._set_search_mode("meta"))
-        sw_s_lay.addWidget(self.btn_mode_title)
+        sw_lay.addWidget(self.btn_mode_title)
 
         self.btn_mode_fts = QPushButton("🔍 Volltext")
         self.btn_mode_fts.setCursor(Qt.PointingHandCursor)
-        self.btn_mode_fts.setFixedHeight(28)
+        self.btn_mode_fts.setFixedHeight(24)
         self.btn_mode_fts.setStyleSheet("""
             background-color: transparent;
             color: #8B949E;
             border: none;
-            border-radius: 6px;
+            border-radius: 12px;
             padding: 0 10px;
             font-size: 11px;
             font-weight: 600;
         """)
         self.btn_mode_fts.clicked.connect(lambda: self._set_search_mode("fulltext"))
-        sw_s_lay.addWidget(self.btn_mode_fts)
-
-        search_box.addWidget(switch_search_frame)
+        sw_lay.addWidget(self.btn_mode_fts)
+        capsule_lay.addWidget(switch_frame)
 
         self.ent_search = QLineEdit()
-        self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
-        self.ent_search.setFixedWidth(240)
-        self.ent_search.setFixedHeight(34)
+        self.ent_search.setPlaceholderText("Suchen nach Titel, Autor, Fach... (Strg+F / Tab)")
+        self.ent_search.setFixedWidth(280)
+        self.ent_search.setFixedHeight(28)
+        self.ent_search.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                border: none;
+                color: #FFFFFF;
+                font-size: 12px;
+                padding-left: 4px;
+            }
+        """)
         self.ent_search.textChanged.connect(self._on_search_changed)
         self.ent_search.setClearButtonEnabled(True)
-        search_box.addWidget(self.ent_search)
+        capsule_lay.addWidget(self.ent_search)
 
-        top_bar.addLayout(search_box)
+        # Hit count pill badge inside search bar
+        self.lbl_search_hits = QLabel("")
+        self.lbl_search_hits.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        self.lbl_search_hits.setStyleSheet("""
+            background-color: #16243C;
+            color: #58A6FF;
+            border: 1px solid #263B60;
+            border-radius: 9px;
+            padding: 2px 8px;
+            font-size: 10px;
+        """)
+        self.lbl_search_hits.hide()
+        capsule_lay.addWidget(self.lbl_search_hits)
+
+        top_bar.addWidget(self.search_capsule)
 
         main_layout.addLayout(top_bar)
 
@@ -513,13 +542,15 @@ class CatalogView(QWidget):
         """Sets active search mode ('meta' or 'fulltext') with smooth visual pill transition."""
         self.search_mode = mode
         if mode == "fulltext":
-            self.btn_mode_fts.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD); color: #FFFFFF; font-weight: bold; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px;")
-            self.btn_mode_title.setStyleSheet("background-color: transparent; color: #8B949E; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px; font-weight: 600;")
+            self.btn_mode_fts.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD); color: #FFFFFF; font-weight: bold; border: none; border-radius: 12px; padding: 0 10px; font-size: 11px;")
+            self.btn_mode_title.setStyleSheet("background-color: transparent; color: #8B949E; border: none; border-radius: 12px; padding: 0 10px; font-size: 11px; font-weight: 600;")
             self.ent_search.setPlaceholderText("🔍 Im Buchinhalt suchen (Begriffe, Definitionen)...")
+            self.search_capsule.setStyleSheet("QFrame { background-color: #121A2B; border: 1px solid #388BFD; border-radius: 18px; }")
         else:
-            self.btn_mode_title.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD); color: #FFFFFF; font-weight: bold; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px;")
-            self.btn_mode_fts.setStyleSheet("background-color: transparent; color: #8B949E; border: none; border-radius: 6px; padding: 0 10px; font-size: 11px; font-weight: 600;")
-            self.ent_search.setPlaceholderText("🔍 Suchen nach Titel, Autor, Fach...")
+            self.btn_mode_title.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD); color: #FFFFFF; font-weight: bold; border: none; border-radius: 12px; padding: 0 10px; font-size: 11px;")
+            self.btn_mode_fts.setStyleSheet("background-color: transparent; color: #8B949E; border: none; border-radius: 12px; padding: 0 10px; font-size: 11px; font-weight: 600;")
+            self.ent_search.setPlaceholderText("Suchen nach Titel, Autor, Fach... (Strg+F / Tab)")
+            self.search_capsule.setStyleSheet("QFrame { background-color: #101624; border: 1px solid #23314A; border-radius: 18px; } QFrame:hover { border-color: #388BFD; }")
 
         self._on_search_changed(self.ent_search.text())
 
@@ -538,6 +569,8 @@ class CatalogView(QWidget):
                 return
             else:
                 self._fts_debounce_timer.stop()
+                if hasattr(self, "lbl_search_hits"):
+                    self.lbl_search_hits.hide()
                 self.stacked_views.setCurrentIndex(0 if self.view_mode == "shelf" else 1)
         else:
             self._fts_debounce_timer.stop()
@@ -716,6 +749,12 @@ class CatalogView(QWidget):
         self.filtered_books = books
         unit = "Studienbriefen" if self.mode == "study_scripts" else "Büchern"
         self.lbl_table_count.setText(f"{len(books)} von {len(self.master_books)} {unit}")
+        if hasattr(self, "lbl_search_hits"):
+            if self.search_term:
+                self.lbl_search_hits.setText(f"{len(books)} Treffer")
+                self.lbl_search_hits.show()
+            else:
+                self.lbl_search_hits.hide()
 
         if self.stacked_views.currentIndex() == 0:
             self._render_shelf_grid()

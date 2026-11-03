@@ -503,6 +503,10 @@ class PdfReaderDialog(QDialog):
         self._stream_loader_thread: Optional[PdfStreamLoaderWorker] = None
         self._is_closing = False
         self._is_jumping = False
+        self._hud_label: Optional[QLabel] = None
+        self._hud_timer = QTimer(self)
+        self._hud_timer.setSingleShot(True)
+        self._hud_timer.timeout.connect(self._hide_page_hud)
 
         # Visual Theme / Filter Mode: "normal", "sepia", "dark"
         self._color_mode = "normal"
@@ -1824,6 +1828,35 @@ class PdfReaderDialog(QDialog):
         self._sync_active_thumbnail(target_idx)
         QTimer.singleShot(50, lambda: self._jump_to_page(curr_p, keep_focus=True))
 
+    def _show_page_hud(self, page_num: int) -> None:
+        p_count = self.doc.pageCount() if self.doc else 1
+        if not self._hud_label:
+            self._hud_label = QLabel(self.view)
+            self._hud_label.setAlignment(Qt.AlignCenter)
+            self._hud_label.setStyleSheet("""
+                background-color: rgba(14, 21, 36, 0.88);
+                color: #58A6FF;
+                font-size: 12px;
+                font-weight: bold;
+                border: 1px solid #283A5A;
+                border-radius: 14px;
+                padding: 4px 16px;
+            """)
+        self._hud_label.setText(f"Seite {page_num} / {p_count}")
+        self._hud_label.adjustSize()
+        vp = self.view.viewport() if self.view else None
+        if vp:
+            w = self._hud_label.width()
+            h = self._hud_label.height()
+            self._hud_label.move((vp.width() - w) // 2, vp.height() - h - 28)
+            self._hud_label.show()
+            self._hud_label.raise_()
+            self._hud_timer.start(1400)
+
+    def _hide_page_hud(self) -> None:
+        if self._hud_label:
+            self._hud_label.hide()
+
     def _toggle_search_bar(self, checked: Optional[bool] = None) -> None:
         if checked is None:
             is_visible = not self.search_bar_frame.isVisible()
@@ -2021,6 +2054,8 @@ class PdfReaderDialog(QDialog):
             self._record_progress(current_p)
             self._update_bookmark_button_state(current_p)
             self._sync_active_thumbnail(page_index)
+            if self.view and self.view.pageMode() == QPdfView.PageMode.MultiPage:
+                self._show_page_hud(current_p)
 
     def _sync_active_thumbnail(self, page_index: int) -> None:
         if hasattr(self, "list_thumbnails") and self.list_thumbnails.count() > page_index:
