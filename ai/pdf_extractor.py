@@ -141,13 +141,35 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
                 return False
         return True
 
-    # Step 2: Front-matter visual inspection (Check up to first 6 pages for title page)
+    # Step 2: Front-matter visual & imprint inspection (Check up to first 16 pages for title page & imprint)
     candidate_titles_by_size = []
     candidate_authors = []
+    imprint_author = None
+    imprint_title = None
 
-    for p_no in range(min(6, total_pages)):
+    for p_no in range(min(16, total_pages)):
         try:
             page = doc[p_no]
+            page_text = page.get_text("text")
+
+            # Check for German DNB imprint / impressum patterns
+            if not imprint_author or not imprint_title:
+                if any(k in page_text for k in ["Deutsche Nationalbibliothek", "Bibliografische Information", "DNB", "CIP-Einheitsaufnahme"]):
+                    dnb_match = re.search(r'([A-ZÄÖÜ][a-zäöüß]+(?:,\s*[A-ZÄÖÜ][a-zäöüß]+|\s+[A-ZÄÖÜ][a-zäöüß]+))\s*:\s*([^/:\r\n]{4,80})', page_text)
+                    if dnb_match:
+                        raw_a, raw_t = dnb_match.groups()
+                        if not imprint_author and is_person_name(raw_a.replace(',', '')):
+                            imprint_author = sanitize_author_string(raw_a)
+                        if not imprint_title and len(raw_t.strip()) >= 4:
+                            imprint_title = raw_t.strip()
+
+                if not imprint_author:
+                    auth_match = re.search(r'(?:Herausgegeben\s+von|Autoren?|Verfasser)\s*:\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,3})', page_text, re.IGNORECASE)
+                    if auth_match:
+                        cand_a = auth_match.group(1).strip()
+                        if is_person_name(cand_a):
+                            imprint_author = sanitize_author_string(cand_a)
+
             page_dict = page.get_text("dict")
             text_lines = []
 
@@ -244,6 +266,12 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
 
         except Exception:
             pass
+
+    # Prioritize imprint title / author if visual/metadata is missing
+    if not found_title and imprint_title:
+        found_title = imprint_title
+    if not found_author and imprint_author:
+        found_author = imprint_author
 
     # Select best title from visual scan if not found via metadata
     best_title_page = -1

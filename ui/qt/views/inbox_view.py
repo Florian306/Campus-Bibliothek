@@ -60,6 +60,7 @@ from ai.pdf_extractor import (
 )
 from ai.isbn_lookup import extract_isbns, resolve_isbn_catalog, resolve_isbn_catalog_multi
 from ai.classifier import classify_textbook, classify_textbook_multi
+from ai.filename_parser import parse_filename_metadata
 from ai.categories import STANDARD_CATEGORIES
 from core.delta_scanner import extract_edition_number
 from core.cover_manager import extract_and_cache_cover
@@ -101,10 +102,17 @@ class InboxAnalysisWorker(QThread):
             page_count = 0
             front_text = ""
 
-            # 1. Extract cover, title, author, edition, year, and ISBNs via PyMuPDF
-            ed_num = 1
-            ed_str = "1. Auflage"
-            pub_year = None
+            # 1. Smart Filename Fallback extraction
+            fn_meta = parse_filename_metadata(fn)
+            fn_author = fn_meta.get("author") or ""
+            fn_title = fn_meta.get("title") or ""
+            fn_edition = fn_meta.get("edition")
+            fn_year = fn_meta.get("year")
+
+            # 2. Extract cover, title, author, edition, year, and ISBNs via PyMuPDF
+            ed_num = fn_edition or 1
+            ed_str = f"{ed_num}. Auflage"
+            pub_year = fn_year
             found_isbns = []
 
             if fitz:
@@ -114,18 +122,30 @@ class InboxAnalysisWorker(QThread):
                     vt, va = extract_visual_title_and_author(doc)
                     extracted_title = vt or ""
                     extracted_author = va or ""
-                    # Grab first 8 pages text for ISBN, edition, year, and catalog identification
+                    # Grab first 16 pages text for ISBN, impressum, edition, year, and catalog identification
                     front_chunks = []
-                    for p in range(min(8, page_count)):
+                    for p in range(min(16, page_count)):
                         front_chunks.append(doc[p].get_text("text"))
                     front_text = "\n".join(front_chunks)
                     
-                    ed_num, ed_str = extract_edition_number(f"{fn}\n{extracted_title}\n{front_text}")
+                    extracted_ed_num, extracted_ed_str = extract_edition_number(f"{fn}\n{extracted_title}\n{front_text}")
+                    if extracted_ed_num and extracted_ed_num > 1:
+                        ed_num, ed_str = extracted_ed_num, extracted_ed_str
                     found_isbns = extract_isbns(f"ISBN {fn.replace('_', ' ')}\n{front_text}")
-                    pub_year = extract_publication_year(front_text, doc.metadata, fn)
+                    pdf_year = extract_publication_year(front_text, doc.metadata, fn)
+                    if pdf_year:
+                        pub_year = pdf_year
                     doc.close()
                 except Exception:
                     pass
+
+            # Fill missing author or title from smart filename parsing
+            if not extracted_author or extracted_author.lower() in ("unbekannt", "unknown", "author"):
+                if fn_author:
+                    extracted_author = fn_author
+            if not extracted_title or len(extracted_title) < 3:
+                if fn_title:
+                    extracted_title = fn_title
 
             # 2. Extract preview text for faculty AI classification
             text_snippet = ""
@@ -168,8 +188,9 @@ class InboxAnalysisWorker(QThread):
 
             # Fallback to filename if still empty
             if not extracted_title:
-                clean_name = os.path.splitext(fn)[0]
-                extracted_title = clean_name.replace("_", " ").replace("-", " ").strip()
+                extracted_title = fn_title or os.path.splitext(fn)[0].replace("_", " ").replace("-", " ").strip()
+            if (not extracted_author or extracted_author.lower() == "unbekannt") and fn_author:
+                extracted_author = fn_author
 
             # Sanitize author string (remove emojis, hearts, brackets)
             if extracted_author:

@@ -12,9 +12,9 @@ from typing import Dict, List, Optional, Tuple
 from core.cache_manager import get_cached_identifier, save_cached_identifier
 from ai.categories import STANDARD_CATEGORIES
 
-_ISBN_EXPLICIT_RE = re.compile(r'(?:ISBN(?:-1[03])?[\s:]+)([0-9Xx\-\s]{10,20})', re.IGNORECASE)
+_ISBN_EXPLICIT_RE = re.compile(r'(?:ISBN(?:-1[03])?[\s:=]+)([0-9XxOo\-\s]{10,25})', re.IGNORECASE)
 _ISBN_STRICT13_RE = re.compile(r'\b(97[89][-\s]?[0-9]{1,5}[-\s]?[0-9]+[-\s]?[0-9]+[-\s]?[0-9])\b')
-_CLEAN_RE = re.compile(r'[-\s]')
+_CLEAN_RE = re.compile(r'[-\s\.]')
 
 # Dewey Decimal Classification (DDC) & Subject Code Mapping to Academic Faculties
 DDC_MAP: Dict[str, str] = {
@@ -184,7 +184,7 @@ def extract_isbns(text: str) -> List[str]:
     # 1. High-confidence: Explicit ISBN keyword nearby
     explicit_matches = _ISBN_EXPLICIT_RE.findall(text)
     for m in explicit_matches:
-        clean = _CLEAN_RE.sub('', m).upper()
+        clean = _CLEAN_RE.sub('', m).upper().replace('O', '0')
         if _is_valid_isbn13(clean) or _is_valid_isbn10(clean):
             if clean not in valid_isbns:
                 valid_isbns.append(clean)
