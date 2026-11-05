@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.2"
+CURRENT_VERSION = "2.5.3"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.3",
+        "date": "Aktuell",
+        "title": "Fix: Buch-Öffnen & Reader-Start per Doppelklick",
+        "notes": "• Behebt einen Scope-Fehler in der Reader-Initialisierung (QTimer), der verhinderte, dass sich Bücher per Doppelklick öffnen\n• Sichere Pfad-Auflösung und sofortige Ladebereitschaft für alle Bibliotheksbücher",
+    },
     {
         "version": "2.5.2",
         "date": "Aktuell",
