@@ -534,7 +534,6 @@ class PdfReaderDialog(QDialog):
 
         self._build_ui()
         self._setup_shortcuts()
-        from PySide6.QtCore import QTimer
         QTimer.singleShot(40, self._load_document)
 
     def _build_ui(self) -> None:
