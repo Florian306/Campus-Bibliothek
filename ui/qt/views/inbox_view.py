@@ -165,17 +165,32 @@ class InboxAnalysisWorker(QThread):
                 found_isbns = extract_isbns(combined_lookup_text)
             isbn_str = found_isbns[0] if found_isbns else None
 
-            # 3. Check bibliographic catalog via ISBN
+            # 3. Check bibliographic catalog via ISBN (prioritizing ISBN matching visual title)
             catalog_match = None
             if found_isbns:
-                for cand_isbn in found_isbns[:2]:
+                # If multiple ISBNs found (e.g. imprint lists other books by same author),
+                # pick the ISBN whose catalog title matches the visual/filename title
+                fallback_match = None
+                fallback_isbn = None
+                for cand_isbn in found_isbns[:6]:
                     try:
-                        catalog_match = resolve_isbn_catalog_multi(f"ISBN {cand_isbn}", self.existing_categories)
-                        if catalog_match:
-                            isbn_str = cand_isbn
-                            break
+                        res = resolve_isbn_catalog_multi(f"ISBN {cand_isbn}", self.existing_categories)
+                        if res:
+                            res_title = (res[2] or "").lower()
+                            vt_low = (extracted_title or "").lower()
+                            if vt_low and len(vt_low) >= 4 and (vt_low in res_title or res_title in vt_low):
+                                catalog_match = res
+                                isbn_str = cand_isbn
+                                break
+                            elif not fallback_match:
+                                fallback_match = res
+                                fallback_isbn = cand_isbn
                     except Exception:
                         pass
+                if not catalog_match and fallback_match:
+                    catalog_match = fallback_match
+                    isbn_str = fallback_isbn
+
             if not catalog_match:
                 try:
                     catalog_match = resolve_isbn_catalog_multi(combined_lookup_text, self.existing_categories)
