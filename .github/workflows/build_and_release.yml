@@ -53,7 +53,7 @@ jobs:
       - name: Create Instant Delta Patch
         run: |
           cd dist/Buchsortierer
-          7z a -tzip -mx=1 "../Campus-Bibliothek-Patch.zip" "Buchsortierer.exe" "_internal/base_library.zip" "_internal/*.pyc" "_internal/ui*" "_internal/ai*" "_internal/core*"
+          7z a -tzip -mx=1 "../Campus-Bibliothek-Patch.zip" "Buchsortierer.exe" "_internal/*"
           cd ../..
 
       - name: Publish Instant Release (Immediate Availability)

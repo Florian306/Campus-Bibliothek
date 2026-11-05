@@ -124,6 +124,7 @@ hiddenimports += [
     'core.pdf_tools',
     'core.citations',
     'core.duplicate_finder',
+    'ai.filename_parser',
     'ai.book_pairing',
     'ai.tutor_engine',
     'ai.categories',
