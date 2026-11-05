@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.1"
+CURRENT_VERSION = "2.5.2"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.2",
+        "date": "Aktuell",
+        "title": "Präzisions-Erkennung für Lehrbuch-Titel, Autoren & Web-Downloads",
+        "notes": "• Robuste Titel- & Autoren-Hierarchie: Große Cover- und Titelseitenschriften schlagen Kleindruck-Titelei – kein versehentliches Überstimmen durch Verlags- oder Herstellungsmitarbeiter mehr\n• Web-Download Bereinigung: Filtert Portal-Präfixe (dokumen.pub, vdoc.pub etc.) sowie Dateinamen-Slugs sauber heraus und extrahiert eingebettete ISBNs\n• Flexible ISBN-10/13 Segmentierung: Erkennt ISBNs auch zuverlässig bei direkt anhängenden Auflagenangaben ('3-540-21882-3 29.Auflage')\n• Bereinigte DNB-Titel: Entfernt störende Katalog-Klauseln (Tabellenanzahl, Approbationsordnung) für saubere, repräsentative Buchtitel",
+    },
     {
         "version": "2.5.1",
         "date": "Aktuell",
