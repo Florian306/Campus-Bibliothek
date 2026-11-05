@@ -102,18 +102,19 @@ class InboxAnalysisWorker(QThread):
             page_count = 0
             front_text = ""
 
-            # 1. Smart Filename Fallback extraction
+            # 1. Smart Filename Fallback extraction (with embedded ISBN & edition support)
             fn_meta = parse_filename_metadata(fn)
             fn_author = fn_meta.get("author") or ""
             fn_title = fn_meta.get("title") or ""
             fn_edition = fn_meta.get("edition")
             fn_year = fn_meta.get("year")
+            fn_isbn = fn_meta.get("isbn")
 
             # 2. Extract cover, title, author, edition, year, and ISBNs via PyMuPDF
             ed_num = fn_edition or 1
             ed_str = f"{ed_num}. Auflage"
             pub_year = fn_year
-            found_isbns = []
+            found_isbns = [fn_isbn] if fn_isbn else []
 
             if fitz:
                 try:
@@ -131,7 +132,10 @@ class InboxAnalysisWorker(QThread):
                     extracted_ed_num, extracted_ed_str = extract_edition_number(f"{fn}\n{extracted_title}\n{front_text}")
                     if extracted_ed_num and extracted_ed_num > 1:
                         ed_num, ed_str = extracted_ed_num, extracted_ed_str
-                    found_isbns = extract_isbns(f"ISBN {fn.replace('_', ' ')}\n{front_text}")
+                    pdf_isbns = extract_isbns(f"ISBN {fn.replace('_', ' ')}\n{front_text}")
+                    for cand_isbn in pdf_isbns:
+                        if cand_isbn not in found_isbns:
+                            found_isbns.append(cand_isbn)
                     pdf_year = extract_publication_year(front_text, doc.metadata, fn)
                     if pdf_year:
                         pub_year = pdf_year
@@ -163,10 +167,20 @@ class InboxAnalysisWorker(QThread):
 
             # 3. Check bibliographic catalog via ISBN
             catalog_match = None
-            try:
-                catalog_match = resolve_isbn_catalog_multi(combined_lookup_text, self.existing_categories)
-            except Exception:
-                pass
+            if found_isbns:
+                for cand_isbn in found_isbns[:2]:
+                    try:
+                        catalog_match = resolve_isbn_catalog_multi(f"ISBN {cand_isbn}", self.existing_categories)
+                        if catalog_match:
+                            isbn_str = cand_isbn
+                            break
+                    except Exception:
+                        pass
+            if not catalog_match:
+                try:
+                    catalog_match = resolve_isbn_catalog_multi(combined_lookup_text, self.existing_categories)
+                except Exception:
+                    pass
 
             suggested_cat = None
             suggested_cats_list: List[str] = []

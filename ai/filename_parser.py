@@ -4,7 +4,8 @@ Handles formats like:
   - 'Stryer - Biochemie (8. Aufl.) 2017.pdf'
   - 'Kugler, Peter - Anatomie und Physiologie.pdf'
   - '9783642123456_Innere_Medizin_Gerd_Herold.pdf'
-  - 'Einfuehrung_in_die_Wirtschaftsinformatik_-_Hansen_Neumann.pdf'
+  - 'dokumen.pub_physiologie-des-menschen-mit-pathophysiologie-springer-lehrbuch-german-edition.pdf'
+  - 'dokumen.pub_prometheus-kopf-hals-und-neuroanatomie-lernatlas-anatomie-5-berarbeitetenbsped-9783132420915.pdf'
 """
 
 import os
@@ -22,13 +23,27 @@ SUBJECT_TERMS = {
 
 
 def parse_filename_metadata(filename: str) -> Dict[str, Any]:
-    """Parses a filename to extract author, title, year, and edition dictionary.
-    Returns dict with keys: 'author', 'title', 'year', 'edition'.
+    """Parses a filename to extract author, title, year, edition, and ISBN.
+    Returns dict with keys: 'author', 'title', 'year', 'edition', 'isbn'.
     """
     base = os.path.splitext(os.path.basename(filename))[0]
-    clean = base.replace("_", " ").strip()
 
-    # 1. Extract publication year (e.g. (2018), [2021], or standalone 1970-2029)
+    # 0. Strip web portal download prefixes (e.g. dokumen.pub_, vdoc.pub_, etc.)
+    clean = re.sub(
+        r'^(?:dokumen\.pub|vdoc\.pub|pdfcoffee\.com|kupdf\.net|z-lib\.is|1lib\.ch|annas-archive)[\._\-\s]*',
+        '',
+        base,
+        flags=re.IGNORECASE
+    )
+
+    # 1. Extract and preserve any 10- or 13-digit ISBN embedded in filename
+    isbn: Optional[str] = None
+    isbn_match = re.search(r'\b(97[89]\d{10}|\d{10})\b', clean)
+    if isbn_match:
+        isbn = isbn_match.group(1)
+        clean = re.sub(r'[\-_ ]*' + isbn + r'\b', '', clean)
+
+    # 2. Extract publication year (e.g. (2018), [2021], or standalone 1970-2029)
     year: Optional[int] = None
     y_match = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', clean)
     if y_match:
@@ -37,7 +52,7 @@ def parse_filename_metadata(filename: str) -> Dict[str, Any]:
         except ValueError:
             pass
 
-    # 2. Extract edition (e.g. 5. Aufl., 3rd ed., 2. überarbeitete Auflage)
+    # 3. Extract edition (e.g. 5. Aufl., 3rd ed., 2. überarbeitete Auflage, 5-berarbeitetenbsped)
     edition: Optional[int] = None
     ed_match = re.search(r'\b(\d+)\s*\.?\s*(?:Aufl(?:age)?|ed(?:ition)?)\b', clean, re.IGNORECASE)
     if ed_match:
@@ -45,28 +60,45 @@ def parse_filename_metadata(filename: str) -> Dict[str, Any]:
             edition = int(ed_match.group(1))
         except ValueError:
             pass
+    else:
+        # Check slug-style edition: e.g. -5-berarbeitetenbsped or -5-auflage
+        slug_ed = re.search(r'[-_ ](\d+)[-_ ](?:berarbeitete|auflage|edition)', clean, re.IGNORECASE)
+        if slug_ed:
+            try:
+                edition = int(slug_ed.group(1))
+            except ValueError:
+                pass
 
-    # 3. Strip release tags and bracketed metadata before stripping standalone year
+    # 4. Clean web slug artifacts and release tags
+    clean = re.sub(r'[-_ ](?:german|english)[-_ ]edition\b', ' ', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'[-_ ](?:springer|pearson|hanser|vahlen|de[-_ ]gruyter)[-_ ]lehrbuch\b', ' ', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'[-_ ](?:springer|pearson|hanser|vahlen|de[-_ ]gruyter)\b', ' ', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'[-_ ]\d+[-_ ][a-z]*berarbeitetenbsped\b', ' ', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'[-_ ]\d+[-_ ]auflage\b', ' ', clean, flags=re.IGNORECASE)
     clean = re.sub(r'\[.*?\]', ' ', clean)
+
     if year:
         clean = re.sub(r'[\(\[]?\b' + str(year) + r'\b[\)\]]?', ' ', clean)
     if ed_match:
         clean = re.sub(r'\b\d+\s*\.?\s*(?:Aufl(?:age)?|ed(?:ition)?)\b', ' ', clean, flags=re.IGNORECASE)
-
-    # 4. Strip leading ISBN if present (e.g. '9783642123456 ...')
-    clean = re.sub(r'^(?:97[89]\d{10}|\d{10})\s*[-_ ]\s*', '', clean)
 
     # 5. Check Author in parentheses: e.g. "Taschenlehrbuch Histologie (Lüllmann-Rauch, Asan)"
     paren_author = None
     paren_match = re.search(r'\(([^)]+)\)', clean)
     if paren_match:
         cand_p = paren_match.group(1).strip()
-        # If looks like author names (e.g. "Lüllmann-Rauch, Asan" or "Müller")
         if not re.search(r'\b(?:aufl|edition|vol|band|teil)\b', cand_p, re.I) and len(cand_p.split()) <= 4:
             paren_author = cand_p
             clean = clean[:paren_match.start()] + clean[paren_match.end():]
 
     clean = re.sub(r'[\(\)]', ' ', clean)
+
+    # If the filename is kebab-cased or snake-cased throughout without explicit " - "
+    if " - " not in clean:
+        clean = clean.replace("_", " ").replace("-", " ")
+    else:
+        clean = clean.replace("_", " ")
+
     clean = re.sub(r'\s+', ' ', clean).strip(" -_,;.")
 
     # 6. Check Author - Title separator patterns
@@ -109,9 +141,18 @@ def parse_filename_metadata(filename: str) -> Dict[str, Any]:
         if paren_author:
             author = paren_author
 
-    # Final cleanup of title & author
+    # Title Capitalization & Polish (e.g. if slug-derived lowercase "physiologie des menschen mit pathophysiologie")
     if title:
         title = re.sub(r'\s+', ' ', title).strip(" -_,;.()")
+        # If all lowercase, title-case words with German grammar rules
+        if title.islower():
+            lower_words = {"des", "der", "die", "das", "und", "oder", "in", "im", "am", "an", "von", "vom", "zu", "zum", "zur", "mit", "für", "auf", "aus"}
+            words = title.split()
+            title = " ".join(
+                w.capitalize() if i == 0 or w.lower() not in lower_words else w.lower()
+                for i, w in enumerate(words)
+            )
+
     if author:
         author = re.sub(r'\s+', ' ', author).strip(" -_,;.()")
 
@@ -119,5 +160,6 @@ def parse_filename_metadata(filename: str) -> Dict[str, Any]:
         "author": author or None,
         "title": title or None,
         "year": year,
-        "edition": edition
+        "edition": edition,
+        "isbn": isbn
     }

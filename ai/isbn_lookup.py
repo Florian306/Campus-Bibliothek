@@ -175,6 +175,7 @@ def _is_valid_isbn10(s: str) -> bool:
 def extract_isbns(text: str) -> List[str]:
     """Extracts only verified ISBNs passing official checksums.
     Prioritizes explicit 'ISBN' labels to completely avoid matching phone numbers or order IDs.
+    Handles trailing edition notes, punctuation, OCR errors, and standalone ISBN strings.
     """
     if not text:
         return []
@@ -182,20 +183,25 @@ def extract_isbns(text: str) -> List[str]:
     valid_isbns: List[str] = []
 
     # 1. High-confidence: Explicit ISBN keyword nearby
-    explicit_matches = _ISBN_EXPLICIT_RE.findall(text)
-    for m in explicit_matches:
-        clean = _CLEAN_RE.sub('', m).upper().replace('O', '0')
-        if _is_valid_isbn13(clean) or _is_valid_isbn10(clean):
-            if clean not in valid_isbns:
-                valid_isbns.append(clean)
+    for m in re.finditer(r'ISBN(?:-1[03])?[\s:=]+([^\n\r;]{9,45})', text, re.IGNORECASE):
+        raw = m.group(1)
+        for cand in re.findall(r'(?:97[89][-\s\.]?[0-9]{1,5}[-\s\.]?[0-9]+[-\s\.]?[0-9]+[-\s\.]?[0-9]|[0-9]{1,5}[-\s\.]?[0-9]+[-\s\.]?[0-9]+[-\s\.]?[0-9Xx])', raw):
+            clean = re.sub(r'[-\s\.]', '', cand).upper().replace('O', '0')
+            if _is_valid_isbn13(clean) or _is_valid_isbn10(clean):
+                if clean not in valid_isbns:
+                    valid_isbns.append(clean)
 
-    # 2. If nothing found, only scan for strict 978/979 ISBN-13 with valid checksum
-    if not valid_isbns:
-        matches = _ISBN_STRICT13_RE.findall(text)
-        for m in matches:
-            clean = _CLEAN_RE.sub('', m)
-            if _is_valid_isbn13(clean) and clean not in valid_isbns:
-                valid_isbns.append(clean)
+    # 2. Scan for strict 978/979 ISBN-13 with valid checksum throughout text
+    for cand in re.findall(r'(97[89][-\s\.]?[0-9]{1,5}[-\s\.]?[0-9]+[-\s\.]?[0-9]+[-\s\.]?[0-9])', text):
+        clean = re.sub(r'[-\s\.]', '', cand)
+        if _is_valid_isbn13(clean) and clean not in valid_isbns:
+            valid_isbns.append(clean)
+
+    # 3. Direct standalone valid ISBN string fallback (e.g. caller passed an ISBN or filename token)
+    stripped = text.strip()
+    clean_standalone = re.sub(r'[-\s\.]', '', stripped).upper().replace('O', '0')
+    if (_is_valid_isbn13(clean_standalone) or _is_valid_isbn10(clean_standalone)) and clean_standalone not in valid_isbns:
+        valid_isbns.append(clean_standalone)
 
     return valid_isbns
 
@@ -215,11 +221,15 @@ def clean_catalog_title(raw_title: str) -> str:
     # 3. Replace German catalog colon format " : " with " - "
     title = title.replace(" : ", " - ")
 
-    # 4. Remove trailing media notes like " - [extra materials]"
+    # 4. Strip DNB semicolon annotations like "; mit 78 Tabellen ; [neue Approbationsordnung]"
+    title = re.sub(r'\s*;\s*(?:mit\s+\d+|\[.*?\]|e\.\s+lehrbuch|ein\s+lehrbuch).*$', '', title, flags=re.IGNORECASE)
+
+    # 5. Remove trailing media notes like " - [extra materials]"
     title = re.sub(r'\s*-\s*\[(?:extra materials|elektronische ressource|online-ausgabe|e-book|cd-rom|dvd|tag für tag[^\]]*)\]', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\s*\[(?:extra materials|elektronische ressource|online-ausgabe|e-book|cd-rom|dvd|tag für tag[^\]]*)\]', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*\[.*?\]', '', title).strip()
 
-    # 5. Clean whitespace and trailing punctuation
+    # 6. Clean whitespace and trailing punctuation
     title = re.sub(r'\s+', ' ', title).strip()
     title = title.rstrip(" /;:,. ")
     return title

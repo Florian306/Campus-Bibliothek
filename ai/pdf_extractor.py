@@ -129,15 +129,18 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
         non_name_words = {
             "politische", "politischer", "politisches", "historische", "historischer",
             "allgemeine", "angewandte", "wirtschaftliche", "soziale", "rechtliche",
-            "deutsche", "europäische", "internationale", "moderne", "digitale", "praktische"
+            "deutsche", "europäische", "internationale", "moderne", "digitale", "praktische",
+            "copyediting", "herstellung", "lektorat", "programmleitung", "satz", "druck",
+            "heidelberg", "berlin", "stuttgart", "münchen", "new", "york", "tokyo"
         }
         for w in words:
-            if w in non_name_words or any(w.endswith(sfx) for sfx in disallowed_name_suffixes):
+            w_clean = re.sub(r'[\.,;:]', '', w)
+            if w_clean in non_name_words or any(w_clean.endswith(sfx) for sfx in disallowed_name_suffixes):
                 return False
-        # Every word must consist purely of alphabetic characters (including German umlauts)
         orig_words = text_val.split()
         for w in orig_words:
-            if not re.match(r'^[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?$', w):
+            w_clean = re.sub(r'[\.,;:]$', '', w)
+            if not re.match(r'^[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?$', w_clean) and not re.match(r'^[A-ZÄÖÜ]\.?$', w):
                 return False
         return True
 
@@ -267,19 +270,16 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
         except Exception:
             pass
 
-    # Prioritize imprint title / author if visual/metadata is missing
-    if not found_title and imprint_title:
-        found_title = imprint_title
-    if not found_author and imprint_author:
-        found_author = imprint_author
-
-    # Select best title from visual scan if not found via metadata
+    # Select best title from visual scan if not found via metadata (visual font hierarchy is master)
     best_title_page = -1
     if not found_title and candidate_titles_by_size:
-        # Prioritize largest font size, tie-breaker: earlier page
         candidate_titles_by_size.sort(key=lambda x: (x[1], -x[2]), reverse=True)
         found_title = candidate_titles_by_size[0][0]
         best_title_page = candidate_titles_by_size[0][2]
+
+    # Imprint fallback for title
+    if not found_title and imprint_title:
+        found_title = imprint_title
 
     # Select author from visual scan if not found via metadata
     if not found_author and candidate_authors:
@@ -297,6 +297,9 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
             else:
                 valid_authors.sort(key=lambda x: x[1], reverse=True)
                 found_author = valid_authors[0][0]
+
+    if not found_author and imprint_author:
+        found_author = imprint_author
 
     # Step 3: Bookmarks / TOC Fallback if title still not found
     if not found_title:
