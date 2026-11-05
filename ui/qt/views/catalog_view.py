@@ -560,6 +560,9 @@ class CatalogView(QWidget):
 
     def _on_search_changed(self, text: str) -> None:
         self.search_term = text.strip()
+        if self.search_term and self.active_letter != "Alle":
+            self.active_letter = "Alle"
+            self._update_letter_bar_styles()
 
         if self.search_mode == "fulltext":
             if self.search_term and len(self.search_term) >= 2:
@@ -726,12 +729,16 @@ class CatalogView(QWidget):
             books = filtered_by_letter
 
         if self.search_term:
-            q = self.search_term
+            terms = [t for t in self.search_term.lower().split() if t]
             books = [
                 b for b in books
-                if q in b["title"].lower()
-                or q in b["author"].lower()
-                or q in (b.get("categories_str") or "").lower()
+                if all(
+                    t in (b.get("title") or "").lower()
+                    or t in (b.get("author") or "").lower()
+                    or t in (b.get("categories_str") or "").lower()
+                    or t in os.path.basename(b.get("file_path") or "").lower()
+                    for t in terms
+                )
             ]
 
         # Sort filtered books according to selected sort_mode
