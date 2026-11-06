@@ -207,7 +207,8 @@ class InboxAnalysisWorker(QThread):
                 # Official catalog title is the authoritative bibliographic title
                 if cat_title and len(cat_title) >= 3:
                     extracted_title = cat_title
-                if cat_auth and (not extracted_author or extracted_author == "Unbekannt" or (cat_title and cat_auth.lower() in extracted_title.lower())):
+                # Authoritative bibliographic catalog author always supersedes imprecise OCR / layout guessing
+                if cat_auth and cat_auth.strip() and cat_auth.lower() not in ("unbekannt", "unknown", "author"):
                     extracted_author = cat_auth
                 if cat_cats:
                     suggested_cats_list = cat_cats

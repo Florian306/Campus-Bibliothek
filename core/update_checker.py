@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.4"
+CURRENT_VERSION = "2.5.5"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.5",
+        "date": "Aktuell",
+        "title": "Präzisions-Autorenerkennung im Posteingang (DNB/Katalog-Priorität & Layout-Schutz)",
+        "notes": "• Verbindliche Katalog-Autoren: Verifizierte Autoren aus DNB, OpenLibrary und Google Books überschreiben fehlerhafte OCR- und Layout-Fehlfunde verlässlich\n• Erweiterte Layout-Filterung: 'Autorinnen und Autoren', Herausgeber-Zeilen, Verlagsorte (z.B. ', Ulm', 'Heidelberg') und Rollenangaben werden zuverlässig von echten Buchautoren getrennt\n• Multi-Autoren-Erkennung: Erkennt Autorenteams auch bei Trennung durch Trennpunkte (·, •), Schrägstriche oder 'und'\n• Nahtloses Zusammenspiel mit DNB- und ISBN-Katalogen",
+    },
     {
         "version": "2.5.4",
         "date": "Aktuell",

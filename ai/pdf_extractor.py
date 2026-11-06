@@ -43,7 +43,8 @@ GENERIC_SECTION_TITLES = {
     "impressum", "gehe zu", "seite", "kapitel", "chapter", "abkürzungen", "abkürzungsverzeichnis",
     "siglen", "siglenverzeichnis", "editorische hinweise", "anmerkungen", "danksagung",
     "acknowledgments", "literatur", "literaturverzeichnis", "bibliografie", "register",
-    "sachregister", "personenregister", "namenregister", "index", "glossar"
+    "sachregister", "personenregister", "namenregister", "index", "glossar",
+    "autorinnen und autoren", "autorinnen", "autoren", "über die autoren", "uber die autoren", "about the authors"
 }
 
 
@@ -117,7 +118,9 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
     def is_person_name(text_val: str) -> bool:
         if is_series_or_course(text_val) or is_generic_section(text_val):
             return False
-        low = text_val.lower()
+        # Strip trailing city qualifiers (e.g. ", Ulm", ", Berlin", ", München")
+        clean_val = re.sub(r',\s*[A-ZÄÖÜ][a-zäöüß]+(?:\s*\(.*?\))?$', '', text_val).strip()
+        low = clean_val.lower()
         words = low.split()
         if not (2 <= len(words) <= 5):
             return False
@@ -131,13 +134,15 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
             "allgemeine", "angewandte", "wirtschaftliche", "soziale", "rechtliche",
             "deutsche", "europäische", "internationale", "moderne", "digitale", "praktische",
             "copyediting", "herstellung", "lektorat", "programmleitung", "satz", "druck",
-            "heidelberg", "berlin", "stuttgart", "münchen", "new", "york", "tokyo"
+            "umschlag", "gestaltung", "layout", "grafik", "illustration", "fotografie",
+            "heidelberg", "berlin", "stuttgart", "münchen", "new", "york", "tokyo", "ulm",
+            "freiburg", "tübingen", "wiesbaden", "frankfurt", "hamburg", "köln", "bonn"
         }
         for w in words:
             w_clean = re.sub(r'[\.,;:]', '', w)
             if w_clean in non_name_words or any(w_clean.endswith(sfx) for sfx in disallowed_name_suffixes):
                 return False
-        orig_words = text_val.split()
+        orig_words = clean_val.split()
         for w in orig_words:
             w_clean = re.sub(r'[\.,;:]$', '', w)
             if not re.match(r'^[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?$', w_clean) and not re.match(r'^[A-ZÄÖÜ]\.?$', w):
@@ -258,13 +263,19 @@ def extract_visual_title_and_author(doc) -> Tuple[Optional[str], Optional[str]]:
                 clean_cand = cand_txt.replace("●", "-").strip()
                 candidate_titles_by_size.append((clean_cand, sz, p_no))
 
-            # Find author candidates on this page
-            for cand_text, cand_sz in grouped_candidates:
+            # Find author candidates on this page (inspect both atomic lines and grouped lines)
+            author_lines_to_check = [(lt, sz) for lt, sz, _ in valid_lines] + grouped_candidates
+            for cand_text, cand_sz in author_lines_to_check:
                 if is_series_or_course(cand_text) or is_generic_section(cand_text):
                     continue
                 cleaned_author_cand = re.sub(r'^(?:von|by|autor(?:en)?|author(?:s)?)\s*:\s*', '', cand_text, flags=re.I).strip()
                 cleaned_author_cand = sanitize_author_string(cleaned_author_cand)
-                if is_person_name(cleaned_author_cand):
+                # Split multiple names delimited by bullets, middots, ampersands, or 'und'/'and'
+                sub_names = re.split(r'[\u2022\u00b7&,;/]|\s+und\s+|\s+and\s+', cleaned_author_cand)
+                valid_subs = [s.strip() for s in sub_names if is_person_name(s.strip())]
+                if valid_subs and len(valid_subs) == len([s.strip() for s in sub_names if s.strip()]):
+                    candidate_authors.append((", ".join(valid_subs), cand_sz, p_no))
+                elif is_person_name(cleaned_author_cand):
                     candidate_authors.append((cleaned_author_cand, cand_sz, p_no))
 
         except Exception:
