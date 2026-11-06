@@ -730,16 +730,54 @@ class CatalogView(QWidget):
 
         if self.search_term:
             terms = [t for t in self.search_term.lower().split() if t]
-            books = [
-                b for b in books
-                if all(
-                    t in (b.get("title") or "").lower()
-                    or t in (b.get("author") or "").lower()
-                    or t in (b.get("categories_str") or "").lower()
-                    or t in os.path.basename(b.get("file_path") or "").lower()
-                    for t in terms
-                )
-            ]
+
+            def calc_relevance(b: dict) -> int:
+                t = (b.get("title") or "").lower()
+                a = (b.get("author") or "").lower()
+                c = (b.get("categories_str") or "").lower()
+                fn = os.path.basename(b.get("file_path") or "").lower()
+
+                # Verify all search terms match somewhere
+                if not all(term in t or term in a or term in c or term in fn for term in terms):
+                    return -1
+
+                score = 0
+                t_words = t.split()
+                a_words = a.split()
+
+                for term in terms:
+                    # 1. Exact start of title (Highest priority: e.g. typing 'P' ranks 'Physik', 'Psychologie' at top)
+                    if t.startswith(term):
+                        score += 50
+                    # 2. Word in title starts with term
+                    elif any(w.startswith(term) for w in t_words):
+                        score += 25
+                    # 3. Word in author starts with term (e.g. 'P' matches 'Peter Kugler')
+                    elif any(w.startswith(term) for w in a_words):
+                        score += 15
+                    # 4. Anywhere in title
+                    elif term in t:
+                        score += 8
+                    # 5. Anywhere in author
+                    elif term in a:
+                        score += 4
+                    else:
+                        score += 1
+
+                return score
+
+            scored_books = []
+            for b in books:
+                s = calc_relevance(b)
+                if s >= 0:
+                    scored_books.append((s, b))
+
+            # If user has a search term, prioritize relevance score before fallback sorting
+            if self.sort_mode == "title_asc" or not self.sort_mode:
+                scored_books.sort(key=lambda item: (-item[0], (item[1].get("title") or "").lower()))
+                books = [item[1] for item in scored_books]
+            else:
+                books = [item[1] for item in scored_books]
 
         # Sort filtered books according to selected sort_mode
         if self.sort_mode == "title_desc":

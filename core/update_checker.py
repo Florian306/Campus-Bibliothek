@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.3"
+CURRENT_VERSION = "2.5.4"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.4",
+        "date": "Aktuell",
+        "title": "Präfix- & Relevanzsuche im Katalog (Buchstaben- & Wortanfangspriorisierung)",
+        "notes": "• Blitzschnelle Buchstabensuche: Schon die Eingabe einzelner Buchstaben (z.B. 'p') oder kurzer Fragmente findet sofort alle passenden Bücher\n• Relevanz-Ranking: Titel und Wörter, die mit dem Suchbegriff beginnen (z.B. 'Physik', 'Psychologie'), werden ganz oben priorisiert\n• Automatischer Buchstabenleisten-Reset: Die globale Suche setzt aktive A-Z-Filter automatisch zurück, sodass keine Suchtreffer verborgen bleiben\n• Mehrwort- & Teilwort-Matching über Titel, Autor, Fachbereich und Dateinamen",
+    },
     {
         "version": "2.5.3",
         "date": "Aktuell",
