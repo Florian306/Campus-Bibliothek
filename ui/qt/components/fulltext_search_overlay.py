@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.qt.icons import create_vector_icon, create_vector_pixmap
+from core.config import load_config, save_config
 from core.fulltext_search import search_fulltext, get_fts_index_stats
 from core.cover_manager import get_book_cover_blob
 
@@ -253,7 +254,7 @@ class BookGroupAccordionItem(QFrame):
 class _PageRenderWorker(QThread):
     """Background worker rendering a PDF page with search highlights without blocking UI."""
 
-    rendered = Signal(int, object, object)  # (request_id, QImage | None, first_hit_y_ratio | None)
+    rendered = Signal(int, object, object, int)  # (request_id, QImage | None, first_hit_y_ratio | None, hit_count)
     failed = Signal(int, str)
 
     def __init__(self, request_id: int, file_path: str, page_num: int, search_term: str, dark_inverted: bool, parent=None):
@@ -271,12 +272,14 @@ class _PageRenderWorker(QThread):
             page = doc.load_page(idx)
             page_h = max(1.0, float(page.rect.height))
             first_hit_ratio: Optional[float] = None
+            hit_count = 0
 
             if self.search_term and len(self.search_term.strip()) >= 2:
                 for w in self.search_term.strip().split():
                     clean_w = w.strip('",*.')
                     if len(clean_w) >= 2:
                         rects = page.search_for(clean_w)
+                        hit_count += len(rects)
                         for r in rects:
                             if first_hit_ratio is None or (r.y0 / page_h) < first_hit_ratio:
                                 first_hit_ratio = max(0.0, min(1.0, r.y0 / page_h))
@@ -288,10 +291,24 @@ class _PageRenderWorker(QThread):
             pix = page.get_pixmap(matrix=mat, alpha=False)
             if self.dark_inverted:
                 pix.invert_irect()
+                # Re-invert embedded image rects so photos/illustrations keep natural colors
+                page_area = max(1.0, float(pix.width * pix.height))
+                pix_bounds = pymupdf.IRect(0, 0, pix.width, pix.height)
+                for img_info in page.get_image_info():
+                    bbox = img_info.get("bbox")
+                    if not bbox:
+                        continue
+                    irect = (pymupdf.Rect(bbox) * mat).irect & pix_bounds
+                    if irect.is_empty or irect.width < 20 or irect.height < 20:
+                        continue
+                    # Skip full-page scanned backgrounds so scanned books still invert
+                    if (irect.width * irect.height) / page_area > 0.85:
+                        continue
+                    pix.invert_irect(irect)
 
             img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888).copy()
             doc.close()
-            self.rendered.emit(self.request_id, img, first_hit_ratio)
+            self.rendered.emit(self.request_id, img, first_hit_ratio, hit_count)
         except Exception as e:
             self.failed.emit(self.request_id, str(e))
 
@@ -308,13 +325,16 @@ class FullTextPagePreviewInspector(QFrame):
         self._current_path = ""
         self._current_page = 1
         self._current_term = ""
-        self._dark_inverted = False
+        try:
+            self._dark_inverted = bool(getattr(load_config(), "preview_dark_mode", False))
+        except Exception:
+            self._dark_inverted = False
         self._zoom_factor = 1.0
         self._raw_pixmap: Optional[QPixmap] = None
         self._first_hit_ratio: Optional[float] = None
         self._request_id = 0
         self._render_worker: Optional[_PageRenderWorker] = None
-        self._page_cache: "OrderedDict[Tuple[str, int, str, bool], Tuple[QPixmap, Optional[float]]]" = OrderedDict()
+        self._page_cache: "OrderedDict[Tuple[str, int, str, bool], Tuple[QPixmap, Optional[float], int]]" = OrderedDict()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -396,7 +416,7 @@ class FullTextPagePreviewInspector(QFrame):
         top_bar.addWidget(self.btn_zoom_in)
 
         # Dark Invert Toggle
-        self.btn_invert = QPushButton("🌙 Dunkel")
+        self.btn_invert = QPushButton("☀️ Hell" if self._dark_inverted else "🌙 Dunkel")
         self.btn_invert.setCursor(Qt.PointingHandCursor)
         self.btn_invert.setFixedHeight(28)
         self.btn_invert.setStyleSheet("""
@@ -473,6 +493,12 @@ class FullTextPagePreviewInspector(QFrame):
     def _toggle_invert(self) -> None:
         self._dark_inverted = not self._dark_inverted
         self.btn_invert.setText("☀️ Hell" if self._dark_inverted else "🌙 Dunkel")
+        try:
+            cfg = load_config()
+            cfg.preview_dark_mode = self._dark_inverted
+            save_config(cfg)
+        except Exception:
+            pass
         if self._current_path:
             self.load_page_preview(self._current_path, self._current_page, self._current_term)
 
@@ -502,7 +528,8 @@ class FullTextPagePreviewInspector(QFrame):
         cache_key = (file_path, page_num, search_term.strip(), self._dark_inverted)
         if cache_key in self._page_cache:
             self._page_cache.move_to_end(cache_key)
-            pm, hit_ratio = self._page_cache[cache_key]
+            pm, hit_ratio, hit_count = self._page_cache[cache_key]
+            self._update_preview_header(page_num, hit_count)
             self._raw_pixmap = pm
             self._first_hit_ratio = hit_ratio
             self._apply_scaled_pixmap()
@@ -525,13 +552,19 @@ class FullTextPagePreviewInspector(QFrame):
         self._render_worker = worker
         worker.start()
 
-    def _on_page_rendered(self, request_id: int, img: Optional[QImage], first_hit_ratio: Optional[float]) -> None:
+    def _update_preview_header(self, page_num: int, hit_count: int) -> None:
+        if hit_count > 0:
+            self.lbl_head.setText(f"Vorschau: Seite {page_num} · {hit_count} Treffer")
+        else:
+            self.lbl_head.setText(f"Vorschau: Seite {page_num}")
+
+    def _on_page_rendered(self, request_id: int, img: Optional[QImage], first_hit_ratio: Optional[float], hit_count: int) -> None:
         if request_id != self._request_id or img is None:
             return
-        self.lbl_head.setText(f"Vorschau: Seite {self._current_page}")
+        self._update_preview_header(self._current_page, hit_count)
         pm = QPixmap.fromImage(img)
         cache_key = (self._current_path, self._current_page, self._current_term.strip(), self._dark_inverted)
-        self._page_cache[cache_key] = (pm, first_hit_ratio)
+        self._page_cache[cache_key] = (pm, first_hit_ratio, hit_count)
         while len(self._page_cache) > 24:
             self._page_cache.popitem(last=False)
 

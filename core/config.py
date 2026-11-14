@@ -27,10 +27,11 @@ class AppConfig:
     max_search_results: int = 50
     enable_cache: bool = True
     use_internal_reader: bool = True
+    preview_dark_mode: bool = False
     github_token: str = ""
     github_gist_id: str = ""
     github_auto_sync: bool = False
-    app_version: str = "2.5.6"
+    app_version: str = "2.5.7"
     search_engines: list = field(default_factory=lambda: ["bing", "duckduckgo", "openalex", "wikipedia", "crossref"])
     # Mail & Calendar settings (JARVIS)
     mail_enabled: bool = False

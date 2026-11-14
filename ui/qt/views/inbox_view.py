@@ -1918,6 +1918,19 @@ class InboxView(QWidget):
         except Exception:
             pass
 
+        # 5b. Auto-index newly imported book into FTS5 in background
+        if book_id and target_path:
+            import threading
+            from core.fulltext_search import index_single_book
+
+            def _bg_index(b_id=str(book_id), f_path=target_path):
+                try:
+                    index_single_book(b_id, f_path)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_bg_index, daemon=True).start()
+
         # 6. Remove from inbox queue
         delete_inbox_item(item_id)
         self._reload_table_data()

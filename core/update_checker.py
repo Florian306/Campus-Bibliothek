@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.6"
+CURRENT_VERSION = "2.5.7"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.7",
+        "date": "Aktuell",
+        "title": "Darkmode-Bildschutz, Treffer-Zähler & Auto-Indizierung neuer Bücher",
+        "notes": "• Darkmode-Bildschutz in der Vorschau: Eingebettete Fotos und Abbildungen behalten ihre Originalfarben, während Text und Hintergrund dunkel bleiben\n• Gemerkter Darkmode-Status: Die Vorschau startet automatisch in deinem zuletzt gewählten Hell-/Dunkel-Modus\n• Treffer-Zähler im Header: Zeigt direkt an, wie viele Treffer auf der aktuell angezeigten Seite liegen\n• Automatisches Hintergrund-Indizieren: Neu aus dem Posteingang einsortierte Bücher werden sofort im Hintergrund für die Volltextsuche indiziert",
+    },
     {
         "version": "2.5.6",
         "date": "Aktuell",
