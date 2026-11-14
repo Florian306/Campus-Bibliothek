@@ -3,11 +3,12 @@ Groups hits logically by document with collapsible accordion cards, snippet expa
 active selection indicators, and an instant studio-rendered page preview inspector.
 """
 
-from typing import Any, Dict, List, Optional
+from collections import OrderedDict
+from typing import Any, Dict, List, Optional, Tuple
 import os
 import pymupdf
-from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QFont, QColor, QPixmap, QImage
+from PySide6.QtCore import Qt, Signal, QSize, QTimer, QThread
+from PySide6.QtGui import QFont, QColor, QPixmap, QImage, QKeyEvent
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -241,15 +242,66 @@ class BookGroupAccordionItem(QFrame):
         main_vbox.addWidget(self.hits_container)
 
     def _toggle_expanded(self) -> None:
-        self._is_expanded = not self._is_expanded
+        self.set_expanded(not self._is_expanded)
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._is_expanded = expanded
         self.hits_container.setVisible(self._is_expanded)
         self.btn_toggle.setText("▼" if self._is_expanded else "▶")
+
+
+class _PageRenderWorker(QThread):
+    """Background worker rendering a PDF page with search highlights without blocking UI."""
+
+    rendered = Signal(int, object, object)  # (request_id, QImage | None, first_hit_y_ratio | None)
+    failed = Signal(int, str)
+
+    def __init__(self, request_id: int, file_path: str, page_num: int, search_term: str, dark_inverted: bool, parent=None):
+        super().__init__(parent)
+        self.request_id = request_id
+        self.file_path = file_path
+        self.page_num = page_num
+        self.search_term = search_term
+        self.dark_inverted = dark_inverted
+
+    def run(self) -> None:
+        try:
+            doc = pymupdf.open(self.file_path)
+            idx = max(0, min(self.page_num - 1, doc.page_count - 1))
+            page = doc.load_page(idx)
+            page_h = max(1.0, float(page.rect.height))
+            first_hit_ratio: Optional[float] = None
+
+            if self.search_term and len(self.search_term.strip()) >= 2:
+                for w in self.search_term.strip().split():
+                    clean_w = w.strip('",*.')
+                    if len(clean_w) >= 2:
+                        rects = page.search_for(clean_w)
+                        for r in rects:
+                            if first_hit_ratio is None or (r.y0 / page_h) < first_hit_ratio:
+                                first_hit_ratio = max(0.0, min(1.0, r.y0 / page_h))
+                            annot = page.add_highlight_annot(r)
+                            annot.set_colors(stroke=(0.2, 0.55, 1.0))
+                            annot.update()
+
+            mat = pymupdf.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            if self.dark_inverted:
+                pix.invert_irect()
+
+            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888).copy()
+            doc.close()
+            self.rendered.emit(self.request_id, img, first_hit_ratio)
+        except Exception as e:
+            self.failed.emit(self.request_id, str(e))
 
 
 class FullTextPagePreviewInspector(QFrame):
     """Right-side preview inspector showing rendered studio PDF page snapshot with search highlights."""
 
     open_in_reader = Signal(str, int)
+    prev_hit_requested = Signal()
+    next_hit_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -257,6 +309,12 @@ class FullTextPagePreviewInspector(QFrame):
         self._current_page = 1
         self._current_term = ""
         self._dark_inverted = False
+        self._zoom_factor = 1.0
+        self._raw_pixmap: Optional[QPixmap] = None
+        self._first_hit_ratio: Optional[float] = None
+        self._request_id = 0
+        self._render_worker: Optional[_PageRenderWorker] = None
+        self._page_cache: "OrderedDict[Tuple[str, int, str, bool], Tuple[QPixmap, Optional[float]]]" = OrderedDict()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -273,11 +331,69 @@ class FullTextPagePreviewInspector(QFrame):
 
         # Top Bar
         top_bar = QHBoxLayout()
+        top_bar.setSpacing(6)
         self.lbl_head = QLabel("Seitenvorschau")
         self.lbl_head.setFont(QFont("Segoe UI", 9, QFont.Bold))
         self.lbl_head.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
         top_bar.addWidget(self.lbl_head)
         top_bar.addStretch()
+
+        nav_btn_style = """
+            QPushButton {
+                background-color: #121A2B;
+                color: #C9D1D9;
+                border: 1px solid #23314A;
+                border-radius: 5px;
+                padding: 0 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #1A253E;
+                color: #FFFFFF;
+                border-color: #388BFD;
+            }
+        """
+
+        self.btn_prev_hit = QPushButton("◀")
+        self.btn_prev_hit.setToolTip("Vorherige Fundstelle (↑)")
+        self.btn_prev_hit.setCursor(Qt.PointingHandCursor)
+        self.btn_prev_hit.setFixedSize(28, 28)
+        self.btn_prev_hit.setStyleSheet(nav_btn_style)
+        self.btn_prev_hit.clicked.connect(self.prev_hit_requested.emit)
+        top_bar.addWidget(self.btn_prev_hit)
+
+        self.btn_next_hit = QPushButton("▶")
+        self.btn_next_hit.setToolTip("Nächste Fundstelle (↓)")
+        self.btn_next_hit.setCursor(Qt.PointingHandCursor)
+        self.btn_next_hit.setFixedSize(28, 28)
+        self.btn_next_hit.setStyleSheet(nav_btn_style)
+        self.btn_next_hit.clicked.connect(self.next_hit_requested.emit)
+        top_bar.addWidget(self.btn_next_hit)
+
+        self.btn_zoom_out = QPushButton("−")
+        self.btn_zoom_out.setToolTip("Verkleinern")
+        self.btn_zoom_out.setCursor(Qt.PointingHandCursor)
+        self.btn_zoom_out.setFixedSize(28, 28)
+        self.btn_zoom_out.setStyleSheet(nav_btn_style)
+        self.btn_zoom_out.clicked.connect(lambda: self._adjust_zoom(-0.2))
+        top_bar.addWidget(self.btn_zoom_out)
+
+        self.btn_zoom_fit = QPushButton("Fit")
+        self.btn_zoom_fit.setToolTip("An Breite anpassen")
+        self.btn_zoom_fit.setCursor(Qt.PointingHandCursor)
+        self.btn_zoom_fit.setFixedHeight(28)
+        self.btn_zoom_fit.setStyleSheet(nav_btn_style)
+        self.btn_zoom_fit.clicked.connect(lambda: self._set_zoom(1.0))
+        top_bar.addWidget(self.btn_zoom_fit)
+
+        self.btn_zoom_in = QPushButton("+")
+        self.btn_zoom_in.setToolTip("Vergrößern")
+        self.btn_zoom_in.setCursor(Qt.PointingHandCursor)
+        self.btn_zoom_in.setFixedSize(28, 28)
+        self.btn_zoom_in.setStyleSheet(nav_btn_style)
+        self.btn_zoom_in.clicked.connect(lambda: self._adjust_zoom(0.2))
+        top_bar.addWidget(self.btn_zoom_in)
 
         # Dark Invert Toggle
         self.btn_invert = QPushButton("🌙 Dunkel")
@@ -324,6 +440,7 @@ class FullTextPagePreviewInspector(QFrame):
         # Page Snapshot Scroll Area (Studio Canvas Background)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll.setAlignment(Qt.AlignCenter)
         self.scroll.setStyleSheet("""
             QScrollArea {
@@ -359,6 +476,16 @@ class FullTextPagePreviewInspector(QFrame):
         if self._current_path:
             self.load_page_preview(self._current_path, self._current_page, self._current_term)
 
+    def _adjust_zoom(self, delta: float) -> None:
+        self._set_zoom(self._zoom_factor + delta)
+
+    def _set_zoom(self, factor: float) -> None:
+        self._zoom_factor = max(0.6, min(2.2, round(factor, 2)))
+        self.scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded if self._zoom_factor > 1.0 else Qt.ScrollBarAlwaysOff
+        )
+        self._apply_scaled_pixmap()
+
     def load_page_preview(self, file_path: str, page_num: int, search_term: str = "") -> None:
         self._current_path = file_path
         self._current_page = page_num
@@ -366,45 +493,88 @@ class FullTextPagePreviewInspector(QFrame):
         self.lbl_head.setText(f"Vorschau: Seite {page_num}")
 
         if not file_path or not os.path.exists(file_path):
+            self._raw_pixmap = None
+            self._first_hit_ratio = None
             self.lbl_page_render.setStyleSheet("background-color: transparent; color: #8B949E;")
             self.lbl_page_render.setText("Dokument am Speicherort nicht gefunden")
             return
 
-        try:
-            doc = pymupdf.open(file_path)
-            idx = max(0, min(page_num - 1, doc.page_count - 1))
-            page = doc.load_page(idx)
-
-            # Highlight occurrences of search query words directly on rendered preview page
-            if search_term and len(search_term.strip()) >= 2:
-                words = search_term.strip().split()
-                for w in words:
-                    clean_w = w.strip('",*.')
-                    if len(clean_w) >= 2:
-                        rects = page.search_for(clean_w)
-                        for r in rects:
-                            annot = page.add_highlight_annot(r)
-                            annot.set_colors(stroke=(0.2, 0.55, 1.0))
-                            annot.update()
-
-            # Render page at 1.45x scale
-            mat = pymupdf.Matrix(1.45, 1.45)
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-
-            if self._dark_inverted:
-                pix.invert_irect()
-
-            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
-            pm = QPixmap.fromImage(img)
-            self.lbl_page_render.setPixmap(pm)
+        cache_key = (file_path, page_num, search_term.strip(), self._dark_inverted)
+        if cache_key in self._page_cache:
+            self._page_cache.move_to_end(cache_key)
+            pm, hit_ratio = self._page_cache[cache_key]
+            self._raw_pixmap = pm
+            self._first_hit_ratio = hit_ratio
+            self._apply_scaled_pixmap()
             self.lbl_page_render.setStyleSheet("""
-                border: 1px solid #1E2B42;
-                border-radius: 4px;
+                border: 1px solid #2A3954;
+                border-radius: 6px;
+                background-color: #0B101B;
             """)
-            doc.close()
-        except Exception as e:
-            self.lbl_page_render.setStyleSheet("background-color: transparent; color: #8B949E;")
-            self.lbl_page_render.setText(f"Vorschau konnte nicht gerendert werden:\n{e}")
+            QTimer.singleShot(0, self._scroll_to_hit)
+            return
+
+        self._request_id += 1
+        req_id = self._request_id
+        self.lbl_head.setText(f"Vorschau: Seite {page_num} (lädt...)")
+
+        worker = _PageRenderWorker(req_id, file_path, page_num, search_term, self._dark_inverted, self)
+        worker.rendered.connect(self._on_page_rendered)
+        worker.failed.connect(self._on_page_failed)
+        worker.finished.connect(worker.deleteLater)
+        self._render_worker = worker
+        worker.start()
+
+    def _on_page_rendered(self, request_id: int, img: Optional[QImage], first_hit_ratio: Optional[float]) -> None:
+        if request_id != self._request_id or img is None:
+            return
+        self.lbl_head.setText(f"Vorschau: Seite {self._current_page}")
+        pm = QPixmap.fromImage(img)
+        cache_key = (self._current_path, self._current_page, self._current_term.strip(), self._dark_inverted)
+        self._page_cache[cache_key] = (pm, first_hit_ratio)
+        while len(self._page_cache) > 24:
+            self._page_cache.popitem(last=False)
+
+        self._raw_pixmap = pm
+        self._first_hit_ratio = first_hit_ratio
+        self._apply_scaled_pixmap()
+        self.lbl_page_render.setStyleSheet("""
+            border: 1px solid #2A3954;
+            border-radius: 6px;
+            background-color: #0B101B;
+        """)
+        QTimer.singleShot(0, self._scroll_to_hit)
+
+    def _on_page_failed(self, request_id: int, err: str) -> None:
+        if request_id != self._request_id:
+            return
+        self._raw_pixmap = None
+        self._first_hit_ratio = None
+        self.lbl_head.setText(f"Vorschau: Seite {self._current_page}")
+        self.lbl_page_render.setStyleSheet("background-color: transparent; color: #8B949E;")
+        self.lbl_page_render.setText(f"Vorschau konnte nicht gerendert werden:\n{err}")
+
+    def _scroll_to_hit(self) -> None:
+        vbar = self.scroll.verticalScrollBar()
+        if self._first_hit_ratio is None or not self._raw_pixmap:
+            vbar.setValue(0)
+            return
+        pm = self.lbl_page_render.pixmap()
+        pm_h = pm.height() if pm and not pm.isNull() else self.lbl_page_render.height()
+        vp_h = self.scroll.viewport().height()
+        target_y = int(self._first_hit_ratio * pm_h - vp_h * 0.25)
+        vbar.setValue(max(0, min(vbar.maximum(), target_y)))
+
+    def _apply_scaled_pixmap(self) -> None:
+        if not self._raw_pixmap or self._raw_pixmap.isNull():
+            return
+        avail_w = max(280, int((self.scroll.viewport().width() - 40) * self._zoom_factor))
+        scaled = self._raw_pixmap.scaledToWidth(avail_w, Qt.SmoothTransformation)
+        self.lbl_page_render.setPixmap(scaled)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_scaled_pixmap()
 
     def _on_open_clicked(self) -> None:
         if self._current_path:
@@ -419,7 +589,11 @@ class FullTextSearchOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._active_row: Optional[HitSnippetRow] = None
+        self._all_rows: List[HitSnippetRow] = []
+        self._accordions: List[BookGroupAccordionItem] = []
+        self._all_expanded = True
         self._last_query = ""
+        self.setFocusPolicy(Qt.StrongFocus)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -450,6 +624,28 @@ class FullTextSearchOverlay(QWidget):
         self.lbl_hits.setStyleSheet("color: #58A6FF; border: none; background: transparent;")
         h_lay.addWidget(self.lbl_hits)
 
+        self.btn_toggle_all = QPushButton("Alle zuklappen")
+        self.btn_toggle_all.setCursor(Qt.PointingHandCursor)
+        self.btn_toggle_all.setFixedHeight(24)
+        self.btn_toggle_all.setStyleSheet("""
+            QPushButton {
+                background-color: #121A2B;
+                color: #8B949E;
+                border: 1px solid #23314A;
+                border-radius: 5px;
+                padding: 0 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #1A253E;
+                color: #FFFFFF;
+                border-color: #388BFD;
+            }
+        """)
+        self.btn_toggle_all.clicked.connect(self._toggle_all_accordions)
+        h_lay.addWidget(self.btn_toggle_all)
+
         main_layout.addWidget(self.header_frame)
 
         # Splitter: Left Result Cards, Right Page Preview Inspector
@@ -474,20 +670,34 @@ class FullTextSearchOverlay(QWidget):
         self.results_layout.setContentsMargins(0, 4, 8, 12)
         self.results_layout.setSpacing(10)
 
+        self.scroll.setMinimumWidth(360)
         self.scroll.setWidget(self.results_container)
         self.splitter.addWidget(self.scroll)
 
         # Right Preview Inspector
         self.preview_inspector = FullTextPagePreviewInspector()
+        self.preview_inspector.setMinimumWidth(380)
         self.preview_inspector.open_in_reader.connect(self._on_jump_requested)
+        self.preview_inspector.prev_hit_requested.connect(lambda: self._navigate_hit(-1))
+        self.preview_inspector.next_hit_requested.connect(lambda: self._navigate_hit(1))
         self.splitter.addWidget(self.preview_inspector)
 
-        self.splitter.setSizes([620, 480])
+        self.splitter.setStretchFactor(0, 5)
+        self.splitter.setStretchFactor(1, 5)
+        self.splitter.setCollapsible(0, False)
+        self.splitter.setCollapsible(1, False)
+        self.splitter.setSizes([580, 520])
         main_layout.addWidget(self.splitter, stretch=1)
 
     def perform_search(self, query: str) -> None:
         """Executes full-text query, groups hits by book and renders interactive accordion cards."""
         self._last_query = query.strip()
+        self._active_row = None
+        self._all_rows.clear()
+        self._accordions.clear()
+        self._all_expanded = True
+        self.btn_toggle_all.setText("Alle zuklappen")
+
         while self.results_layout.count() > 0:
             item = self.results_layout.takeAt(0)
             w = item.widget()
@@ -527,9 +737,11 @@ class FullTextSearchOverlay(QWidget):
             grouped[b_key]["hits"].append(m)
 
         first_row_widget = None
-        first_hit = matches[0]
+        first_hit = None
 
         for b_info in grouped.values():
+            # Sort hits chronologically by page number within each book
+            b_info["hits"].sort(key=lambda h: int(h.get("page_number") or 1))
             accordion = BookGroupAccordionItem(
                 b_info["title"],
                 b_info["book_data"],
@@ -538,15 +750,18 @@ class FullTextSearchOverlay(QWidget):
             accordion.preview_requested.connect(self._on_row_selected)
             accordion.open_requested.connect(self._on_jump_requested)
             self.results_layout.addWidget(accordion)
+            self._accordions.append(accordion)
+            self._all_rows.extend(accordion.row_widgets)
             if not first_row_widget and accordion.row_widgets:
                 first_row_widget = accordion.row_widgets[0]
+                first_hit = b_info["hits"][0]
 
         self.results_layout.addStretch()
         self.results_container.adjustSize()
         self.scroll.verticalScrollBar().setValue(0)
 
         # Highlight & load first hit
-        if first_row_widget and first_hit.get("file_path"):
+        if first_row_widget and first_hit and first_hit.get("file_path"):
             self._on_row_selected(first_row_widget, first_hit["file_path"], first_hit.get("page_number", 1))
 
     def _on_row_selected(self, row_widget: HitSnippetRow, file_path: str, page_num: int) -> None:
@@ -557,7 +772,45 @@ class FullTextSearchOverlay(QWidget):
                 pass
         self._active_row = row_widget
         row_widget.set_active(True)
+        self.scroll.ensureWidgetVisible(row_widget, 0, 40)
         self.preview_inspector.load_page_preview(file_path, page_num, search_term=self._last_query)
+
+    def _toggle_all_accordions(self) -> None:
+        self._all_expanded = not self._all_expanded
+        for acc in self._accordions:
+            acc.set_expanded(self._all_expanded)
+        self.btn_toggle_all.setText("Alle zuklappen" if self._all_expanded else "Alle aufklappen")
+
+    def _navigate_hit(self, delta: int) -> None:
+        if not self._all_rows:
+            return
+        if self._active_row in self._all_rows:
+            idx = self._all_rows.index(self._active_row)
+            new_idx = max(0, min(len(self._all_rows) - 1, idx + delta))
+        else:
+            new_idx = 0
+        target = self._all_rows[new_idx]
+        # Ensure parent accordion is expanded before scrolling to the hit
+        for acc in self._accordions:
+            if target in acc.row_widgets and not acc._is_expanded:
+                acc.set_expanded(True)
+                break
+        self._on_row_selected(target, target.file_path, target.page_number)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key_Up:
+            self._navigate_hit(-1)
+            event.accept()
+            return
+        if event.key() == Qt.Key_Down:
+            self._navigate_hit(1)
+            event.accept()
+            return
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self._active_row:
+            self._on_jump_requested(self._active_row.file_path, self._active_row.page_number)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _on_jump_requested(self, file_path: str, page_num: int) -> None:
         self.open_reader_requested.emit(file_path, page_num)

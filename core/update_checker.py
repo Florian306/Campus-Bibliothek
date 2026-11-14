@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.5"
+CURRENT_VERSION = "2.5.6"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.6",
+        "date": "Aktuell",
+        "title": "Volltext-Suche 2.0: Chronologische Seiten, Fit-to-Width Vorschau & Auto-Scroll",
+        "notes": "• Aufsteigende Seitenzahlen: Fundstellen innerhalb jedes Buchs werden sauber nach Seitenzahl sortiert\n• Stabile Fit-to-Width Seitenvorschau: Jede Buchseite passt sich automatisch der Vorschau-Breite an, ohne dass sich das Layout verschiebt\n• Auto-Scroll zur Fundstelle: Die Vorschau springt direkt zur ersten markierten Textstelle auf der Seite\n• Schnell-Navigation & Zoom: ◀ / ▶ Buttons, Tastatursteuerung (↑ / ↓ / Enter), Zoom (− / Fit / +) sowie 'Alle auf-/zuklappen'\n• Asynchrones Background-Rendering mit Seiten-Cache für flüssiges Durchklicken",
+    },
     {
         "version": "2.5.5",
         "date": "Aktuell",
