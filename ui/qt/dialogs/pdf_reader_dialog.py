@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QGraphicsColorizeEffect,
+    QGraphicsEffect,
     QMenu,
     QProgressBar,
     QStackedWidget,
@@ -1782,10 +1783,21 @@ class PdfReaderDialog(QDialog):
                 }
             """)
         elif mode == "dark":
-            effect = QGraphicsColorizeEffect(self)
-            effect.setColor(QColor("#2B3342"))
-            effect.setStrength(0.78)
-            vp.setGraphicsEffect(effect)
+            class _InvertGraphicsEffect(QGraphicsEffect):
+                """Inverts viewport pixels for true dark-mode PDF reading."""
+                def draw(self, painter) -> None:
+                    pixmap, offset = self.sourcePixmap(Qt.DeviceCoordinates, QGraphicsEffect.PadToEffectiveBoundingRect)
+                    if pixmap.isNull():
+                        return
+                    img = pixmap.toImage()
+                    img.invertPixels(QImage.InvertRgb)
+                    painter.save()
+                    painter.setWorldTransform(painter.worldTransform().inverted()[0] if False else painter.worldTransform())
+                    painter.resetTransform()
+                    painter.drawImage(offset, img)
+                    painter.restore()
+
+            vp.setGraphicsEffect(_InvertGraphicsEffect(self))
             self.btn_reading_theme.setText("🌙")
             self.btn_reading_theme.setToolTip("Farbmodus: Dunkel (klicken für Normal)")
             self.btn_reading_theme.setStyleSheet("""

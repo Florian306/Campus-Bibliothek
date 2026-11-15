@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.7"
+CURRENT_VERSION = "2.5.8"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.8",
+        "date": "Aktuell",
+        "title": "Fix: Echter Darkmode im PDF-Reader & schlanke 18 MB Delta-Updates",
+        "notes": "• Echter Reader-Darkmode: Der 🌙-Button im PDF-Reader invertiert die Seiten nun sauber in Echtzeit (dunkler Hintergrund, heller Text)\n• Schlanke Delta-Updates: Das Patch-Paket enthält ab sofort nur noch die aktualisierte EXE (~18 MB statt 319 MB)",
+    },
     {
         "version": "2.5.7",
         "date": "Aktuell",
