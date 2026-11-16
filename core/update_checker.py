@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.8"
+CURRENT_VERSION = "2.5.9"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.9",
+        "date": "Aktuell",
+        "title": "Fix: Reader-Darkmode HiDPI/Transform-Korrektur",
+        "notes": "• Behebt das komplett schwarze Bild im Reader-Darkmode durch Verwendung von Qt.LogicalCoordinates ohne Transform-Reset",
+    },
     {
         "version": "2.5.8",
         "date": "Aktuell",
