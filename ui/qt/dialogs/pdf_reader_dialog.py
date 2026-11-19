@@ -512,6 +512,7 @@ class PdfReaderDialog(QDialog):
         # Visual Theme / Filter Mode: "normal", "sepia", "dark"
         self._color_mode = "normal"
         self._color_effect: Optional[QGraphicsColorizeEffect] = None
+        self._pan_start = None
 
         # Search index navigation state
         self._current_search_match_idx = -1
@@ -546,7 +547,7 @@ class PdfReaderDialog(QDialog):
         # 1. Top Control Bar (Harmonized Modern Dark SaaS Pill Design)
         # -------------------------------------------------------------
         top_bar = QFrame()
-        top_bar.setFixedHeight(50)
+        top_bar.setFixedHeight(48)
         top_bar.setStyleSheet("""
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #111726, stop:1 #0B0F19);
@@ -554,8 +555,8 @@ class PdfReaderDialog(QDialog):
             }
         """)
         top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(10, 6, 10, 6)
-        top_layout.setSpacing(5)
+        top_layout.setContentsMargins(12, 6, 12, 6)
+        top_layout.setSpacing(6)
 
         # Toggle TOC Button (Left Sidebar Toggle)
         self.btn_toggle_toc = QPushButton("  Inhalt")
@@ -1783,17 +1784,10 @@ class PdfReaderDialog(QDialog):
                 }
             """)
         elif mode == "dark":
-            class _InvertGraphicsEffect(QGraphicsEffect):
-                """Inverts viewport pixels for true dark-mode PDF reading."""
-                def draw(self, painter) -> None:
-                    pixmap, offset = self.sourcePixmap(Qt.LogicalCoordinates, QGraphicsEffect.PadToEffectiveBoundingRect)
-                    if pixmap.isNull():
-                        return
-                    img = pixmap.toImage()
-                    img.invertPixels(QImage.InvertRgb)
-                    painter.drawImage(offset, img)
-
-            vp.setGraphicsEffect(_InvertGraphicsEffect(self))
+            effect = QGraphicsColorizeEffect(self)
+            effect.setColor(QColor("#1A2230"))
+            effect.setStrength(0.45)
+            vp.setGraphicsEffect(effect)
             self.btn_reading_theme.setText("🌙")
             self.btn_reading_theme.setToolTip("Farbmodus: Dunkel (klicken für Normal)")
             self.btn_reading_theme.setStyleSheet("""
@@ -2282,6 +2276,24 @@ class PdfReaderDialog(QDialog):
             if self._selection_overlay and event.type() in (QEvent.Resize, QEvent.Move, QEvent.Paint):
                 self._selection_overlay.setGeometry(self.view.viewport().rect())
                 self._selection_overlay.update()
+
+            # Middle mouse button drag-panning
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.MiddleButton:
+                self._pan_start = event.pos()
+                self.view.viewport().setCursor(Qt.ClosedHandCursor)
+                return True
+            if event.type() == QEvent.MouseMove and self._pan_start is not None:
+                delta = event.pos() - self._pan_start
+                self._pan_start = event.pos()
+                hsb = self.view.horizontalScrollBar()
+                vsb = self.view.verticalScrollBar()
+                hsb.setValue(hsb.value() - delta.x())
+                vsb.setValue(vsb.value() - delta.y())
+                return True
+            if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.MiddleButton and self._pan_start is not None:
+                self._pan_start = None
+                self.view.viewport().unsetCursor()
+                return True
 
             if event.type() == QEvent.Wheel and self.view.pageMode() == QPdfView.PageMode.SinglePage:
                 delta_y = event.angleDelta().y()

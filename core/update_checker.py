@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.9"
+CURRENT_VERSION = "2.5.10"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.10",
+        "date": "Aktuell",
+        "title": "PDF-Reader Upgrade: Mittlere-Maustaste Panning, Darkmode-Fix & Cleaner Look",
+        "notes": "• Darkmode-Fix im Reader: Kein schwarzer Bildschirm mehr – zuverlässige, augenschonende Nacht-Tönung ohne invertierte Bilder\n• Mittlere Maustaste (Panning): Gedrückt halten und ziehen verschiebt das Dokument flüssig in alle Richtungen\n• Cleaner Toolbar-Look: Kompaktere Steuerleiste mit saubereren Abständen",
+    },
     {
         "version": "2.5.9",
         "date": "Aktuell",
