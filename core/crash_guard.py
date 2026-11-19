@@ -134,6 +134,17 @@ def execute_rollback(download_url: str, version_tag: str) -> bool:
         exe_path = os.path.join(app_dir, "Buchsortierer.exe")
 
         if target_path.lower().endswith(".zip"):
+            import zipfile
+            try:
+                with zipfile.ZipFile(target_path, "r") as zf:
+                    names = [n.replace("\\", "/").lower() for n in zf.namelist()]
+                    has_exe = any(n.endswith("buchsortierer.exe") for n in names)
+                    has_internal = any(n.startswith("_internal/") or "/_internal/" in n for n in names)
+                    if not (has_exe and has_internal):
+                        return False
+            except Exception:
+                return False
+
             ps_script = (
                 f"Start-Sleep -Milliseconds 1200; "
                 f"Expand-Archive -Path '{target_path}' -DestinationPath '{app_dir}' -Force; "

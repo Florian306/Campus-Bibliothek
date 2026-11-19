@@ -46,6 +46,10 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Smoke-Test Python Imports
+        run: |
+          python -c "import main"
+
       - name: Build Standalone Executable
         run: |
           pyinstaller Buchsortierer.spec --noconfirm
@@ -55,6 +59,10 @@ jobs:
           cd dist/Buchsortierer
           7z a -tzip -mx=1 "../Campus-Bibliothek-Patch.zip" "Buchsortierer.exe" "_internal/*"
           cd ../..
+
+      - name: Verify Patch Archive Integrity
+        run: |
+          python -c "import zipfile, sys; z = zipfile.ZipFile('dist/Campus-Bibliothek-Patch.zip'); names = [n.replace('\\\\', '/').lower() for n in z.namelist()]; assert any(n.endswith('buchsortierer.exe') for n in names) and any(n.startswith('_internal/') for n in names), 'Incomplete patch archive!'; print('Patch archive verified:', len(names), 'entries')"
 
       - name: Publish Instant Release (Immediate Availability)
         uses: softprops/action-gh-release@v2
