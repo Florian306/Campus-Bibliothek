@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.11"
+CURRENT_VERSION = "2.5.12"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.12",
+        "date": "Aktuell",
+        "title": "Studienbriefe & Katalog: Empty-State & Direkt-Drag-and-Drop",
+        "notes": "• Einladender Empty-State: Klarer Hinweis mit 'Zum Posteingang →'-Button bei noch leeren Studienbriefen oder 0 Suchtreffern\n• Direktes Drag & Drop: PDF-Dateien lassen sich direkt in den Katalog oder Studienbriefe-Tab ziehen und werden automatisch passend vorgemerkt",
+    },
     {
         "version": "2.5.11",
         "date": "Aktuell",

@@ -58,12 +58,14 @@ class CatalogView(QWidget):
     quick_look_requested = Signal(str) # book_id
     desk_toggled = Signal(str)        # book_id
     data_changed = Signal()
+    open_inbox_requested = Signal()
 
     def __init__(self, mode: str = "books", parent=None):
         super().__init__(parent)
         self.mode = mode  # "books" or "study_scripts"
         self.view_mode = "shelf"
         self.doc_type_filter = "study_script" if mode == "study_scripts" else "book"
+        self.setAcceptDrops(True)
         self.master_books: List[Dict[str, Any]] = []
         self.filtered_books: List[Dict[str, Any]] = []
         self.selected_book_id: Optional[str] = None
@@ -846,10 +848,94 @@ class CatalogView(QWidget):
                 self.shelf_grid.takeAt(0)
 
             self._shelf_render_idx = 0
-            # Render all cards in one go to eliminate visible popping/trickling down
-            self._render_next_shelf_batch(batch_size=max(len(self.filtered_books), 100))
+            if not self.filtered_books:
+                empty_box = self._build_empty_state_widget()
+                self.shelf_grid.addWidget(empty_box, 0, 0, 1, max(1, cols), Qt.AlignCenter)
+            else:
+                # Render all cards in one go to eliminate visible popping/trickling down
+                self._render_next_shelf_batch(batch_size=max(len(self.filtered_books), 100))
         finally:
             self.shelf_container.setUpdatesEnabled(True)
+
+    def _build_empty_state_widget(self) -> QFrame:
+        box = QFrame()
+        box.setMinimumWidth(420)
+        box.setMaximumWidth(560)
+        box.setStyleSheet("""
+            QFrame {
+                background-color: #0E1525;
+                border: 1px dashed #233250;
+                border-radius: 14px;
+            }
+        """)
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(32, 32, 32, 32)
+        lay.setSpacing(12)
+        lay.setAlignment(Qt.AlignCenter)
+
+        if self.mode == "study_scripts" and not self.master_books:
+            title = "Noch keine Studienbriefe oder Skripte archiviert"
+            sub = (
+                "Ziehe PDF-Dateien einfach per Drag & Drop hierher, "
+                "oder markiere Dokumente im Posteingang als ‚Studienbrief / Skript‘."
+            )
+        elif self.mode == "study_scripts":
+            title = "Keine passenden Studienbriefe gefunden"
+            sub = "Passe Suchbegriff oder Buchstabenfilter an."
+        else:
+            title = "Keine Bücher gefunden"
+            sub = "Passe Suchbegriff, Fachbereich oder Buchstabenfilter an."
+
+        lbl_t = QLabel(title)
+        lbl_t.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        lbl_t.setAlignment(Qt.AlignCenter)
+        lbl_t.setStyleSheet("color: #F0F6FC; border: none; background: transparent;")
+        lay.addWidget(lbl_t)
+
+        lbl_s = QLabel(sub)
+        lbl_s.setWordWrap(True)
+        lbl_s.setFont(QFont("Segoe UI", 9.5))
+        lbl_s.setAlignment(Qt.AlignCenter)
+        lbl_s.setStyleSheet("color: #8B949E; border: none; background: transparent;")
+        lay.addWidget(lbl_s)
+
+        if self.mode == "study_scripts" and not self.master_books:
+            btn = QPushButton("Zum Posteingang →")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(34)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F6FEB, stop:1 #388BFD);
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 7px;
+                    padding: 0 18px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover { background: #58A6FF; }
+            """)
+            btn.clicked.connect(self.open_inbox_requested.emit)
+            lay.addWidget(btn, alignment=Qt.AlignCenter)
+
+        return box
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasUrls():
+            if any(u.toLocalFile().lower().endswith(".pdf") for u in event.mimeData().urls()):
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def dropEvent(self, event) -> None:
+        pdfs = [u.toLocalFile() for u in event.mimeData().urls() if u.toLocalFile().lower().endswith(".pdf")]
+        if not pdfs:
+            return
+        from core.library_db import add_to_inbox
+        for p in pdfs:
+            add_to_inbox(p, doc_type=self.doc_type_filter)
+        self.open_inbox_requested.emit()
+        event.acceptProposedAction()
 
     def _calculate_shelf_geometry(self) -> tuple[int, int, int]:
         """Calculates optimal column count, horizontal gap, and side margin to fill width evenly."""
