@@ -2840,6 +2840,11 @@ def delete_book(book_id: str, delete_file: bool = False) -> Tuple[bool, Optional
                 conn.execute("DELETE FROM quiz_history WHERE book_id = ?;", (bid,))
                 conn.execute("DELETE FROM book_pairs WHERE main_book_id = ? OR workbook_id = ?;", (bid, bid))
                 conn.execute("DELETE FROM book_covers WHERE book_id = ?;", (bid,))
+                try:
+                    conn.execute("DELETE FROM book_pages_fts WHERE book_id = ?;", (bid,))
+                    conn.execute("DELETE FROM fts_index_status WHERE book_id = ?;", (bid,))
+                except Exception:
+                    pass
 
                 # Delete main book record
                 conn.execute("DELETE FROM books WHERE id = ?;", (bid,))

@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.10"
+CURRENT_VERSION = "2.5.11"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.11",
+        "date": "Aktuell",
+        "title": "FTS-Index Bereinigung bei Buchlöschung & Update-Schutzschichten",
+        "notes": "• Saubere Volltext-Datenbank: Beim Löschen von Büchern werden ab sofort auch alle zugehörigen Einträge aus dem Volltext-Index (FTS5) entfernt\n• Automatische Geister-Bereinigung: Verwaiste Index-Einträge früher gelöschter Bücher werden beim Start automatisch aufgeräumt\n• Update- & Build-Schutz: Import-Smoke-Test im CI sowie Integritätsprüfung von Patch-Archiven vor dem Entpacken",
+    },
     {
         "version": "2.5.10",
         "date": "Aktuell",

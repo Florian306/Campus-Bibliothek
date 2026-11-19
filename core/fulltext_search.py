@@ -54,6 +54,13 @@ def init_fts_schema() -> None:
     # Index for fast status checks
     cur.execute("CREATE INDEX IF NOT EXISTS idx_fts_status_book ON fts_index_status(book_id);")
 
+    # Purge orphaned FTS entries whose books were previously deleted
+    try:
+        cur.execute("DELETE FROM book_pages_fts WHERE book_id NOT IN (SELECT CAST(id AS TEXT) FROM books);")
+        cur.execute("DELETE FROM fts_index_status WHERE book_id NOT IN (SELECT CAST(id AS TEXT) FROM books);")
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
 
