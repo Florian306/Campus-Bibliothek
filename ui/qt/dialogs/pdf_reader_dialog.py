@@ -512,6 +512,7 @@ class PdfReaderDialog(QDialog):
         # Visual Theme / Filter Mode: "normal", "sepia", "dark"
         self._color_mode = "normal"
         self._color_effect: Optional[QGraphicsColorizeEffect] = None
+        self._dim_overlay: Optional[QWidget] = None
         self._pan_start = None
 
         # Search index navigation state
@@ -1743,6 +1744,8 @@ class PdfReaderDialog(QDialog):
 
         if mode == "normal":
             vp.setGraphicsEffect(None)
+            if self._dim_overlay:
+                self._dim_overlay.hide()
             self.btn_reading_theme.setText("☀️")
             self.btn_reading_theme.setToolTip("Farbmodus: Normal (klicken für Sepia)")
             self.btn_reading_theme.setStyleSheet("""
@@ -1762,6 +1765,8 @@ class PdfReaderDialog(QDialog):
                 }
             """)
         elif mode == "sepia":
+            if self._dim_overlay:
+                self._dim_overlay.hide()
             effect = QGraphicsColorizeEffect(self)
             effect.setColor(QColor("#E8D8B8"))
             effect.setStrength(0.48)
@@ -1784,10 +1789,14 @@ class PdfReaderDialog(QDialog):
                 }
             """)
         elif mode == "dark":
-            effect = QGraphicsColorizeEffect(self)
-            effect.setColor(QColor("#1A2230"))
-            effect.setStrength(0.45)
-            vp.setGraphicsEffect(effect)
+            vp.setGraphicsEffect(None)
+            if not self._dim_overlay:
+                self._dim_overlay = QWidget(vp)
+                self._dim_overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self._dim_overlay.setStyleSheet("background-color: rgba(12, 16, 24, 130);")
+            self._dim_overlay.setGeometry(vp.rect())
+            self._dim_overlay.show()
+            self._dim_overlay.raise_()
             self.btn_reading_theme.setText("🌙")
             self.btn_reading_theme.setToolTip("Farbmodus: Dunkel (klicken für Normal)")
             self.btn_reading_theme.setStyleSheet("""
@@ -2276,6 +2285,9 @@ class PdfReaderDialog(QDialog):
             if self._selection_overlay and event.type() in (QEvent.Resize, QEvent.Move, QEvent.Paint):
                 self._selection_overlay.setGeometry(self.view.viewport().rect())
                 self._selection_overlay.update()
+            if self._dim_overlay and self._dim_overlay.isVisible() and event.type() in (QEvent.Resize, QEvent.Move):
+                self._dim_overlay.setGeometry(self.view.viewport().rect())
+                self._dim_overlay.raise_()
 
             # Middle mouse button drag-panning
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.MiddleButton:

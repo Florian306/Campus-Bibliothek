@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.12"
+CURRENT_VERSION = "2.5.13"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.13",
+        "date": "Aktuell",
+        "title": "PDF-Reader: Augenschonendes Abdunklungs-Overlay im Nachtmodus",
+        "notes": "• Zuverlässiges Dimming im 🌙-Modus: Grelle weiße PDF-Seiten werden über ein transparentes Overlay angenehm abgedunkelt, ohne Bilder zu invertieren",
+    },
     {
         "version": "2.5.12",
         "date": "Aktuell",
