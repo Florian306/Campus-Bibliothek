@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.14"
+CURRENT_VERSION = "2.5.15"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.15",
+        "date": "Aktuell",
+        "title": "Performance-Boost: Schnellerer Start & Lazy-WebEngine",
+        "notes": "• Schnellerer App-Start: QtWebEngine wird nicht mehr beim Start vorgewärmt, sondern erst beim Öffnen der Fach-Websuche geladen",
+    },
     {
         "version": "2.5.14",
         "date": "Aktuell",
