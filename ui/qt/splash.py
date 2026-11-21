@@ -120,12 +120,24 @@ class CircularProgressRing(QWidget):
         self._target_progress = max(0.0, min(100.0, float(value)))
 
     def _on_tick(self) -> None:
+        if not self.isVisible():
+            self._anim_timer.stop()
+            return
         diff = self._target_progress - self._display_progress
         if abs(diff) > 0.15:
             self._display_progress += diff * 0.18
-        else:
+            self.update()
+        elif self._display_progress != self._target_progress:
             self._display_progress = self._target_progress
-        self.update()
+            self.update()
+
+    def hideEvent(self, event) -> None:
+        self._anim_timer.stop()
+        super().hideEvent(event)
+
+    def closeEvent(self, event) -> None:
+        self._anim_timer.stop()
+        super().closeEvent(event)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)

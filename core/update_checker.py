@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.13"
+CURRENT_VERSION = "2.5.14"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.14",
+        "date": "Aktuell",
+        "title": "Performance-Fix: ~0% Idle-CPU-Last & niedriger Stromverbrauch",
+        "notes": "• Behebt einen 60-FPS-Animations-Timer im Splash-Screen, der nach dem Start unsichtbar im Hintergrund weiterlief und unnötig CPU/Strom verbrauchte",
+    },
     {
         "version": "2.5.13",
         "date": "Aktuell",
