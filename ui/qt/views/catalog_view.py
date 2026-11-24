@@ -65,6 +65,7 @@ class CatalogView(QWidget):
         self.mode = mode  # "books" or "study_scripts"
         self.view_mode = "shelf"
         self.doc_type_filter = "study_script" if mode == "study_scripts" else "book"
+        self._empty_state_widget: Optional[QFrame] = None
         self.setAcceptDrops(True)
         self.master_books: List[Dict[str, Any]] = []
         self.filtered_books: List[Dict[str, Any]] = []
@@ -847,10 +848,15 @@ class CatalogView(QWidget):
             while self.shelf_grid.count():
                 self.shelf_grid.takeAt(0)
 
+            if self._empty_state_widget:
+                self._empty_state_widget.hide()
+                self._empty_state_widget.deleteLater()
+                self._empty_state_widget = None
+
             self._shelf_render_idx = 0
             if not self.filtered_books:
-                empty_box = self._build_empty_state_widget()
-                self.shelf_grid.addWidget(empty_box, 0, 0, 1, max(1, cols), Qt.AlignCenter)
+                self._empty_state_widget = self._build_empty_state_widget()
+                self.shelf_grid.addWidget(self._empty_state_widget, 0, 0, 1, max(1, cols), Qt.AlignCenter)
             else:
                 # Render all cards in one go to eliminate visible popping/trickling down
                 self._render_next_shelf_batch(batch_size=max(len(self.filtered_books), 100))

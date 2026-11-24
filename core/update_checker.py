@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.15"
+CURRENT_VERSION = "2.5.16"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.16",
+        "date": "Aktuell",
+        "title": "Fix: Schwebende Empty-State-Box im Katalog & dunkler Mail-Start",
+        "notes": "• Katalog-Fix: Bereinigt das Empty-State-Widget sauber beim Nachladen der Bücher, sodass 'Keine Bücher gefunden' nicht mehr über dem Regal schwebt\n• Mail-Fix: Verhindert das weiße Aufblitzen beim allerersten Öffnen einer Mail durch dunklen QWebEngineView-Hintergrund",
+    },
     {
         "version": "2.5.15",
         "date": "Aktuell",

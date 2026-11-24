@@ -341,6 +341,8 @@ class JarvisMailReaderDialog(QDialog):
         self.browser = None
         if _HAS_WEBENGINE:
             self.web_view = QWebEngineView()
+            self.web_view.setAttribute(Qt.WA_StyledBackground, True)
+            self.web_view.setStyleSheet("background-color: #1F1F1F;")
             self.web_view.setPage(ExternalWebEnginePage(self.web_view))
             self.web_view.page().setBackgroundColor(QColor("#1F1F1F"))
             body_lay.addWidget(self.web_view)
