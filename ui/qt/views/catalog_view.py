@@ -1213,6 +1213,75 @@ class CatalogView(QWidget):
         else:
             open_pdf_in_edge(resolved, page=saved_page)
 
+    def _edit_book_metadata(self, book_id: str) -> None:
+        book = next((b for b in self.master_books if str(b["id"]) == str(book_id)), None)
+        if not book:
+            return
+
+        from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QDialogButtonBox
+        from core.library_db import get_db_connection
+        from ai.categories import STANDARD_CATEGORIES
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Metadaten bearbeiten")
+        dlg.setMinimumWidth(420)
+        dlg.setStyleSheet("""
+            QDialog { background-color: #0D1117; color: #F0F6FC; }
+            QLabel { color: #C9D1D9; font-size: 12px; }
+            QLineEdit, QComboBox {
+                background-color: #161B22; color: #F0F6FC;
+                border: 1px solid #30363D; border-radius: 6px; padding: 6px 8px;
+            }
+        """)
+
+        form = QFormLayout(dlg)
+        form.setContentsMargins(16, 16, 16, 16)
+        form.setSpacing(10)
+
+        inp_title = QLineEdit(book.get("title") or "")
+        inp_author = QLineEdit(book.get("author") or "")
+        cmb_cat = QComboBox()
+        cmb_cat.setEditable(True)
+        cats = list(dict.fromkeys(STANDARD_CATEGORIES + [c for c in self.category_counts.keys() if c != "Alle"]))
+        cmb_cat.addItems(cats)
+        curr_cat = (book.get("categories_str") or book.get("category") or "").split(",")[0].strip()
+        if curr_cat:
+            cmb_cat.setCurrentText(curr_cat)
+
+        form.addRow("Titel:", inp_title)
+        form.addRow("Autor:", inp_author)
+        form.addRow("Fachbereich:", cmb_cat)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        new_title = inp_title.text().strip()
+        new_author = inp_author.text().strip()
+        new_cat = cmb_cat.currentText().strip()
+        if not new_title:
+            return
+
+        conn = get_db_connection()
+        with conn:
+            conn.execute(
+                "UPDATE books SET title = ?, author = ?, category = ? WHERE id = ?;",
+                (new_title, new_author or "Unbekannt", new_cat or "Sonstiges", str(book_id)),
+            )
+            if new_cat:
+                conn.execute("DELETE FROM book_categories WHERE book_id = ?;", (str(book_id),))
+                conn.execute(
+                    "INSERT OR IGNORE INTO book_categories (book_id, category) VALUES (?, ?);",
+                    (str(book_id), new_cat),
+                )
+
+        self.load_data()
+        self.data_changed.emit()
+
     def _show_book_context_menu(self, book_id: str, global_pos) -> None:
         if book_id not in self.selected_book_ids:
             self.selected_book_id = book_id
@@ -1261,6 +1330,9 @@ class CatalogView(QWidget):
 
         act_ql = menu.addAction(create_vector_icon("search", "#58A6FF", 14), "Quick-Look & Details (Leertaste)")
         act_ql.triggered.connect(lambda: self.quick_look_requested.emit(book_id))
+
+        act_edit = menu.addAction(create_vector_icon("notes", "#58A6FF", 14), "✏️ Titel, Autor & Fachbereich bearbeiten...")
+        act_edit.triggered.connect(lambda: self._edit_book_metadata(book_id))
 
         act_open = menu.addAction(create_vector_icon("desk", "#58A6FF", 14), "PDF direkt in Edge öffnen")
         act_open.triggered.connect(lambda: self._launch_book(book_id))

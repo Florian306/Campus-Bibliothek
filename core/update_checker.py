@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.16"
+CURRENT_VERSION = "2.5.17"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.5.17",
+        "date": "Aktuell",
+        "title": "Katalog: Titel, Autor & Fachbereich per Rechtsklick bearbeiten",
+        "notes": "• Rechtsklick-Bearbeitung im Katalog: Titel, Autor und Fachbereich lassen sich jetzt direkt über '✏️ Titel, Autor & Fachbereich bearbeiten...' im Kontextmenü anpassen",
+    },
     {
         "version": "2.5.16",
         "date": "Aktuell",
