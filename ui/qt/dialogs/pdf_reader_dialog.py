@@ -1421,29 +1421,8 @@ class PdfReaderDialog(QDialog):
         trans_btn_row.addWidget(btn_dict)
         layout.addLayout(trans_btn_row)
 
-        # Quick Action Buttons Row 2: AI Explainer
+        # Quick Action Buttons Row 2: AI Explainer (removed per user request)
         ai_btn_row = QHBoxLayout()
-        btn_explain = QPushButton("💡 Begriff erklären")
-        btn_explain.setAutoDefault(False)
-        btn_explain.setDefault(False)
-        btn_explain.setCursor(Qt.PointingHandCursor)
-        btn_explain.setStyleSheet("""
-            QPushButton {
-                background-color: #1E1A34;
-                color: #D2A8FF;
-                border: 1px solid #3C2B64;
-                border-radius: 4px;
-                padding: 5px 8px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #2D2350;
-                border-color: #A371F7;
-            }
-        """)
-        btn_explain.clicked.connect(lambda: self._ask_ai("explain"))
-        ai_btn_row.addWidget(btn_explain)
 
         btn_sum = QPushButton("📑 Seite fassen")
         btn_sum.setAutoDefault(False)
@@ -2620,8 +2599,7 @@ class PdfReaderDialog(QDialog):
         act_dict.triggered.connect(lambda: self._lookup_on_text(text, mode="dictionary"))
 
         menu.addSeparator()
-        act_explain = menu.addAction("💡 Begriff durch KI erklären")
-        act_explain.triggered.connect(lambda: self._ask_ai_on_text(text, mode="explain"))
+        # Text selection context menu (AI explainer removed)
 
         act_summarize = menu.addAction("📑 Auszug durch KI zusammenfassen")
         act_summarize.triggered.connect(lambda: self._ask_ai_on_text(text, mode="summarize"))

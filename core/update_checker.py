@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.3"
+CURRENT_VERSION = "2.6.4"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.4",
+        "date": "Aktuell",
+        "title": "Reader-Bereinigung: KI-Erklärer entfernt",
+        "notes": "• Entfernt den KI-Erklärer aus dem PDF-Reader-Seitenpanel und dem Rechtsklick-Kontextmenü",
+    },
     {
         "version": "2.6.3",
         "date": "Aktuell",
