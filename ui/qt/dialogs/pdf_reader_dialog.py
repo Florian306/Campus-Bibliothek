@@ -523,6 +523,7 @@ class PdfReaderDialog(QDialog):
         # Performance & Selection state
         self._selection_overlay: Optional[PdfSelectionOverlay] = None
         self._thumbnails_loaded = False
+        self._toc_page_offset: Optional[int] = None
 
         if not HAS_QT_PDF:
             # Fallback when QtPdf is not present in binary
@@ -2035,7 +2036,34 @@ class PdfReaderDialog(QDialog):
         page = item.data(0, Qt.UserRole)
         if page:
             p_int = max(1, int(page))
-            self._jump_to_page(p_int)
+            if self._toc_page_offset is None and self.file_path and os.path.exists(self.file_path):
+                self._toc_page_offset = self._detect_toc_page_offset(item.text(0), p_int)
+            offset = self._toc_page_offset or 0
+            self._jump_to_page(max(1, p_int + offset))
+
+    def _detect_toc_page_offset(self, raw_title: str, printed_page: int) -> int:
+        """Detects front-matter page offset when TOC was parsed from printed page numbers."""
+        try:
+            import re
+            import pymupdf
+            clean_t = re.sub(r"\s*\(S\.\s*\d+\)\s*$", "", raw_title).strip()
+            # Strip leading numbering like '1.1 ' or '2 '
+            clean_t = re.sub(r"^\d+(?:\.\d+)*\.?\s+", "", clean_t).strip()
+            if len(clean_t) < 5:
+                return 0
+            doc = pymupdf.open(self.file_path)
+            start_idx = max(0, printed_page - 1)
+            end_idx = min(doc.page_count, start_idx + 45)
+            needle = clean_t[:28].lower()
+            for idx in range(start_idx, end_idx):
+                txt = doc[idx].get_text("text").lower()
+                if needle in txt:
+                    doc.close()
+                    return (idx + 1) - printed_page
+            doc.close()
+        except Exception:
+            pass
+        return 0
 
     def _update_page_input(self, page_num: int) -> None:
         self.spin_page.blockSignals(True)

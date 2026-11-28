@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.1"
+CURRENT_VERSION = "2.6.2"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.2",
+        "date": "Aktuell",
+        "title": "Reader-Fix: Automatischer Frontmatter-Seiten-Offset fürs Inhaltsverzeichnis",
+        "notes": "• Präzise Kapitel-Sprünge: Erkennt automatisch den Seitenversatz zwischen gedruckten Buchseiten und PDF-Seiten (Vorwort/Titelei), sodass das Inhaltsverzeichnis immer exakt auf die richtige Seite springt",
+    },
     {
         "version": "2.6.1",
         "date": "Aktuell",
