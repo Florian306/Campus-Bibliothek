@@ -538,7 +538,7 @@ class PdfReaderDialog(QDialog):
 
         self._build_ui()
         self._setup_shortcuts()
-        QTimer.singleShot(40, self._load_document)
+        QTimer.singleShot(0, self._load_document)
 
     def _build_ui(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -1810,23 +1810,25 @@ class PdfReaderDialog(QDialog):
         if not self.view or not self.doc:
             return
         curr_p = max(1, self.view.pageNavigator().currentPage() + 1)
-        if self.view.pageMode() == QPdfView.PageMode.MultiPage:
-            self.view.setPageMode(QPdfView.PageMode.SinglePage)
-            self.btn_page_mode.setText("📄")
-            self.btn_page_mode.setToolTip("Modus: Einzelseite (klicken für fortlaufend)")
-        else:
-            self.view.setPageMode(QPdfView.PageMode.MultiPage)
-            self.btn_page_mode.setText("📜")
-            self.btn_page_mode.setToolTip("Modus: Fortlaufend (klicken für Einzelseite)")
+        self.view.setUpdatesEnabled(False)
+        try:
+            if self.view.pageMode() == QPdfView.PageMode.MultiPage:
+                self.view.setPageMode(QPdfView.PageMode.SinglePage)
+                self.btn_page_mode.setText("📄")
+                self.btn_page_mode.setToolTip("Modus: Einzelseite (klicken für fortlaufend)")
+            else:
+                self.view.setPageMode(QPdfView.PageMode.MultiPage)
+                self.btn_page_mode.setText("📜")
+                self.btn_page_mode.setToolTip("Modus: Fortlaufend (klicken für Einzelseite)")
 
-        target_idx = curr_p - 1
-        dummy_idx = 0 if target_idx != 0 else min(1, self.doc.pageCount() - 1)
-        zoom = self.view.pageNavigator().currentZoom()
-        self.view.pageNavigator().jump(dummy_idx, QPointF(0, 0), zoom)
-        self.view.pageNavigator().jump(target_idx, QPointF(0, 0), zoom)
-        self._update_page_input(curr_p)
-        self._sync_active_thumbnail(target_idx)
-        QTimer.singleShot(50, lambda: self._jump_to_page(curr_p, keep_focus=True))
+            target_idx = curr_p - 1
+            zoom = self.view.pageNavigator().currentZoom()
+            self.view.pageNavigator().jump(target_idx, QPointF(0, 0), zoom)
+            self._update_page_input(curr_p)
+            self._sync_active_thumbnail(target_idx)
+        finally:
+            self.view.setUpdatesEnabled(True)
+        QTimer.singleShot(0, lambda: self._jump_to_page(curr_p, keep_focus=True))
 
     def _show_page_hud(self, page_num: int) -> None:
         p_count = self.doc.pageCount() if self.doc else 1

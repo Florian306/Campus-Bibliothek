@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.6"
+CURRENT_VERSION = "2.6.7"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.7",
+        "date": "Aktuell",
+        "title": "Reader-Performance: Schnelleres Öffnen & Modus-Umschalten",
+        "notes": "• Schnelleres Umschalten zwischen Einzelseite und fortlaufendem Scrollen ohne Mehrfach-Rendern\n• Sofortiger Dokument-Start ohne künstliche 40 ms Verzögerung",
+    },
     {
         "version": "2.6.6",
         "date": "Aktuell",
