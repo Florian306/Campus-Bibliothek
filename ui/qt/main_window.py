@@ -46,6 +46,8 @@ class CampusMainWindow(QMainWindow):
 
         self._nav_buttons = {}
         self._views_cache = {}
+        self._loaded_tabs = set()
+        self._dirty_tabs = set()
         self._active_update_ver = None
         self._active_update_url = None
         self._active_update_notes = None
@@ -468,19 +470,25 @@ class CampusMainWindow(QMainWindow):
                         }
                     """)
 
-        # Trigger data refresh on tab activate
+        # Trigger data refresh only on first open or when underlying data changed
         if idx in (1, 2):
             if hasattr(view, "master_books") and not view.master_books:
                 view.load_data()
         elif idx == 3:
-            # Load inbox instantly from cache/DB without disk stalls; scan in background
-            if hasattr(view, "refresh_inbox_view"):
-                view.refresh_inbox_view()
-            elif hasattr(view, "sync_filesystem_with_db"):
-                view.sync_filesystem_with_db()
+            if idx not in self._loaded_tabs or idx in self._dirty_tabs:
+                self._loaded_tabs.add(idx)
+                self._dirty_tabs.discard(idx)
+                if hasattr(view, "refresh_inbox_view"):
+                    view.refresh_inbox_view()
+                elif hasattr(view, "sync_filesystem_with_db"):
+                    view.sync_filesystem_with_db()
         elif idx in (4, 5, 6, 7, 9, 10):
-            if hasattr(view, "load_data"):
-                view.load_data()
+            if idx not in self._loaded_tabs or idx in self._dirty_tabs:
+                self._loaded_tabs.add(idx)
+                self._dirty_tabs.discard(idx)
+                if hasattr(view, "load_data"):
+                    from PySide6.QtCore import QTimer
+                    QTimer.singleShot(0, view.load_data)
 
     def update_sidebar_stats(self) -> None:
         all_books = get_all_books(doc_type="book")
@@ -767,6 +775,7 @@ class CampusMainWindow(QMainWindow):
 
     def _on_data_modified(self) -> None:
         self.update_sidebar_stats()
+        self._dirty_tabs.update({3, 4, 5, 6, 9, 10})
         if "catalog" in self._views_cache:
             self.view_catalog.load_data()
         if "scripts" in self._views_cache:

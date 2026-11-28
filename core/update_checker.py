@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.5"
+CURRENT_VERSION = "2.6.6"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.6",
+        "date": "Aktuell",
+        "title": "Performance-Boost: Sofortige Tab-Wechsel ohne Neuladen",
+        "notes": "• Smart-Dirty-Tracking im Hauptfenster: Tabs laden Daten nur noch beim ersten Öffnen oder nach echten Änderungen, wodurch alle weiteren Tab-Wechsel in 0 ms erfolgen",
+    },
     {
         "version": "2.6.5",
         "date": "Aktuell",
