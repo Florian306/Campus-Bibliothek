@@ -860,13 +860,13 @@ class PdfReaderDialog(QDialog):
 
         # Fullscreen Toggle Button (Square Icon Pill)
         self.btn_minimize = QPushButton("—")
-        self.btn_minimize.setToolTip("Reader minimieren")
+        self.btn_minimize.setToolTip("Reader in Tab-Leiste minimieren")
         self.btn_minimize.setAutoDefault(False)
         self.btn_minimize.setDefault(False)
         self.btn_minimize.setCursor(Qt.PointingHandCursor)
         self.btn_minimize.setFixedSize(32, 32)
         self.btn_minimize.setStyleSheet(square_icon_style)
-        self.btn_minimize.clicked.connect(self.showMinimized)
+        self.btn_minimize.clicked.connect(self.hide)
         top_layout.addWidget(self.btn_minimize)
 
         self.btn_fullscreen = QPushButton("⛶")

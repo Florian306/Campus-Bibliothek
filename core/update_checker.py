@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.4"
+CURRENT_VERSION = "2.6.5"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.5",
+        "date": "Aktuell",
+        "title": "Reader-Tabs Fix: Sauberes Minimieren ohne MDI-Titelleisten",
+        "notes": "• Minimieren-Fix: Versteckt das Reader-Fenster sauber über die Offene-Bücher-Tab-Leiste statt überlappender Windows-MDI-Leisten unten links",
+    },
     {
         "version": "2.6.4",
         "date": "Aktuell",

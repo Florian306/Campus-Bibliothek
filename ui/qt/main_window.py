@@ -208,7 +208,7 @@ class CampusMainWindow(QMainWindow):
 
         self._open_readers: dict = {}
         self.open_readers_bar = QFrame(content_col)
-        self.open_readers_bar.setFixedHeight(36)
+        self.open_readers_bar.setFixedHeight(42)
         self.open_readers_bar.setStyleSheet("""
             QFrame {
                 background-color: #080C14;
@@ -216,8 +216,8 @@ class CampusMainWindow(QMainWindow):
             }
         """)
         self.open_readers_layout = QHBoxLayout(self.open_readers_bar)
-        self.open_readers_layout.setContentsMargins(10, 4, 10, 4)
-        self.open_readers_layout.setSpacing(6)
+        self.open_readers_layout.setContentsMargins(12, 5, 12, 5)
+        self.open_readers_layout.setSpacing(8)
         self.open_readers_bar.hide()
         content_col_lay.addWidget(self.open_readers_bar)
 
@@ -714,6 +714,7 @@ class CampusMainWindow(QMainWindow):
         if not entry:
             return
         _, dlg = entry
+        dlg.show()
         dlg.showNormal()
         dlg.raise_()
         dlg.activateWindow()
