@@ -143,6 +143,7 @@ class CampusMainWindow(QMainWindow):
             ("web", "globe", "Fach-Websuche", 8),
             ("radar", "radar", "Auflagen-Radar", 9),
             ("sync", "sync", "Scan & Sync", 10),
+            ("text_checker", "notes", "Lektorat & Textprüfung", 11),
         ]
 
         for key, icon_name, text, idx in nav_items:
@@ -331,6 +332,9 @@ class CampusMainWindow(QMainWindow):
             view = SyncView(self.stack)
             view.scan_finished.connect(self._on_data_modified)
             view.update_available_signal.connect(self._on_update_available_badge)
+        elif key == "text_checker":
+            from ui.qt.views.text_checker_view import TextCheckerView
+            view = TextCheckerView(self.stack)
 
         if view:
             self._views_cache[key] = view

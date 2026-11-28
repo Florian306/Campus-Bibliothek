@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.5.17"
+CURRENT_VERSION = "2.6.0"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.0",
+        "date": "Aktuell",
+        "title": "Neu: Lektorat & Textprüfung (Grammatik, Komma, Rechtschreibung & Stil)",
+        "notes": "• Neuer Tab 'Lektorat & Textprüfung' (100% ohne KI)\n• Inline-Unterstreichungen (Rot = Rechtschreibung, Blau = Komma & Grammatik, Gelb = Stil) mit 1-Klick-Korrektur\n• Offline-Regel-Engine (Kommas, Typografie, Schachtelsätze, Füllwörter, Passiv) + optionale LanguageTool-Prüfung (de-DE)\n• Lesbarkeits-Analyse (Flesch-Index, Ø Satzlänge) sowie .txt/.docx-Dateiimport",
+    },
     {
         "version": "2.5.17",
         "date": "Aktuell",
