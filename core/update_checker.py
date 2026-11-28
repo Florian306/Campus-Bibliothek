@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.2"
+CURRENT_VERSION = "2.6.3"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.3",
+        "date": "Aktuell",
+        "title": "Reader-Tabs: Bücher minimieren & Offene-Bücher-Leiste",
+        "notes": "• Minimieren-Button (—) im PDF-Reader\n• Offene-Bücher-Leiste im Hauptfenster: Zeigt alle geöffneten Bücher als klickbare Tabs zum schnellen Wechseln & Schließen",
+    },
     {
         "version": "2.6.2",
         "date": "Aktuell",

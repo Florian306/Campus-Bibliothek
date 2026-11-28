@@ -195,12 +195,33 @@ class CampusMainWindow(QMainWindow):
         root_layout.addWidget(self.sidebar)
 
         # -------------------------------------------------------------
-        # 2. Central Content Area (Stacked Views with Lazy Instantiation)
+        # 2. Central Content Area (Stacked Views + Open Readers Bar)
         # -------------------------------------------------------------
-        self.stack = QStackedWidget(central_widget)
-        self.stack.setStyleSheet("background-color: #0B0F19;")
+        content_col = QWidget(central_widget)
+        content_col_lay = QVBoxLayout(content_col)
+        content_col_lay.setContentsMargins(0, 0, 0, 0)
+        content_col_lay.setSpacing(0)
 
-        root_layout.addWidget(self.stack, stretch=1)
+        self.stack = QStackedWidget(content_col)
+        self.stack.setStyleSheet("background-color: #0B0F19;")
+        content_col_lay.addWidget(self.stack, stretch=1)
+
+        self._open_readers: dict = {}
+        self.open_readers_bar = QFrame(content_col)
+        self.open_readers_bar.setFixedHeight(36)
+        self.open_readers_bar.setStyleSheet("""
+            QFrame {
+                background-color: #080C14;
+                border-top: 1px solid #1E293B;
+            }
+        """)
+        self.open_readers_layout = QHBoxLayout(self.open_readers_bar)
+        self.open_readers_layout.setContentsMargins(10, 4, 10, 4)
+        self.open_readers_layout.setSpacing(6)
+        self.open_readers_bar.hide()
+        content_col_lay.addWidget(self.open_readers_bar)
+
+        root_layout.addWidget(content_col, stretch=1)
 
         # Select initial view (JARVIS Briefing)
         self._switch_tab("jarvis", 0)
@@ -674,6 +695,74 @@ class CampusMainWindow(QMainWindow):
                 toast_w,
                 toast_h
             )
+
+    def get_open_reader(self, book_id: str):
+        return self._open_readers.get(str(book_id))
+
+    def register_open_reader(self, book_id: str, title: str, dlg) -> None:
+        bid = str(book_id)
+        self._open_readers[bid] = (title, dlg)
+        dlg.finished.connect(lambda _=None, k=bid: self._unregister_open_reader(k))
+        self._refresh_open_readers_bar()
+
+    def _unregister_open_reader(self, book_id: str) -> None:
+        self._open_readers.pop(str(book_id), None)
+        self._refresh_open_readers_bar()
+
+    def _focus_open_reader(self, book_id: str) -> None:
+        entry = self._open_readers.get(str(book_id))
+        if not entry:
+            return
+        _, dlg = entry
+        dlg.showNormal()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def _refresh_open_readers_bar(self) -> None:
+        while self.open_readers_layout.count():
+            item = self.open_readers_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        if not self._open_readers:
+            self.open_readers_bar.hide()
+            return
+
+        lbl = QLabel("Offene Bücher:")
+        lbl.setStyleSheet("color: #8B949E; font-size: 11px; font-weight: 600; border: none; background: transparent;")
+        self.open_readers_layout.addWidget(lbl)
+
+        for bid, (title, dlg) in list(self._open_readers.items()):
+            chip = QFrame()
+            chip.setStyleSheet("""
+                QFrame {
+                    background-color: #121A2B; border: 1px solid #23314A; border-radius: 6px;
+                }
+                QFrame:hover { border-color: #388BFD; }
+            """)
+            c_lay = QHBoxLayout(chip)
+            c_lay.setContentsMargins(8, 2, 4, 2)
+            c_lay.setSpacing(4)
+
+            short_t = title if len(title) <= 28 else title[:25] + "..."
+            btn_focus = QPushButton(f"📖 {short_t}")
+            btn_focus.setCursor(Qt.PointingHandCursor)
+            btn_focus.setStyleSheet("QPushButton { color: #E6EDF3; border: none; background: transparent; font-size: 11px; font-weight: 600; }")
+            btn_focus.clicked.connect(lambda _=False, k=bid: self._focus_open_reader(k))
+            c_lay.addWidget(btn_focus)
+
+            btn_x = QPushButton("✕")
+            btn_x.setCursor(Qt.PointingHandCursor)
+            btn_x.setFixedSize(18, 18)
+            btn_x.setStyleSheet("QPushButton { color: #8B949E; border: none; background: transparent; font-size: 10px; } QPushButton:hover { color: #FF7B72; }")
+            btn_x.clicked.connect(lambda _=False, d=dlg: d.close())
+            c_lay.addWidget(btn_x)
+
+            self.open_readers_layout.addWidget(chip)
+
+        self.open_readers_layout.addStretch()
+        self.open_readers_bar.show()
 
     def _on_data_modified(self) -> None:
         self.update_sidebar_stats()

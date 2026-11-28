@@ -859,6 +859,16 @@ class PdfReaderDialog(QDialog):
         top_layout.addStretch()
 
         # Fullscreen Toggle Button (Square Icon Pill)
+        self.btn_minimize = QPushButton("—")
+        self.btn_minimize.setToolTip("Reader minimieren")
+        self.btn_minimize.setAutoDefault(False)
+        self.btn_minimize.setDefault(False)
+        self.btn_minimize.setCursor(Qt.PointingHandCursor)
+        self.btn_minimize.setFixedSize(32, 32)
+        self.btn_minimize.setStyleSheet(square_icon_style)
+        self.btn_minimize.clicked.connect(self.showMinimized)
+        top_layout.addWidget(self.btn_minimize)
+
         self.btn_fullscreen = QPushButton("⛶")
         self.btn_fullscreen.setToolTip("Vollbildmodus ein/ausschalten (F11)")
         self.btn_fullscreen.setAutoDefault(False)

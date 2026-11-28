@@ -1203,10 +1203,21 @@ class CatalogView(QWidget):
         saved_page = book.get("current_page") or 1
         cfg = load_config()
         if cfg.get("use_internal_reader", True):
-            dlg = PdfReaderDialog(book, initial_page=saved_page, parent=self.window())
+            win = self.window()
+            if hasattr(win, "get_open_reader"):
+                existing = win.get_open_reader(str(book_id))
+                if existing:
+                    _, existing_dlg = existing
+                    existing_dlg.showNormal()
+                    existing_dlg.raise_()
+                    existing_dlg.activateWindow()
+                    return
+            dlg = PdfReaderDialog(book, initial_page=saved_page, parent=win)
             dlg.setModal(False)
             dlg.setAttribute(Qt.WA_DeleteOnClose, True)
             dlg.finished.connect(lambda _=None, bid=book_id: self._refresh_single_book(bid))
+            if hasattr(win, "register_open_reader"):
+                win.register_open_reader(str(book_id), book.get("title") or "Buch", dlg)
             dlg.show()
             dlg.raise_()
             dlg.activateWindow()
