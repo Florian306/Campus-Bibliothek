@@ -195,6 +195,33 @@ def _run_offline_rules(text: str) -> List[TextIssue]:
             snippet=text[max(0, m.start() - 15):min(len(text), m.end() + 15)],
         ))
 
+    # 9. Context-aware word repetition within 25-word window (excluding stopwords)
+    _stopwords = {
+        "nicht", "auch", "sich", "eine", "einer", "eines", "einem", "einen",
+        "dass", "weil", "aber", "oder", "noch", "schon", "mehr", "sehr", "hier",
+        "dort", "wird", "werden", "wurde", "wurden", "sein", "sind", "haben", "hatte",
+        "kann", "können", "muss", "müssen", "soll", "sollen", "diese", "dieser", "dieses",
+        "durch", "über", "unter", "zwischen", "gegen", "ohne", "beim", "nach", "vor",
+    }
+    word_matches = list(re.finditer(r"\b([A-Za-zÄÖÜäöüß]{5,})\b", text))
+    last_seen: dict = {}
+    for idx, wm in enumerate(word_matches):
+        w_orig = wm.group(1)
+        w_low = w_orig.lower()
+        if w_low in _stopwords:
+            continue
+        if w_low in last_seen and (idx - last_seen[w_low]) <= 22:
+            issues.append(TextIssue(
+                offset=wm.start(),
+                length=len(w_orig),
+                category="style",
+                rule_id="WORD_REPETITION",
+                message=f"Wortwiederholung: „{w_orig}“ kommt kurz hintereinander vor – evtl. durch ein Synonym ersetzen.",
+                replacements=[],
+                snippet=text[max(0, wm.start() - 12):min(len(text), wm.end() + 12)],
+            ))
+        last_seen[w_low] = idx
+
     return issues
 
 

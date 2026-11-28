@@ -6,7 +6,7 @@ and 1-click quick fixes.
 from typing import List, Optional
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,6 +39,21 @@ class _TextCheckWorker(QThread):
         self.finished_check.emit(issues, stats)
 
 
+class _CleanPasteTextEdit(QTextEdit):
+    """QTextEdit that strips messy HTML/PDF formatting on paste for clean typography."""
+
+    def insertFromMimeData(self, source) -> None:
+        if source.hasText():
+            import re
+            clean = source.text().replace("\r\n", "\n").replace("\r", "\n")
+            # Collapse single PDF line breaks inside paragraphs while keeping double-newline paragraphs
+            clean = re.sub(r"(?<!\n)\n(?!\n)", " ", clean)
+            clean = re.sub(r" {2,}", " ", clean)
+            self.insertPlainText(clean)
+        else:
+            super().insertFromMimeData(source)
+
+
 class TextCheckerView(QWidget):
     """Proofreading & academic style editor view."""
 
@@ -47,6 +62,10 @@ class TextCheckerView(QWidget):
         self._issues: List[TextIssue] = []
         self._active_filter = "all"  # "all" | "spelling" | "grammar" | "style"
         self._worker: Optional[_TextCheckWorker] = None
+        self._auto_check_timer = QTimer(self)
+        self._auto_check_timer.setSingleShot(True)
+        self._auto_check_timer.setInterval(650)
+        self._auto_check_timer.timeout.connect(self._run_check)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -95,6 +114,20 @@ class TextCheckerView(QWidget):
         self.btn_copy.clicked.connect(self._copy_text)
         hdr.addWidget(self.btn_copy)
 
+        self.btn_dehyphen = QPushButton("🧹 Silbentrennung")
+        self.btn_dehyphen.setToolTip("Entfernt PDF-Trennstriche (z. B. Deutsch-land → Deutschland)")
+        self.btn_dehyphen.setCursor(Qt.PointingHandCursor)
+        self.btn_dehyphen.setStyleSheet(btn_style)
+        self.btn_dehyphen.clicked.connect(self._clean_pdf_hyphenation)
+        hdr.addWidget(self.btn_dehyphen)
+
+        self.btn_autofix = QPushButton("⚡ Auto-Fix")
+        self.btn_autofix.setToolTip("Wendet alle eindeutigen Rechtschreib- & Kommakorrekturen auf einmal an")
+        self.btn_autofix.setCursor(Qt.PointingHandCursor)
+        self.btn_autofix.setStyleSheet(btn_style)
+        self.btn_autofix.clicked.connect(self._apply_all_safe_fixes)
+        hdr.addWidget(self.btn_autofix)
+
         self.btn_check = QPushButton("🔍 Text prüfen")
         self.btn_check.setCursor(Qt.PointingHandCursor)
         self.btn_check.setStyleSheet("""
@@ -120,18 +153,20 @@ class TextCheckerView(QWidget):
         ed_lay = QVBoxLayout(editor_frame)
         ed_lay.setContentsMargins(10, 10, 10, 10)
 
-        self.editor = QTextEdit()
+        self.editor = _CleanPasteTextEdit()
         self.editor.setPlaceholderText(
-            "Füge hier deinen Text ein (z. B. Hausarbeit, Zusammenfassung, E-Mail) "
-            "und klicke oben auf „Text prüfen“..."
+            "Füge hier deinen Text ein (z. B. Hausarbeit, Zusammenfassung, E-Mail) – "
+            "PDF-Umbrüche werden automatisch geglättet und die Prüfung startet sofort..."
         )
         self.editor.setFont(QFont("Segoe UI", 11))
         self.editor.setStyleSheet("""
             QTextEdit {
                 background-color: #0D1117; color: #E6EDF3;
-                border: none; selection-background-color: #1F6FEB;
+                border: none; padding: 10px;
+                selection-background-color: #1F6FEB;
             }
         """)
+        self.editor.textChanged.connect(lambda: self._auto_check_timer.start())
         ed_lay.addWidget(self.editor)
         splitter.addWidget(editor_frame)
 
@@ -257,6 +292,20 @@ class TextCheckerView(QWidget):
             f"Wörter: {stats.words}  ·  Sätze: {stats.sentences}  ·  "
             f"Ø Satzlänge: {stats.avg_sentence_len}  ·  Flesch: {stats.flesch_de}"
         )
+        counts = {
+            "all": len(issues),
+            "spelling": sum(1 for i in issues if i.category == "spelling"),
+            "grammar": sum(1 for i in issues if i.category == "grammar"),
+            "style": sum(1 for i in issues if i.category == "style"),
+        }
+        labels = {
+            "all": f"Alle ({counts['all']})",
+            "spelling": f"Rechtschreibung ({counts['spelling']})",
+            "grammar": f"Komma & Grammatik ({counts['grammar']})",
+            "style": f"Stil ({counts['style']})",
+        }
+        for k, btn in self._filter_btns.items():
+            btn.setText(labels[k])
         self._apply_editor_underlines()
         self._render_issues()
 
@@ -327,6 +376,15 @@ class TextCheckerView(QWidget):
             badge = QLabel(cat_label)
             badge.setStyleSheet(f"color: {cat_col}; font-size: 10px; font-weight: bold; border: none; background: transparent;")
             top.addWidget(badge)
+
+            raw_text = self.editor.toPlainText()
+            word_slice = raw_text[issue.offset:issue.offset + issue.length].strip()
+            if word_slice:
+                short_slice = word_slice if len(word_slice) <= 28 else word_slice[:25] + "..."
+                lbl_word = QLabel(f"„{short_slice}“")
+                lbl_word.setStyleSheet("color: #F0F6FC; font-size: 11px; font-weight: bold; border: none; background: #1A2233; padding: 1px 6px; border-radius: 4px;")
+                top.addWidget(lbl_word)
+
             top.addStretch()
 
             btn_jump = QPushButton("Zur Stelle")
@@ -376,4 +434,29 @@ class TextCheckerView(QWidget):
         cur.setPosition(issue.offset)
         cur.setPosition(issue.offset + issue.length, QTextCursor.KeepAnchor)
         cur.insertText(replacement)
+        self._run_check()
+
+    def _clean_pdf_hyphenation(self) -> None:
+        import re
+        text = self.editor.toPlainText()
+        if not text:
+            return
+        # Join PDF line-break hyphenation where second part starts lowercase (e.g. Deutsch-land -> Deutschland)
+        cleaned = re.sub(r"([A-Za-zÄÖÜäöüß]{2,})-\s*([a-zäöüß]{2,})", r"\1\2", text)
+        if cleaned != text:
+            self.editor.setPlainText(cleaned)
+            self._run_check()
+
+    def _apply_all_safe_fixes(self) -> None:
+        safe = [
+            i for i in self._issues
+            if i.category in ("spelling", "grammar") and len(i.replacements) == 1
+        ]
+        if not safe:
+            return
+        text = self.editor.toPlainText()
+        # Apply from end to start so offsets stay valid
+        for issue in sorted(safe, key=lambda x: x.offset, reverse=True):
+            text = text[:issue.offset] + issue.replacements[0] + text[issue.offset + issue.length:]
+        self.editor.setPlainText(text)
         self._run_check()

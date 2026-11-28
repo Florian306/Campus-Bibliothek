@@ -10,9 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.error_handler import humanize_error
 
 GITHUB_REPO = "Florian306/Campus-Bibliothek"
-CURRENT_VERSION = "2.6.0"
+CURRENT_VERSION = "2.6.1"
 
 FALLBACK_CHANGELOG: List[Dict[str, str]] = [
+    {
+        "version": "2.6.1",
+        "date": "Aktuell",
+        "title": "Lektorat 2.0: Auto-Fix, Silbentrennung, Live-Check & Kontext-Wiederholungen",
+        "notes": "• Fehler-Wort-Badge direkt auf jeder Befund-Karte + Trefferzähler auf den Filter-Pills\n• 🧹 Silbentrennung: Entfernt PDF-Copy-Paste-Trennstriche (z.B. Deutsch-land → Deutschland) per Klick\n• ⚡ Auto-Fix: Wendet alle eindeutigen Rechtschreib- & Kommakorrekturen auf einmal an\n• Sauberes Einfügen & Live-Prüfung (650 ms) + Erkennung von Wortwiederholungen im nahen Kontext",
+    },
     {
         "version": "2.6.0",
         "date": "Aktuell",
